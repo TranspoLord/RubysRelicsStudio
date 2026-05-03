@@ -1,0 +1,88 @@
+/* ─── Base resets & scrollbar ─────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #0c0a07;
+  color: #ede0cc;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar — webkit */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #161210;
+}
+::-webkit-scrollbar-thumb {
+  background: #3a3228;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #c4921a66;
+}
+
+/* ─── Focus ring (global fallback, MUI overrides per-component) ───────────── */
+:focus-visible {
+  outline: 2px solid #c4921a;
+  outline-offset: 3px;
+}
+
+/* ─── Gold gradient text utility ─────────────────────────────────────────── */
+.gold-gradient-text {
+  background: linear-gradient(135deg, #8a6510 0%, #c4921a 40%, #e8b84a 70%, #c4921a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* ─── Hero background animation ─────────────────────────────────────────── */
+@keyframes forgeShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* ─── Category card hover glow pulse ──────────────────────────────────────── */
+@keyframes cardGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 20px rgba(196, 146, 26, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 35px rgba(196, 146, 26, 0.3);
+  }
+}
+
+/* ─── Reduced motion: disable all animations ──────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
