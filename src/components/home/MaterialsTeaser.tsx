@@ -10,8 +10,20 @@ import { alpha } from '@mui/material/styles'
 import { brandTokens } from '@/theme/theme'
 import { Analytics } from '@/lib/analytics/events'
 
-// TODO: Materials list reads from exp_taxonomy (type = 'material') in production.
-const MATERIALS = [
+export interface MaterialDisplayItem {
+  key: string
+  name: string
+  description: string
+  bestFor: string[]
+  emoji?: string | null
+  gradient: string
+}
+
+interface MaterialsTeaserProps {
+  materials?: MaterialDisplayItem[]
+}
+
+const STATIC_MATERIALS: MaterialDisplayItem[] = [
   {
     key: 'wood_basswood',
     name: 'Basswood',
@@ -62,7 +74,8 @@ const MATERIALS = [
   },
 ]
 
-export function MaterialsTeaser() {
+export function MaterialsTeaser({ materials }: MaterialsTeaserProps = {}) {
+  const mats = materials && materials.length > 0 ? materials : STATIC_MATERIALS
   return (
     <Box
       component="section"
@@ -101,7 +114,7 @@ export function MaterialsTeaser() {
             mb: 6,
           }}
         >
-          {MATERIALS.map((mat) => (
+          {mats.map((mat) => (
             <Box
               key={mat.key}
               sx={{

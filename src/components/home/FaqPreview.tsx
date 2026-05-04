@@ -13,40 +13,57 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import Link from 'next/link'
 import { alpha } from '@mui/material/styles'
 import { brandTokens } from '@/theme/theme'
+import type { DbFaqItem } from '@/lib/supabase/queries/homepage'
 
-// TODO: Source from Supabase FAQ table (admin-editable content) — these are placeholders.
-const FAQ_ITEMS = [
+interface FaqPreviewProps {
+  faqs?: DbFaqItem[]
+}
+
+const STATIC_FAQS: DbFaqItem[] = [
   {
     id: 'faq-artwork',
     question: 'Can I upload my own artwork?',
     answer:
       'Yes — most of our products support custom artwork uploads. We accept PNG, JPG, and PDF files. For best results, provide the highest-resolution file you have. The configurator will preview estimated quality before you add to cart. Reference photos are also welcome for custom order requests.',
-    link: { label: 'Artwork requirements', href: '/resources/artwork' },
+    link_label: 'Artwork requirements',
+    link_href: '/resources/artwork',
+    is_visible: true,
+    sort_order: 1,
   },
   {
     id: 'faq-materials',
     question: 'What materials do you work with?',
     answer:
       'We engrave and cut on wood (basswood, walnut), acrylic (clear, frosted, black, mirror), leather, and slate. We also do sublimation printing on ceramic mugs, powder-coated tumblers, cotton apparel, and canvas. Every material has specific quality characteristics — our Materials Guide explains each one.',
-    link: { label: 'Materials guide', href: '/resources/materials' },
+    link_label: 'Materials guide',
+    link_href: '/resources/materials',
+    is_visible: true,
+    sort_order: 2,
   },
   {
     id: 'faq-production',
     question: 'How long does production take?',
     answer:
       'Most orders are crafted within 3–7 business days depending on category and current queue depth. Production time is visible on every product page and is always driven by live queue data — never a static promise. Shipping time is additional. Rush availability is sometimes offered for a surcharge.',
-    link: { label: 'How It Works', href: '/how-it-works#production' },
+    link_label: 'How It Works',
+    link_href: '/how-it-works#production',
+    is_visible: true,
+    sort_order: 3,
   },
   {
     id: 'faq-custom',
     question: 'Do you take completely custom commissions?',
     answer:
-      'Absolutely. If your idea doesn\'t fit our standard catalog, submit a Custom Order request. Describe your vision, upload reference files, and we\'ll review feasibility. If we can do it, we\'ll send you a quote. You only pay once you approve the price — no upfront commitment.',
-    link: { label: 'Start a custom request', href: '/custom-orders' },
+      "Absolutely. If your idea doesn't fit our standard catalog, submit a Custom Order request. Describe your vision, upload reference files, and we'll review feasibility. If we can do it, we'll send you a quote. You only pay once you approve the price — no upfront commitment.",
+    link_label: 'Start a custom request',
+    link_href: '/custom-orders',
+    is_visible: true,
+    sort_order: 4,
   },
 ]
 
-export function FaqPreview() {
+export function FaqPreview({ faqs }: FaqPreviewProps = {}) {
+  const items = faqs && faqs.length > 0 ? faqs : STATIC_FAQS
   const [expanded, setExpanded] = useState<string | false>(false)
 
   const handleChange = (panel: string) => (_: React.SyntheticEvent, isExpanded: boolean) => {
@@ -75,7 +92,7 @@ export function FaqPreview() {
         </Box>
 
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {FAQ_ITEMS.map((item) => (
+          {items.map((item) => (
             <Accordion
               key={item.id}
               expanded={expanded === item.id}
@@ -90,7 +107,7 @@ export function FaqPreview() {
                 }`,
                 borderRadius: '8px !important',
                 transition: 'border-color 0.2s ease',
-                '&::before': { display: 'none' }, // remove default MUI divider
+                '&::before': { display: 'none' },
                 '&:focus-within': {
                   outline: `2px solid ${brandTokens.forgeGold}`,
                   outlineOffset: '2px',
@@ -136,14 +153,14 @@ export function FaqPreview() {
                 <Typography
                   variant="body2"
                   color="text.secondary"
-                  sx={{ lineHeight: 1.8, mb: item.link ? 2 : 0 }}
+                  sx={{ lineHeight: 1.8, mb: item.link_href ? 2 : 0 }}
                 >
                   {item.answer}
                 </Typography>
-                {item.link && (
+                {item.link_href && item.link_label && (
                   <Box
                     component={Link}
-                    href={item.link.href}
+                    href={item.link_href}
                     sx={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -160,7 +177,7 @@ export function FaqPreview() {
                       },
                     }}
                   >
-                    {item.link.label}
+                    {item.link_label}
                     <ArrowForwardIcon sx={{ fontSize: '0.85rem' }} />
                   </Box>
                 )}

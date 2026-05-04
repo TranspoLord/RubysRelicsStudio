@@ -10,21 +10,35 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import { alpha } from '@mui/material/styles'
 import { brandTokens } from '@/theme/theme'
 
-const STORAGE_KEY = 'rr_announcement_dismissed_v1'
-
-// TODO: Replace static content with admin-managed HomepageSection record from Supabase.
-const ANNOUNCEMENT = {
-  text: '✨ New: Laser Engraved Tumblers now available — personalized treasures for your hoard.',
-  cta: { label: 'Shop Drinkware', href: '/shop/categories/engraved-drinkware' },
+export interface AnnouncementData {
+  message: string
+  cta_label?: string | null
+  cta_href?: string | null
+  dismiss_key?: string
 }
 
-export function AnnouncementBanner() {
+interface AnnouncementBannerProps {
+  data?: AnnouncementData | null
+}
+
+// Fallback shown when Supabase is not yet connected
+const STATIC_FALLBACK: AnnouncementData = {
+  message: '✨ New: Laser Engraved Tumblers now available — personalized treasures for your hoard.',
+  cta_label: 'Shop Drinkware',
+  cta_href: '/shop/categories/engraved-drinkware',
+  dismiss_key: 'rr_announcement_v1',
+}
+
+export function AnnouncementBanner({ data }: AnnouncementBannerProps = {}) {
+  const announcement = data ?? STATIC_FALLBACK
+  const STORAGE_KEY = announcement.dismiss_key ?? 'rr_announcement_v1'
+
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
     const dismissed = localStorage.getItem(STORAGE_KEY)
     if (!dismissed) setVisible(true)
-  }, [])
+  }, [STORAGE_KEY])
 
   const dismiss = () => {
     localStorage.setItem(STORAGE_KEY, '1')
@@ -59,20 +73,22 @@ export function AnnouncementBanner() {
           lineHeight: 1.5,
         }}
       >
-        {ANNOUNCEMENT.text}{' '}
-        <Box
-          component={Link}
-          href={ANNOUNCEMENT.cta.href}
-          sx={{
-            color: brandTokens.forgeGoldLight,
-            fontWeight: 600,
-            textDecoration: 'underline',
-            textUnderlineOffset: 2,
-            '&:hover': { color: brandTokens.forgeGold },
-          }}
-        >
-          {ANNOUNCEMENT.cta.label}
-        </Box>
+        {announcement.message}{' '}
+        {announcement.cta_href && announcement.cta_label && (
+          <Box
+            component={Link}
+            href={announcement.cta_href}
+            sx={{
+              color: brandTokens.forgeGoldLight,
+              fontWeight: 600,
+              textDecoration: 'underline',
+              textUnderlineOffset: 2,
+              '&:hover': { color: brandTokens.forgeGold },
+            }}
+          >
+            {announcement.cta_label}
+          </Box>
+        )}
       </Typography>
       <IconButton
         size="small"

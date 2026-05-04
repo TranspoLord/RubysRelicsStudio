@@ -6,38 +6,45 @@ import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
 import { brandTokens } from '@/theme/theme'
 
-// TODO: Replace with approved testimonials from Supabase (admin-moderated gallery entries or a
-// dedicated testimonials table). Display only explicitly permissioned reviews.
-const TESTIMONIALS = [
+import type { DbTestimonial } from '@/lib/supabase/queries/homepage'
+
+interface TestimonialsSectionProps {
+  testimonials?: DbTestimonial[]
+}
+
+const STATIC_TESTIMONIALS: DbTestimonial[] = [
   {
     id: 't-001',
-    quote:
-      'My tumbler arrived with the most intricate dragon engraving I\'ve ever seen. The forge gods have truly blessed this shop.',
+    quote: "My tumbler arrived with the most intricate dragon engraving I've ever seen. The forge gods have truly blessed this shop.",
     author: 'Mira T.',
     location: 'Pacific Northwest',
-    product: 'Engraved Drinkware',
+    product_label: 'Engraved Drinkware',
     stars: 5,
     emoji: '🐉',
+    is_visible: true,
+    sort_order: 1,
   },
   {
     id: 't-002',
-    quote:
-      'Ordered a full set of leather patches for my LARP kit. They look like actual artifacts — like they were pulled from a prop master\'s collection.',
+    quote: "Ordered a full set of leather patches for my LARP kit. They look like actual artifacts — like they were pulled from a prop master's collection.",
     author: 'Bren K.',
     location: 'Austin, TX',
-    product: 'Leather Goods',
+    product_label: 'Leather Goods',
     stars: 5,
     emoji: '⚔️',
+    is_visible: true,
+    sort_order: 2,
   },
   {
     id: 't-003',
-    quote:
-      'The basswood sign for my home office is absolutely stunning. Communication was clear, production was faster than I expected, and the quality is unmatched.',
+    quote: 'The basswood sign for my home office is absolutely stunning. Communication was clear, production was faster than I expected, and the quality is unmatched.',
     author: 'Lily W.',
     location: 'Vermont',
-    product: 'Signs & Decor',
+    product_label: 'Signs & Decor',
     stars: 5,
     emoji: '🪵',
+    is_visible: true,
+    sort_order: 3,
   },
 ]
 
@@ -63,7 +70,8 @@ function StarRating({ count }: { count: number }) {
   )
 }
 
-export function TestimonialsSection() {
+export function TestimonialsSection({ testimonials }: TestimonialsSectionProps = {}) {
+  const items = testimonials && testimonials.length > 0 ? testimonials : STATIC_TESTIMONIALS
   return (
     <Box
       component="section"
@@ -97,7 +105,7 @@ export function TestimonialsSection() {
             gap: 3,
           }}
         >
-          {TESTIMONIALS.map((t) => (
+          {items.map((t) => (
             <Box
               key={t.id}
               sx={{
@@ -166,7 +174,7 @@ export function TestimonialsSection() {
                     {t.author}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    {t.product} · {t.location}
+                  {t.product_label} · {t.location}
                   </Typography>
                 </Box>
               </Box>

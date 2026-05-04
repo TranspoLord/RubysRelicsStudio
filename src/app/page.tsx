@@ -15,6 +15,16 @@ import { TestimonialsSection } from '@/components/home/TestimonialsSection'
 import { FaqPreview } from '@/components/home/FaqPreview'
 import { NewsletterBlock } from '@/components/home/NewsletterBlock'
 import { ResourcesTeaser } from '@/components/home/ResourcesTeaser'
+import {
+  getHomepageSections,
+  getActiveAnnouncement,
+  getCategories,
+  getFeaturedCollections,
+  getPublishedGallery,
+  getVisibleTestimonials,
+  getHomepageFaq,
+  getMaterials,
+} from '@/lib/supabase/queries/homepage'
 
 // Homepage-specific metadata override
 export const metadata: Metadata = {
@@ -23,15 +33,22 @@ export const metadata: Metadata = {
     'Custom laser engravings, sublimation gifts, and handcrafted treasures. Made to order by a one-dragon studio — shipped with care to your lair.',
 }
 
-// TODO: Once Wave 0 DB is ready, fetch homepage config sections from Supabase here
-// (visibility toggles, sort order, hero content, featured collections) as a server component.
-// All sections below use static placeholder data until that connection is wired.
-
-export default function HomePage() {
+export default async function HomePage() {
+  // Fetch all CMS data in parallel
+  const [sections, announcement, categories, collections, gallery, testimonials, faq, materials] = await Promise.all([
+    getHomepageSections(),
+    getActiveAnnouncement(),
+    getCategories(),
+    getFeaturedCollections(),
+    getPublishedGallery(6),
+    getVisibleTestimonials(3),
+    getHomepageFaq(),
+    getMaterials(),
+  ])
   return (
     <>
       {/* Announcement banner (client: reads localStorage for dismiss state) */}
-      <AnnouncementBanner />
+      <AnnouncementBanner data={announcement} />
 
       {/* Global header */}
       <Header currentPath="/" />
@@ -44,40 +61,51 @@ export default function HomePage() {
         sx={{ outline: 'none', flex: 1, display: 'flex', flexDirection: 'column' }}
       >
         {/* 1. Hero */}
-        <HeroSection />
+        {sections['hero_section']?.is_visible !== false && <HeroSection />}
 
         {/* 2. Three order paths */}
-        <OrderPathsSection />
+        {sections['order_paths']?.is_visible !== false && <OrderPathsSection />}
 
         {/* 3. Category grid */}
-        <CategoryGrid />
+        {sections['category_grid']?.is_visible !== false && <CategoryGrid categories={categories} />}
 
         {/* 4. Featured collections */}
-        <FeaturedCollections />
+        {sections['featured_collections']?.is_visible !== false && (
+          <FeaturedCollections collections={collections} />
+        )}
 
         {/* 5. Fresh From the Forge — recent work */}
-        <FreshFromTheForge />
+        {sections['fresh_from_forge']?.is_visible !== false && <FreshFromTheForge items={gallery} />}
 
         {/* 6. Materials teaser */}
-        <MaterialsTeaser />
+        {sections['materials_teaser']?.is_visible !== false && (
+          <MaterialsTeaser materials={materials.map((m) => ({
+            key: m.key,
+            name: m.display_name,
+            description: m.tagline || '',
+            bestFor: m.alias_keys?.split(',').map((k) => k.trim()) || [],
+            emoji: m.emoji,
+            gradient: m.gradient || 'linear-gradient(160deg, #2A1800, #4A2E0A)',
+          }))} />
+        )}
 
         {/* 7. Process strip */}
-        <ProcessStrip />
+        {sections['process_strip']?.is_visible !== false && <ProcessStrip />}
 
         {/* 8. Custom order pitch */}
-        <CustomOrderPitch />
+        {sections['custom_order_pitch']?.is_visible !== false && <CustomOrderPitch />}
 
         {/* 9. Testimonials */}
-        <TestimonialsSection />
+        {sections['testimonials']?.is_visible !== false && <TestimonialsSection testimonials={testimonials} />}
 
         {/* 10. FAQ preview */}
-        <FaqPreview />
+        {sections['faq_preview']?.is_visible !== false && <FaqPreview faqs={faq} />}
 
         {/* 11. Newsletter */}
-        <NewsletterBlock />
+        {sections['newsletter']?.is_visible !== false && <NewsletterBlock />}
 
         {/* 12. Resources / policy hub teaser */}
-        <ResourcesTeaser />
+        {sections['resources_teaser']?.is_visible !== false && <ResourcesTeaser />}
       </Box>
 
       {/* Footer */}

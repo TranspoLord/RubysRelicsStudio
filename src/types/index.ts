@@ -17,6 +17,11 @@ export interface TaxonomyEntry {
   sort_order: number
   how_it_works_anchor?: string
   alias_keys?: string
+  // Extended fields for special taxonomy entries (categories, materials)
+  emoji?: string | null
+  gradient?: string | null
+  glow_color?: string | null
+  tagline?: string | null
   created_at: string
   updated_at: string
 }

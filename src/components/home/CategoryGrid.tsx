@@ -10,9 +10,24 @@ import { alpha } from '@mui/material/styles'
 import { brandTokens } from '@/theme/theme'
 import { Analytics } from '@/lib/analytics/events'
 
+import type { TaxonomyEntry } from '@/types'
+
+export interface CategoryDisplayItem {
+  key: string
+  display_name: string
+  slug: string
+  tagline?: string | null
+  emoji?: string | null
+  gradient?: string | null
+  glow_color?: string | null
+}
+
+interface CategoryGridProps {
+  categories?: CategoryDisplayItem[]
+}
+
 // TODO: Replace with Supabase taxonomy query — categories read from exp_taxonomy table.
-// No hardcoding of categories in production; this is the placeholder for UI-only phase.
-const CATEGORIES = [
+const STATIC_CATEGORIES: CategoryDisplayItem[] = [
   {
     key: 'engraved_drinkware',
     display_name: 'Engraved Drinkware',
@@ -20,7 +35,7 @@ const CATEGORIES = [
     tagline: 'Tumblers, cups & bottles — forged with precision.',
     emoji: '🥤',
     gradient: `linear-gradient(135deg, #2A1800 0%, #4A2E00 40%, #3A2000 100%)`,
-    glowColor: brandTokens.forgeGold,
+    glow_color: brandTokens.forgeGold,
   },
   {
     key: 'sublimated_gifts',
@@ -29,7 +44,7 @@ const CATEGORIES = [
     tagline: 'Full-color magic on mugs, coasters & more.',
     emoji: '☕',
     gradient: `linear-gradient(135deg, #1A0A2A 0%, #2E1A4A 40%, #1E0E36 100%)`,
-    glowColor: '#8B4FBE',
+    glow_color: '#8B4FBE',
   },
   {
     key: 'signs_and_decor',
@@ -38,7 +53,7 @@ const CATEGORIES = [
     tagline: 'Wood signs, acrylic panels & wall art.',
     emoji: '🪵',
     gradient: `linear-gradient(135deg, #0A1A0A 0%, #1A3A10 40%, #0E2210 100%)`,
-    glowColor: '#5A9A3A',
+    glow_color: '#5A9A3A',
   },
   {
     key: 'acrylic_pieces',
@@ -47,7 +62,7 @@ const CATEGORIES = [
     tagline: 'Crystal-clear custom shapes & panels.',
     emoji: '💎',
     gradient: `linear-gradient(135deg, #001A2A 0%, #003A4A 40%, #002030 100%)`,
-    glowColor: '#2ABCD4',
+    glow_color: '#2ABCD4',
   },
   {
     key: 'leather_goods',
@@ -56,7 +71,7 @@ const CATEGORIES = [
     tagline: 'Engraved patches, keychains & wallets.',
     emoji: '🪡',
     gradient: `linear-gradient(135deg, #1A0E00 0%, #3A2010 40%, #281400 100%)`,
-    glowColor: brandTokens.copper,
+    glow_color: brandTokens.copper,
   },
   {
     key: 'apparel',
@@ -65,7 +80,7 @@ const CATEGORIES = [
     tagline: 'Custom shirts, hats & wearable art.',
     emoji: '👕',
     gradient: `linear-gradient(135deg, #0A0A14 0%, #1A1A2A 40%, #121220 100%)`,
-    glowColor: '#6A7AC4',
+    glow_color: '#6A7AC4',
   },
   {
     key: 'seasonal_items',
@@ -74,7 +89,7 @@ const CATEGORIES = [
     tagline: 'Holiday drops, event specials & limited runs.',
     emoji: '✨',
     gradient: `linear-gradient(135deg, #1A0808 0%, #3A1010 40%, #280808 100%)`,
-    glowColor: brandTokens.rubyRed,
+    glow_color: brandTokens.rubyRed,
   },
   {
     key: 'gift_bundles',
@@ -83,11 +98,21 @@ const CATEGORIES = [
     tagline: 'Curated sets for legendary gift-givers.',
     emoji: '🎁',
     gradient: `linear-gradient(135deg, #1A0A14 0%, #3A1A2A 40%, #280E1E 100%)`,
-    glowColor: '#BE4F8B',
+    glow_color: '#BE4F8B',
   },
 ]
 
-export function CategoryGrid() {
+export function CategoryGrid({ categories }: CategoryGridProps = {}) {
+  const items = (categories && categories.length > 0 ? categories : STATIC_CATEGORIES).map((cat) => ({
+    key: cat.key,
+    display_name: cat.display_name,
+    slug: cat.slug,
+    tagline: cat.tagline ?? '',
+    emoji: cat.emoji ?? '🔥',
+    gradient: cat.gradient ?? `linear-gradient(135deg, #1A1410, #2A2018)`,
+    glowColor: cat.glow_color ?? brandTokens.forgeGold,
+  }))
+
   const [hoveredKey, setHoveredKey] = useState<string | null>(null)
 
   return (
@@ -125,7 +150,7 @@ export function CategoryGrid() {
             gap: { xs: 2, md: 2.5 },
           }}
         >
-          {CATEGORIES.map((cat) => {
+          {items.map((cat) => {
             const isHovered = hoveredKey === cat.key
             const isNeighbor = hoveredKey !== null && hoveredKey !== cat.key
 

@@ -11,8 +11,24 @@ import { alpha } from '@mui/material/styles'
 import { brandTokens } from '@/theme/theme'
 import { Analytics } from '@/lib/analytics/events'
 
-// TODO: Replace with Supabase query to exp_homepage_sections / featured collections.
-const FEATURED_COLLECTIONS = [
+export interface FeaturedCollectionItem {
+  id: string
+  title: string
+  tagline: string
+  description: string
+  slug: string
+  emoji?: string | null
+  tag_label?: string | null
+  gradient: string
+  border_color: string
+}
+
+interface FeaturedCollectionsProps {
+  collections?: FeaturedCollectionItem[]
+}
+
+// TODO: Replace with Supabase query to exp_featured_collections.
+const STATIC_COLLECTIONS: FeaturedCollectionItem[] = [
   {
     id: 'tavern-collection',
     title: 'The Tavern Collection',
@@ -20,9 +36,9 @@ const FEATURED_COLLECTIONS = [
     description: 'Engraved tumblers, ceramic mugs, and coordinating coasters — the complete drinkware set for any adventurer\'s table.',
     slug: 'collections/tavern-collection',
     emoji: '🍺',
-    tag: 'Best Sellers',
+    tag_label: 'Best Sellers',
     gradient: `linear-gradient(135deg, ${alpha(brandTokens.forgeGoldDark, 0.25)} 0%, ${alpha(brandTokens.copper, 0.15)} 60%, ${alpha(brandTokens.bgCard, 0.8)} 100%)`,
-    borderColor: alpha(brandTokens.forgeGold, 0.25),
+    border_color: alpha(brandTokens.forgeGold, 0.25),
   },
   {
     id: 'adventurers-pack',
@@ -31,9 +47,9 @@ const FEATURED_COLLECTIONS = [
     description: 'Laser-engraved leather patches, personalised tumblers, and acrylic keychains built for those who travel far and collect everything.',
     slug: 'collections/adventurers-pack',
     emoji: '🗡️',
-    tag: 'Popular',
+    tag_label: 'Popular',
     gradient: `linear-gradient(135deg, ${alpha(brandTokens.rubyRed, 0.2)} 0%, ${alpha('#4A1500', 0.6)} 60%, ${alpha(brandTokens.bgCard, 0.8)} 100%)`,
-    borderColor: alpha(brandTokens.rubyRed, 0.25),
+    border_color: alpha(brandTokens.rubyRed, 0.25),
   },
   {
     id: 'forest-hearth-holiday',
@@ -42,13 +58,14 @@ const FEATURED_COLLECTIONS = [
     description: 'Engraved wood ornaments, sublimated coaster sets, and personalised mugs perfect for seasonal gifting and winter celebrations.',
     slug: 'collections/forest-hearth-holiday',
     emoji: '🌲',
-    tag: 'Seasonal',
+    tag_label: 'Seasonal',
     gradient: `linear-gradient(135deg, ${alpha('#0A2A10', 0.8)} 0%, ${alpha('#142A10', 0.6)} 60%, ${alpha(brandTokens.bgCard, 0.8)} 100%)`,
-    borderColor: alpha('#4A8A3A', 0.3),
+    border_color: alpha('#4A8A3A', 0.3),
   },
 ]
 
-export function FeaturedCollections() {
+export function FeaturedCollections({ collections }: FeaturedCollectionsProps = {}) {
+  const items = collections && collections.length > 0 ? collections : STATIC_COLLECTIONS
   return (
     <Box
       component="section"
@@ -99,7 +116,7 @@ export function FeaturedCollections() {
             gap: 3,
           }}
         >
-          {FEATURED_COLLECTIONS.map((col) => (
+          {items.map((col) => (
             <Box
               key={col.id}
               component={Link}
@@ -112,7 +129,7 @@ export function FeaturedCollections() {
                 gap: 2,
                 p: 3.5,
                 background: col.gradient,
-                border: `1px solid ${col.borderColor}`,
+                border: `1px solid ${col.border_color}`,
                 borderRadius: 2,
                 textDecoration: 'none',
                 cursor: 'pointer',
@@ -142,12 +159,14 @@ export function FeaturedCollections() {
                 <Box aria-hidden="true" sx={{ fontSize: '2.5rem', lineHeight: 1 }}>
                   {col.emoji}
                 </Box>
-                <Chip
-                  label={col.tag}
-                  size="small"
-                  color="primary"
-                  sx={{ fontSize: '0.68rem', height: 22 }}
-                />
+                {col.tag_label && (
+                  <Chip
+                    label={col.tag_label}
+                    size="small"
+                    color="primary"
+                    sx={{ fontSize: '0.68rem', height: 22 }}
+                  />
+                )}
               </Box>
 
               <Box sx={{ flex: 1 }}>

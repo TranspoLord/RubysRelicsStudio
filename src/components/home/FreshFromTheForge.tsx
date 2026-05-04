@@ -10,78 +10,72 @@ import Link from 'next/link'
 import { alpha } from '@mui/material/styles'
 import { brandTokens } from '@/theme/theme'
 
-// TODO: Replace with approved gallery items from Supabase (moderation_status = 'published').
-// Gallery items are admin-curated only — no customer submissions shown without approval.
-const FORGE_ITEMS = [
+import type { DbGalleryItem } from '@/lib/supabase/queries/homepage'
+
+interface FreshFromTheForgeProps {
+  items?: DbGalleryItem[]
+}
+
+// Static fallback — used until Supabase is connected
+const STATIC_ITEMS: DbGalleryItem[] = [
   {
-    id: 'fg-001',
-    title: 'Walnut Tumbler — Dragon Motif',
+    id: 'fg-001', title: 'Walnut Tumbler — Dragon Motif',
     caption: 'Deep engraving on a powder-coated tumbler with a custom dragon scale pattern.',
-    category: 'Engraved Drinkware',
-    categorySlug: 'engraved-drinkware',
-    material: 'Powder Coated Tumbler',
-    turnaround: '4 days',
-    emoji: '🐉',
-    gradient: `linear-gradient(135deg, #2A1800, #4A2E00)`,
+    category_key: 'engraved_drinkware', category_display_name: 'Engraved Drinkware', category_slug: 'engraved-drinkware',
+    media_url: '', media_alt: '', emoji: '🐉',
+    gradient: 'linear-gradient(135deg, #2A1800, #4A2E00)',
+    material_used: 'Powder Coated Tumbler', turnaround_band: '4 days',
+    moderation_status: 'published', visible: true, sort_order: 1,
   },
   {
-    id: 'fg-002',
-    title: 'Leather Patch — Runic Lettering',
+    id: 'fg-002', title: 'Leather Patch — Runic Lettering',
     caption: 'Engraved leather patch with custom runic script and a reinforced border.',
-    category: 'Leather Goods',
-    categorySlug: 'leather-goods',
-    material: 'Leather',
-    turnaround: '3 days',
-    emoji: '⚔️',
-    gradient: `linear-gradient(135deg, #1A0E00, #3A2010)`,
+    category_key: 'leather_goods', category_display_name: 'Leather Goods', category_slug: 'leather-goods',
+    media_url: '', media_alt: '', emoji: '⚔️',
+    gradient: 'linear-gradient(135deg, #1A0E00, #3A2010)',
+    material_used: 'Leather', turnaround_band: '3 days',
+    moderation_status: 'published', visible: true, sort_order: 2,
   },
   {
-    id: 'fg-003',
-    title: 'Sublimated Mug — Watercolor Mountains',
+    id: 'fg-003', title: 'Sublimated Mug — Watercolor Mountains',
     caption: 'Full-color sublimation transfer of a watercolor mountain landscape on ceramic.',
-    category: 'Sublimated Gifts',
-    categorySlug: 'sublimated-gifts',
-    material: 'Ceramic Mug Blank',
-    turnaround: '3 days',
-    emoji: '🏔️',
-    gradient: `linear-gradient(135deg, #1A0A2A, #2E1A4A)`,
+    category_key: 'sublimated_gifts', category_display_name: 'Sublimated Gifts', category_slug: 'sublimated-gifts',
+    media_url: '', media_alt: '', emoji: '🏔️',
+    gradient: 'linear-gradient(135deg, #1A0A2A, #2E1A4A)',
+    material_used: 'Ceramic Mug Blank', turnaround_band: '3 days',
+    moderation_status: 'published', visible: true, sort_order: 3,
   },
   {
-    id: 'fg-004',
-    title: 'Basswood Sign — "Here Be Cozy"',
+    id: 'fg-004', title: 'Basswood Sign — "Here Be Cozy"',
     caption: 'Cut and engraved basswood wall sign with a hand-styled lettering layout.',
-    category: 'Signs & Decor',
-    categorySlug: 'signs-and-decor',
-    material: 'Basswood',
-    turnaround: '5 days',
-    emoji: '🏡',
-    gradient: `linear-gradient(135deg, #0A1A0A, #1A3A10)`,
+    category_key: 'signs_and_decor', category_display_name: 'Signs & Decor', category_slug: 'signs-and-decor',
+    media_url: '', media_alt: '', emoji: '🏡',
+    gradient: 'linear-gradient(135deg, #0A1A0A, #1A3A10)',
+    material_used: 'Basswood', turnaround_band: '5 days',
+    moderation_status: 'published', visible: true, sort_order: 4,
   },
   {
-    id: 'fg-005',
-    title: 'Frosted Acrylic Lantern Panel',
+    id: 'fg-005', title: 'Frosted Acrylic Lantern Panel',
     caption: 'Custom-cut frosted acrylic panel with an intricate geometric pattern for a lantern frame.',
-    category: 'Acrylic Pieces',
-    categorySlug: 'acrylic-pieces',
-    material: 'Frosted Acrylic',
-    turnaround: '4 days',
-    emoji: '🔮',
-    gradient: `linear-gradient(135deg, #001A2A, #003A4A)`,
+    category_key: 'acrylic_pieces', category_display_name: 'Acrylic Pieces', category_slug: 'acrylic-pieces',
+    media_url: '', media_alt: '', emoji: '🔮',
+    gradient: 'linear-gradient(135deg, #001A2A, #003A4A)',
+    material_used: 'Frosted Acrylic', turnaround_band: '4 days',
+    moderation_status: 'published', visible: true, sort_order: 5,
   },
   {
-    id: 'fg-006',
-    title: 'Sublimated Coaster Set',
+    id: 'fg-006', title: 'Sublimated Coaster Set',
     caption: 'Set of four full-color sublimated coasters featuring a tarot card art series.',
-    category: 'Sublimated Gifts',
-    categorySlug: 'sublimated-gifts',
-    material: 'Ceramic Mug Blank',
-    turnaround: '3 days',
-    emoji: '🎴',
-    gradient: `linear-gradient(135deg, #2A001A, #4A1030)`,
+    category_key: 'sublimated_gifts', category_display_name: 'Sublimated Gifts', category_slug: 'sublimated-gifts',
+    media_url: '', media_alt: '', emoji: '🎴',
+    gradient: 'linear-gradient(135deg, #2A001A, #4A1030)',
+    material_used: 'Ceramic Mug Blank', turnaround_band: '3 days',
+    moderation_status: 'published', visible: true, sort_order: 6,
   },
 ]
 
-export function FreshFromTheForge() {
+export function FreshFromTheForge({ items }: FreshFromTheForgeProps = {}) {
+  const forgeItems = items && items.length > 0 ? items : STATIC_ITEMS
   return (
     <Box
       component="section"
@@ -134,7 +128,7 @@ export function FreshFromTheForge() {
             gap: 2.5,
           }}
         >
-          {FORGE_ITEMS.map((item) => (
+          {forgeItems.map((item) => (
             <Box
               key={item.id}
               sx={{
@@ -181,25 +175,29 @@ export function FreshFromTheForge() {
                   }}
                 >
                   <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', letterSpacing: '0.04em' }}>
-                    {item.material}
+                    {item.material_used}
                   </Typography>
                 </Box>
               </Box>
 
               <Box sx={{ p: 2.5, backgroundColor: alpha(brandTokens.bgCard, 0.9) }}>
                 <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <Chip
-                    label={item.category}
-                    size="small"
-                    component={Link}
-                    href={`/shop/categories/${item.categorySlug}`}
-                    clickable
-                    sx={{ fontSize: '0.65rem', height: 20 }}
-                    color="primary"
-                  />
-                  <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.68rem' }}>
-                    ⏱ {item.turnaround}
-                  </Typography>
+                  {item.category_slug && (
+                    <Chip
+                      label={item.category_display_name ?? item.category_key}
+                      size="small"
+                      component={Link}
+                      href={`/shop/categories/${item.category_slug}`}
+                      clickable
+                      sx={{ fontSize: '0.65rem', height: 20 }}
+                      color="primary"
+                    />
+                  )}
+                  {item.turnaround_band && (
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.68rem' }}>
+                      ⏱ {item.turnaround_band}
+                    </Typography>
+                  )}
                 </Box>
                 <Typography variant="subtitle2" sx={{ color: 'text.primary', mb: 0.5, fontSize: '0.9rem' }}>
                   {item.title}
