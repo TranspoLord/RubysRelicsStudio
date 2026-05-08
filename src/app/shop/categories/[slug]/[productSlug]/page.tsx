@@ -5,7 +5,6 @@ import Container from '@mui/material/Container'
 import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
 import Divider from '@mui/material/Divider'
-import Link from 'next/link'
 import { alpha } from '@mui/material/styles'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import VerifiedOutlinedIcon from '@mui/icons-material/VerifiedOutlined'
@@ -344,7 +343,7 @@ function ProductTrustBlock({ estimateBand, howItWorksAnchor }: TrustBlockProps) 
 
       {howItWorksAnchor && (
         <Box
-          component={Link}
+          component="a"
           href={`/how-it-works${howItWorksAnchor}`}
           sx={{
             mt: 0.5,

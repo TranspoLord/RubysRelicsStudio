@@ -1,7 +1,6 @@
 import Box from '@mui/material/Box'
 import Container from '@mui/material/Container'
 import Typography from '@mui/material/Typography'
-import Link from 'next/link'
 import { alpha } from '@mui/material/styles'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
@@ -94,7 +93,7 @@ export default async function ShopPage() {
               Browse by Craft
             </Typography>
             <Typography variant="h2" component="h2" sx={{ textAlign: 'center', mb: { xs: 3, md: 5 } }}>
-              Choose Your Category
+              Choose Your Category or Shop All
             </Typography>
 
             <Box
@@ -119,6 +118,54 @@ export default async function ShopPage() {
                 )
               })}
             </Box>
+
+            <Box sx={{ mt: { xs: 3, md: 4 }, display: 'flex', justifyContent: 'center' }}>
+              <Box
+                component="a"
+                href="/shop/all"
+                sx={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  textDecoration: 'none',
+                  px: { xs: 3, md: 4 },
+                  py: { xs: 1.4, md: 1.6 },
+                  borderRadius: 1.5,
+                  background: `linear-gradient(135deg, ${alpha(brandTokens.forgeGold, 0.25)} 0%, ${alpha(brandTokens.forgeGold, 0.12)} 100%)`,
+                  border: `1px solid ${alpha(brandTokens.forgeGold, 0.45)}`,
+                  boxShadow: `0 10px 28px ${alpha(brandTokens.forgeGold, 0.15)}`,
+                  color: brandTokens.forgeGold,
+                  fontWeight: 700,
+                  letterSpacing: '0.06em',
+                  fontSize: { xs: '0.85rem', md: '0.92rem' },
+                  textTransform: 'uppercase',
+                  transition: 'transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease',
+                  '&:hover': {
+                    transform: 'translateY(-2px)',
+                    boxShadow: `0 14px 34px ${alpha(brandTokens.forgeGold, 0.22)}`,
+                    borderColor: alpha(brandTokens.forgeGold, 0.65),
+                  },
+                  '@media (prefers-reduced-motion: reduce)': {
+                    transition: 'none',
+                    '&:hover': { transform: 'none' },
+                  },
+                }}
+              >
+                Shop All Products
+              </Box>
+            </Box>
+
+            <Typography
+              variant="body2"
+              sx={{
+                mt: 1.25,
+                textAlign: 'center',
+                color: alpha(brandTokens.parchment, 0.52),
+                fontSize: '0.8rem',
+              }}
+            >
+              Prefer a full-catalog view? Shop everything at once.
+            </Typography>
           </Container>
         </Box>
 
@@ -152,7 +199,7 @@ function CategoryCard({ category, productCount }: CategoryCardProps) {
 
   return (
     <Box
-      component={Link}
+      component="a"
       href={`/shop/categories/${category.slug}`}
       sx={{
         display: 'flex',

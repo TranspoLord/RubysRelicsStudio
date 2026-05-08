@@ -3,6 +3,7 @@ import { Cinzel, Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/react'
 import { ThemeRegistry } from '@/theme/ThemeRegistry'
 import { SkipToMain } from '@/components/common/SkipToMain'
+import { CartProvider } from '@/components/cart/CartProvider'
 import './globals.css'
 
 // ─── Fonts ────────────────────────────────────────────────────────────────────
@@ -64,8 +65,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${cinzel.variable} ${inter.variable}`}>
       <body>
         <ThemeRegistry>
-          <SkipToMain />
-          {children}
+          <CartProvider>
+            <SkipToMain />
+            {children}
+          </CartProvider>
         </ThemeRegistry>
         {/* Vercel Analytics — aggregate only, no PII in events */}
         <Analytics />

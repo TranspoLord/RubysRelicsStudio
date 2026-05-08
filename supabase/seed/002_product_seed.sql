@@ -533,6 +533,7 @@ on conflict do nothing;
 -- Media: Apparel
 with p as (select id from exp_products where slug = 'sublimated-custom-t-shirt')
 insert into exp_product_media (product_id, alt, emoji, gradient, is_featured, sort_order)
-values (p.id, 'Custom sublimated t-shirt', '👕',
-  'linear-gradient(135deg, #0A0A14 0%, #1A1A2A 40%, #121220 100%)', true, 1)
+select p.id, 'Custom sublimated t-shirt', '👕',
+  'linear-gradient(135deg, #0A0A14 0%, #1A1A2A 40%, #121220 100%)', true, 1
+from p
 on conflict do nothing;

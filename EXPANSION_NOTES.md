@@ -40,9 +40,15 @@
 
 - **Custom engravings** — wood signs, acrylic panels, leather patches, slates
 - **Sublimation items** — mugs, tumblers, shirts, coasters, ornaments
+- **Sticker lines** — matte, glossy, holographic bases with laminate add-ons
 - **Rotary items** — personalized drinkware (tumblers, bottles, cups)
 - **Combination items** — e.g. engraved + sublimated coasters
 - **Cut-to-shape** — custom acrylic shapes, wood cutouts
+
+### Sticker pricing requirement (locked)
+- Sticker products must support base finish selection (`matte`, `glossy`, `holographic`) and laminate add-ons (`matte laminate`, `glossy laminate`) as admin-managed option values.
+- Bulk quantity discount tiers for stickers must be admin-configurable in DB (no hardcoded tier math in frontend code).
+- Quantity pricing must update in the product configurator based on matching tier rules.
 
 ---
 
@@ -97,6 +103,7 @@ Working assumption:
 
 Routes/surfaces that must be rebuilt for the expansion site:
 - storefront home and category routes
+- all-products browsing route (`/shop/all`) for cross-category discovery
 - product detail/configurator routes
 - cart and checkout flow
 - order success and customer order history views
@@ -107,6 +114,7 @@ Routes/surfaces that must be rebuilt for the expansion site:
 
 Settings requirement:
 - Expansion storefront settings must have their own admin-managed configuration domain (shop settings, queue settings, pricing settings, visibility settings, policy content, etc.) separate from sticker settings.
+- Stripe checkout availability must be toggleable from expansion admin settings without code deploys (runtime on/off with customer-facing fallback message).
 
 ---
 
@@ -178,6 +186,8 @@ Page-level DoD requirements:
 - `Shop`:
 	- Supports hierarchy toggle mode persistence (cookie-backed) and in-sidebar search.
 	- Clearly routes users into Shop Custom Creations, Ready-Made, and Custom Orders.
+	- Left hierarchy/filter set includes an explicit `Shop All` control that resets category filtering and shows all active products.
+	- Shop entry UI should communicate category browsing and full-catalog browsing equally ("Choose your category or shop all").
 - `Ready-Made`:
 	- Lists all ready-made products that do not require customer design/upload.
 	- Left hierarchy/filters are available and usable on desktop + mobile drawer.
@@ -394,6 +404,7 @@ What this means technically:
 - `Shop` should likely split visually into:
 	- customizable made-to-order products
 	- ready-made in-stock products
+	- all-products browsing view (`/shop/all`) for users who want the full catalog quickly
 - `Custom Orders` should remain its own dedicated top-level route because the user mindset is different
 - Add a dedicated `Resources` (or `Documents`) top-level route for policy, legal, and sourcing content
 - Homepage should introduce all three paths clearly so customers can self-sort fast:

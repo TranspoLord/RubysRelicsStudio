@@ -21,12 +21,15 @@ import AccountCircleOutlinedIcon from '@mui/icons-material/AccountCircleOutlined
 import SearchIcon from '@mui/icons-material/Search'
 import Link from 'next/link'
 import { alpha } from '@mui/material/styles'
+
 import { brandTokens } from '@/theme/theme'
+import { useCart } from '@/components/cart/CartProvider'
 
 const NAV_LINKS = [
   { label: 'Home', href: '/' },
   { label: 'Shop', href: '/shop' },
   { label: 'How It Works', href: '/how-it-works' },
+  { label: 'Custom Orders', href: '/custom-orders' },
   { label: 'Gallery', href: '/gallery' },
   { label: 'About', href: '/about' },
 ]
@@ -37,9 +40,12 @@ interface HeaderProps {
 }
 
 export function Header({ cartItemCount = 0, currentPath = '/' }: HeaderProps) {
+  const cart = useCart()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
+
+  const effectiveCartCount = cartItemCount > 0 ? cartItemCount : cart.itemCount
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 40)
@@ -47,7 +53,6 @@ export function Header({ cartItemCount = 0, currentPath = '/' }: HeaderProps) {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  // Close drawer on Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && drawerOpen) {
@@ -94,9 +99,7 @@ export function Header({ cartItemCount = 0, currentPath = '/' }: HeaderProps) {
           justifyContent: 'space-between',
         }}
       >
-        {/* ── Left: Logo + primary nav ──────────────────────────────────────── */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: { md: 4 } }}>
-          {/* Logo */}
           <Box
             component={Link}
             href="/"
@@ -109,7 +112,6 @@ export function Header({ cartItemCount = 0, currentPath = '/' }: HeaderProps) {
               mr: { md: 2 },
             }}
           >
-            {/* Flame glyph placeholder — replace with <Image> once asset exists */}
             <Box
               aria-hidden="true"
               sx={{
@@ -160,7 +162,6 @@ export function Header({ cartItemCount = 0, currentPath = '/' }: HeaderProps) {
             </Box>
           </Box>
 
-          {/* Desktop nav */}
           <Box
             component="nav"
             aria-label="Main navigation"
@@ -195,9 +196,7 @@ export function Header({ cartItemCount = 0, currentPath = '/' }: HeaderProps) {
           </Box>
         </Box>
 
-        {/* ── Right: utility actions ────────────────────────────────────────── */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          {/* Search — placeholder, wired in Wave 2 */}
           <IconButton
             aria-label="Search"
             size="medium"
@@ -210,16 +209,15 @@ export function Header({ cartItemCount = 0, currentPath = '/' }: HeaderProps) {
             <SearchIcon fontSize="small" />
           </IconButton>
 
-          {/* Cart */}
           <IconButton
-            aria-label={`Shopping cart, ${cartItemCount} item${cartItemCount !== 1 ? 's' : ''}`}
+            aria-label={`Shopping cart, ${effectiveCartCount} item${effectiveCartCount !== 1 ? 's' : ''}`}
             component={Link}
             href="/cart"
             size="medium"
             sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main' } }}
           >
             <Badge
-              badgeContent={cartItemCount > 0 ? cartItemCount : undefined}
+              badgeContent={effectiveCartCount > 0 ? effectiveCartCount : undefined}
               color="primary"
               sx={{
                 '& .MuiBadge-badge': {
@@ -234,7 +232,6 @@ export function Header({ cartItemCount = 0, currentPath = '/' }: HeaderProps) {
             </Badge>
           </IconButton>
 
-          {/* Account */}
           <IconButton
             aria-label="Account"
             component={Link}
@@ -245,7 +242,6 @@ export function Header({ cartItemCount = 0, currentPath = '/' }: HeaderProps) {
             <AccountCircleOutlinedIcon fontSize="small" />
           </IconButton>
 
-          {/* Mobile menu trigger */}
           <IconButton
             ref={menuButtonRef}
             aria-label={drawerOpen ? 'Close navigation menu' : 'Open navigation menu'}
@@ -264,7 +260,6 @@ export function Header({ cartItemCount = 0, currentPath = '/' }: HeaderProps) {
         </Box>
       </Toolbar>
 
-      {/* ── Mobile drawer ────────────────────────────────────────────────────── */}
       <Drawer
         id="mobile-nav-drawer"
         anchor="right"

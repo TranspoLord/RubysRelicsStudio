@@ -17,7 +17,13 @@ import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart'
 import { alpha } from '@mui/material/styles'
 
 import { brandTokens } from '@/theme/theme'
-import type { DbProductDetail, DbProductVariant, DbProductOption } from '@/lib/supabase/queries/products'
+import { useCart } from '@/components/cart/CartProvider'
+import type {
+  DbProductDetail,
+  DbProductVariant,
+  DbProductOption,
+  DbProductBulkDiscount,
+} from '@/lib/supabase/queries/products'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,6 +41,7 @@ interface ProductConfiguratorProps {
 
 export function ProductConfigurator({ product }: ProductConfiguratorProps) {
   const { variants, options } = product
+  const { addItem } = useCart()
 
   const [state, setState] = useState<ConfiguratorState>({
     variantId: variants[0]?.id ?? null,
@@ -44,23 +51,45 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
   const [addedToCart, setAddedToCart] = useState(false)
 
   // ── Computed price ──────────────────────────────────────────────────────────
-  const computedPrice = useMemo(() => {
-    let price = product.base_price
+  const pricing = useMemo(() => {
+    let unitPrice = product.base_price
 
     // Add variant delta
     const selectedVariant = variants.find((v) => v.id === state.variantId)
-    if (selectedVariant) price += selectedVariant.price_delta
+    if (selectedVariant) unitPrice += selectedVariant.price_delta
 
     // Add option value deltas
     for (const opt of options) {
       const selectedVal = state.optionValues[opt.option_key]
       if (!selectedVal) continue
       const matchingValue = opt.values?.find((v) => v.value === selectedVal)
-      if (matchingValue) price += matchingValue.price_delta
+      if (matchingValue) unitPrice += matchingValue.price_delta
     }
 
-    return price * state.quantity
-  }, [product.base_price, variants, options, state])
+    const subtotal = unitPrice * state.quantity
+    const activeBulkTier = findMatchingBulkTier(product.bulk_discounts ?? [], state.quantity)
+
+    let discount = 0
+    if (activeBulkTier) {
+      if (activeBulkTier.discount_type === 'percent') {
+        discount = subtotal * (activeBulkTier.discount_value / 100)
+      } else if (activeBulkTier.discount_type === 'fixed_amount') {
+        discount = activeBulkTier.discount_value * state.quantity
+      } else if (activeBulkTier.discount_type === 'unit_price') {
+        discount = Math.max(0, (unitPrice - activeBulkTier.discount_value) * state.quantity)
+      }
+    }
+
+    const total = Math.max(0, subtotal - discount)
+
+    return {
+      unitPrice,
+      subtotal,
+      discount,
+      total,
+      activeBulkTier,
+    }
+  }, [product.base_price, product.bulk_discounts, variants, options, state])
 
   // ── Validation ──────────────────────────────────────────────────────────────
   const requiredOptions = options.filter((o) => o.is_required)
@@ -85,7 +114,41 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
     setState((prev) => ({ ...prev, quantity: Math.max(1, prev.quantity + delta) }))
 
   const handleAddToCart = () => {
-    // TODO: wire to cart context / server action
+    const selectedVariant = variants.find((v) => v.id === state.variantId)
+    const selectedOptions = options
+      .map((opt) => {
+        const selectedVal = state.optionValues[opt.option_key]
+        if (!selectedVal) return null
+        const selectedValueMeta = opt.values?.find((v) => v.value === selectedVal)
+        return {
+          key: opt.option_key,
+          label: opt.label,
+          value: selectedVal,
+          valueLabel: selectedValueMeta?.label ?? selectedVal,
+        }
+      })
+      .filter((entry): entry is { key: string; label: string; value: string; valueLabel: string } => entry !== null)
+
+    const cartKey = buildCartKey(product.id, state.variantId, selectedOptions)
+
+    addItem({
+      key: cartKey,
+      productId: product.id,
+      productSlug: product.slug,
+      categorySlug: product.category_slug,
+      title: product.title,
+      quantity: state.quantity,
+      variantId: state.variantId,
+      variantLabel: selectedVariant?.label ?? null,
+      options: selectedOptions,
+      unitPrice: pricing.unitPrice,
+      lineSubtotal: pricing.subtotal,
+      lineDiscount: pricing.discount,
+      lineTotal: pricing.total,
+      imageUrl: product.featured_media?.url ?? null,
+      imageEmoji: product.featured_media?.emoji ?? product.category_emoji ?? null,
+    })
+
     setAddedToCart(true)
     setTimeout(() => setAddedToCart(false), 2000)
   }
@@ -194,9 +257,58 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
             color: brandTokens.parchment,
           }}
         >
-          ${computedPrice.toFixed(2)}
+          ${pricing.total.toFixed(2)}
         </Typography>
       </Box>
+
+      {pricing.activeBulkTier && (
+        <Box
+          sx={{
+            mt: -1,
+            p: 1.25,
+            borderRadius: 1,
+            border: `1px solid ${alpha(brandTokens.forgeGold, 0.32)}`,
+            backgroundColor: alpha(brandTokens.forgeGold, 0.1),
+          }}
+        >
+          <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: brandTokens.forgeGold, mb: 0.35 }}>
+            Bulk Tier Applied
+          </Typography>
+          <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.72) }}>
+            {formatBulkTierLabel(pricing.activeBulkTier)}
+            {' · '}
+            You save ${pricing.discount.toFixed(2)} on this quantity.
+          </Typography>
+          <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.55), mt: 0.35 }}>
+            Subtotal ${pricing.subtotal.toFixed(2)} → Total ${pricing.total.toFixed(2)}
+          </Typography>
+        </Box>
+      )}
+
+      {(product.bulk_discounts?.length ?? 0) > 0 && (
+        <Box sx={{ mt: -0.5 }}>
+          <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.46), mb: 0.55 }}>
+            Volume pricing
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.65 }}>
+            {(product.bulk_discounts ?? []).map((tier) => (
+              <Box
+                key={tier.id}
+                sx={{
+                  px: 0.75,
+                  py: 0.35,
+                  borderRadius: 1,
+                  border: `1px solid ${alpha(brandTokens.parchment, 0.15)}`,
+                  color: alpha(brandTokens.parchment, 0.6),
+                  fontSize: '0.66rem',
+                }}
+              >
+                {formatBulkTierLabel(tier)}
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      )}
 
       {/* ── Add to cart ───────────────────────────────────────────────── */}
       <Button
@@ -235,6 +347,46 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
       )}
     </Box>
   )
+}
+
+function findMatchingBulkTier(
+  tiers: DbProductBulkDiscount[],
+  quantity: number
+): DbProductBulkDiscount | null {
+  const sorted = [...tiers].sort((a, b) => a.min_qty - b.min_qty)
+  return (
+    sorted.find((tier) => {
+      const max = tier.max_qty ?? Number.POSITIVE_INFINITY
+      return quantity >= tier.min_qty && quantity <= max
+    }) ?? null
+  )
+}
+
+function formatBulkTierLabel(tier: DbProductBulkDiscount): string {
+  const range = tier.max_qty
+    ? `${tier.min_qty}-${tier.max_qty}`
+    : `${tier.min_qty}+`
+
+  if (tier.label) {
+    return `${range}: ${tier.label}`
+  }
+
+  if (tier.discount_type === 'percent') {
+    return `${range}: ${tier.discount_value}% off`
+  }
+  if (tier.discount_type === 'fixed_amount') {
+    return `${range}: -$${tier.discount_value.toFixed(2)} each`
+  }
+  return `${range}: $${tier.discount_value.toFixed(2)} each`
+}
+
+function buildCartKey(
+  productId: string,
+  variantId: string | null,
+  options: Array<{ key: string; value: string }>
+): string {
+  const sorted = [...options].sort((a, b) => a.key.localeCompare(b.key))
+  return `${productId}::${variantId ?? 'no_variant'}::${JSON.stringify(sorted)}`
 }
 
 // ─── Variant pill ─────────────────────────────────────────────────────────────
@@ -301,6 +453,8 @@ function OptionField({ option, value, onChange }: OptionFieldProps) {
     color: brandTokens.parchment,
   }
 
+  const stickerSizeGuidance = getStickerSizeGuidance(option.option_key, value)
+
   if (option.option_type === 'select') {
     return (
       <FormControl fullWidth size="small">
@@ -340,6 +494,11 @@ function OptionField({ option, value, onChange }: OptionFieldProps) {
         {option.help_text && (
           <FormHelperText sx={{ color: alpha(brandTokens.parchment, 0.4), mx: 0, mt: 0.5 }}>
             {option.help_text}
+          </FormHelperText>
+        )}
+        {stickerSizeGuidance && (
+          <FormHelperText sx={{ color: alpha(brandTokens.forgeGold, 0.9), mx: 0, mt: 0.4 }}>
+            {stickerSizeGuidance}
           </FormHelperText>
         )}
       </FormControl>
@@ -520,4 +679,23 @@ function OptionField({ option, value, onChange }: OptionFieldProps) {
       )}
     </FormControl>
   )
+}
+
+function getStickerSizeGuidance(optionKey: string, value: string): string | null {
+  if (optionKey !== 'sticker_size_type') return null
+
+  switch (value) {
+    case '1x1':
+      return 'Expect at least 24 stickers per sheet at 1"x1".'
+    case '2x2':
+      return 'Expect at least 12 stickers per sheet at 2"x2".'
+    case '3x3':
+      return 'Expect at least 9 stickers per sheet at 3"x3".'
+    case '4x4':
+      return 'Expect at least 4 stickers per sheet at 4"x4".'
+    case 'custom':
+      return 'Custom size selected. Final sticker count per sheet will be confirmed during proofing.'
+    default:
+      return null
+  }
 }

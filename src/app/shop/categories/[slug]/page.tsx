@@ -4,7 +4,6 @@ import Box from '@mui/material/Box'
 import Container from '@mui/material/Container'
 import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
-import Link from 'next/link'
 import { alpha } from '@mui/material/styles'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
@@ -129,7 +128,7 @@ export default async function CategoryPage({ params }: Props) {
                   )}
                   {category.how_it_works_anchor && (
                     <Chip
-                      component={Link}
+                      component="a"
                       href={`/how-it-works${category.how_it_works_anchor}`}
                       label="How It Works →"
                       size="small"
@@ -230,7 +229,7 @@ function ProductCard({ product, categorySlug }: ProductCardProps) {
 
   return (
     <Box
-      component={Link}
+      component="a"
       href={`/shop/categories/${categorySlug}/${product.slug}`}
       sx={{
         display: 'flex',
@@ -431,7 +430,7 @@ function EmptyCategory({ categoryName }: { categoryName: string }) {
       </Typography>
       <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
         <Box
-          component={Link}
+          component="a"
           href="/custom-orders"
           sx={{
             px: 3,
@@ -449,7 +448,7 @@ function EmptyCategory({ categoryName }: { categoryName: string }) {
           Submit a Custom Request
         </Box>
         <Box
-          component={Link}
+          component="a"
           href="/shop"
           sx={{
             px: 3,
@@ -496,7 +495,7 @@ function CustomOrderCTA({ categoryName }: { categoryName: string }) {
           <strong style={{ color: brandTokens.parchment }}>your idea</strong>, not ours.
         </Typography>
         <Box
-          component={Link}
+          component="a"
           href="/custom-orders"
           sx={{
             display: 'inline-flex',

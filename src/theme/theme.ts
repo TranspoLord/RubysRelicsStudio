@@ -1,5 +1,3 @@
-'use client'
-
 import { createTheme, alpha } from '@mui/material/styles'
 
 // ─── Brand tokens ─────────────────────────────────────────────────────────────

@@ -83,10 +83,23 @@ export interface DbProductOptionValue {
   sort_order: number
 }
 
+export interface DbProductBulkDiscount {
+  id: string
+  product_id: string
+  min_qty: number
+  max_qty: number | null
+  discount_type: 'percent' | 'fixed_amount' | 'unit_price'
+  discount_value: number
+  label: string | null
+  is_enabled: boolean
+  sort_order: number
+}
+
 export interface DbProductDetail extends DbProduct {
   variants: DbProductVariant[]
   media: DbProductMedia[]
   options: DbProductOption[]
+  bulk_discounts: DbProductBulkDiscount[]
 }
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
@@ -190,6 +203,47 @@ export async function getAllActiveProducts(): Promise<DbProduct[]> {
 }
 
 /**
+ * Fetch only active ready-made products across all categories.
+ */
+export async function getReadyMadeProducts(): Promise<DbProduct[]> {
+  const [productsResult, categoriesResult] = await Promise.all([
+    supabase
+      .from('exp_products')
+      .select(`
+        id, title, slug, short_description, description,
+        category_key, base_price, is_ready_made, is_customizable,
+        is_active, sort_order, production_estimate_band,
+        how_it_works_anchor, seo_title, seo_description,
+        media:exp_product_media (
+          id, product_id, url, alt, emoji, gradient, is_featured, sort_order
+        )
+      `)
+      .eq('is_active', true)
+      .eq('is_archived', false)
+      .eq('is_ready_made', true)
+      .order('sort_order', { ascending: true }),
+
+    supabase
+      .from('exp_taxonomy')
+      .select('key, display_name, slug, emoji, gradient')
+      .eq('type', 'category'),
+  ])
+
+  if (productsResult.error) {
+    console.error('[getReadyMadeProducts]', productsResult.error.message)
+    return []
+  }
+
+  const catMap = Object.fromEntries(
+    (categoriesResult.data ?? []).map((c) => [c.key, c])
+  )
+
+  return (productsResult.data ?? []).map((row) =>
+    normalizeProduct({ ...row, category: catMap[row.category_key] ?? null })
+  )
+}
+
+/**
  * Fetch full product detail including variants, all media, and options with values.
  */
 export async function getProductBySlug(
@@ -217,7 +271,7 @@ export async function getProductBySlug(
 
   const productId = product.id
 
-  const [categoryResult, variantsResult, mediaResult, optionsResult] = await Promise.all([
+  const [categoryResult, variantsResult, mediaResult, optionsResult, bulkDiscountsResult] = await Promise.all([
     supabase
       .from('exp_taxonomy')
       .select('key, display_name, slug, emoji, gradient, tagline, how_it_works_anchor')
@@ -248,6 +302,13 @@ export async function getProductBySlug(
       `)
       .eq('product_id', productId)
       .order('sort_order', { ascending: true }),
+
+    supabase
+      .from('exp_product_bulk_discounts')
+      .select('id, product_id, min_qty, max_qty, discount_type, discount_value, label, is_enabled, sort_order')
+      .eq('product_id', productId)
+      .eq('is_enabled', true)
+      .order('sort_order', { ascending: true }),
   ])
 
   if (variantsResult.error) {
@@ -258,6 +319,9 @@ export async function getProductBySlug(
   }
   if (optionsResult.error) {
     console.error('[getProductBySlug:options]', optionsResult.error.message)
+  }
+  if (bulkDiscountsResult.error) {
+    console.error('[getProductBySlug:bulkDiscounts]', bulkDiscountsResult.error.message)
   }
 
   const base = normalizeProduct({
@@ -285,6 +349,7 @@ export async function getProductBySlug(
     variants: (variantsResult.data ?? []) as DbProductVariant[],
     media: (mediaResult.data ?? []) as DbProductMedia[],
     options,
+    bulk_discounts: (bulkDiscountsResult.data ?? []) as DbProductBulkDiscount[],
   }
 }
 
