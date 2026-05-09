@@ -29,6 +29,68 @@ export interface CartItem {
   imageEmoji?: string | null
 }
 
+function asFiniteMoney(value: unknown): number {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return 0
+  return Math.max(0, n)
+}
+
+function normalizeCartItem(input: unknown): CartItem | null {
+  if (!input || typeof input !== 'object') return null
+
+  const row = input as Partial<CartItem>
+  if (
+    typeof row.key !== 'string' ||
+    typeof row.productId !== 'string' ||
+    typeof row.productSlug !== 'string' ||
+    typeof row.title !== 'string'
+  ) {
+    return null
+  }
+
+  const options = Array.isArray(row.options)
+    ? row.options
+        .filter(
+          (opt): opt is CartItemOption =>
+            Boolean(opt) &&
+            typeof opt === 'object' &&
+            typeof opt.key === 'string' &&
+            typeof opt.label === 'string' &&
+            typeof opt.value === 'string'
+        )
+        .map((opt) => ({
+          key: opt.key,
+          label: opt.label,
+          value: opt.value,
+          valueLabel: typeof opt.valueLabel === 'string' ? opt.valueLabel : undefined,
+        }))
+    : []
+
+  const quantity = clampQty(row.quantity ?? 1)
+  const lineSubtotal = asFiniteMoney(row.lineSubtotal)
+  const lineDiscount = asFiniteMoney(row.lineDiscount)
+  const lineTotal = asFiniteMoney(row.lineTotal)
+  const unitPrice = asFiniteMoney(row.unitPrice)
+
+  return {
+    key: row.key,
+    productId: row.productId,
+    productSlug: row.productSlug,
+    categorySlug: typeof row.categorySlug === 'string' ? row.categorySlug : undefined,
+    title: row.title,
+    quantity,
+    variantId: typeof row.variantId === 'string' ? row.variantId : null,
+    variantLabel: typeof row.variantLabel === 'string' ? row.variantLabel : null,
+    options,
+    unitPrice,
+    lineSubtotal,
+    lineDiscount,
+    lineTotal,
+    imageUrl: typeof row.imageUrl === 'string' ? row.imageUrl : null,
+    imageEmoji: typeof row.imageEmoji === 'string' ? row.imageEmoji : null,
+  }
+}
+
 interface CartContextValue {
   items: CartItem[]
   itemCount: number
@@ -57,7 +119,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (!raw) return
       const parsed = JSON.parse(raw) as CartItem[]
       if (!Array.isArray(parsed)) return
-      setItems(parsed)
+      const normalized = parsed
+        .map((item) => normalizeCartItem(item))
+        .filter((item): item is CartItem => item !== null)
+      setItems(normalized)
     } catch {
       // Ignore malformed storage.
     }

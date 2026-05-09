@@ -44,6 +44,7 @@ interface FormState {
 interface SubmitResult {
   id: string
   status: string
+  accessToken: string | null
 }
 
 const DEFAULT_STATE: FormState = {
@@ -142,6 +143,10 @@ export function CustomOrderIntakeForm({ categories }: CustomOrderIntakeFormProps
         setResult({
           id: payload?.request?.id ?? 'unknown',
           status: payload?.request?.status ?? 'awaiting_quote',
+          accessToken:
+            typeof payload?.customerAccessToken === 'string'
+              ? payload.customerAccessToken
+              : null,
         })
         setSubmitState('success')
         Analytics.customRequestSubmitted()
@@ -188,6 +193,17 @@ export function CustomOrderIntakeForm({ categories }: CustomOrderIntakeFormProps
         <Typography sx={{ color: alpha(brandTokens.parchment, 0.8), fontSize: '0.9rem' }}>
           Current status: {result?.status ?? 'awaiting_quote'}
         </Typography>
+
+        {result?.id && result.accessToken && (
+          <Button
+            sx={{ mt: 1.1 }}
+            variant="contained"
+            component="a"
+            href={`/custom-orders/${result.id}?access=${encodeURIComponent(result.accessToken)}`}
+          >
+            View Request Status
+          </Button>
+        )}
 
         <Button
           sx={{ mt: 2.2 }}

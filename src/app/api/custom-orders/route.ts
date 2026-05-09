@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { branch, getSupabaseAdmin } from '@/lib/supabase/client'
 import { FROM_ADDRESS, getResend } from '@/lib/resend/client'
+import { randomBytes } from 'node:crypto'
 
 interface FileMeta {
   name?: unknown
@@ -57,6 +58,10 @@ function parseFiles(value: unknown): Array<{ name: string; size: number; type: s
     .filter((file) => file.name.length > 0)
 }
 
+function createCustomerAccessToken(): string {
+  return randomBytes(24).toString('base64url')
+}
+
 async function sendAdminNotificationEmail(input: {
   requestId: string
   customerName: string
@@ -105,6 +110,8 @@ export async function POST(request: Request) {
     const ageConfirmed = asBoolean(body.ageConfirmed)
     const tosAccepted = asBoolean(body.tosAccepted)
     const files = parseFiles(body.files)
+    const customerAccessToken = createCustomerAccessToken()
+    const customerAccessExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 60).toISOString()
 
     if (!customerName || !customerEmail || !itemType || !description) {
       return NextResponse.json(
@@ -138,9 +145,11 @@ export async function POST(request: Request) {
         ip_rights_confirmed: ipRightsConfirmed,
         age_confirmed: ageConfirmed,
         tos_accepted: tosAccepted,
+        customer_access_token: customerAccessToken,
+        customer_access_expires_at: customerAccessExpiresAt,
         branch,
       })
-      .select('id, status, created_at')
+      .select('id, status, created_at, customer_access_token, customer_access_expires_at')
       .single()
 
     if (error || !data) {
@@ -165,7 +174,13 @@ export async function POST(request: Request) {
       // Email failure should not fail the request submission itself.
     }
 
-    return NextResponse.json({ request: data }, { status: 201 })
+    return NextResponse.json(
+      {
+        request: data,
+        customerAccessToken: data.customer_access_token,
+      },
+      { status: 201 }
+    )
   } catch (error) {
     console.error('[custom-orders:post]', error)
     return NextResponse.json(
