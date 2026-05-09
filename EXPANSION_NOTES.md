@@ -1540,75 +1540,156 @@ Email delivery system: Resend
 
 ### ⧗ Currently Being Implemented
 
-**Customer Authentication & Account System**:
-- Customer login page with email/password authentication
-- Customer signup page with account creation
-- Password reset flow
-- Customer session management
-- Customer account dashboard with profile info
-- Saved addresses management
-- Order history page (authenticated customer view)
-- Customer account preferences and email opt-ins
-
 **Engagement & Discovery Features**:
-- Global product search with typeahead suggestions and filters
-- Wishlist / save-for-later functionality with "The Hoard" theme
-- Recently viewed products tracking
+- Product recommendations and related items display (Phase 1 slice shipped on PDP; scoring/tuning/analytics pending)
 - Guided "start here" flow to route customers to order path
-- Product recommendations and related items display
-- Newsletter signup and preference center
 - Back-in-stock and capacity availability notifications
 
 **Admin Module Expansion**:
-- Admin inventory management UI (stock counts, thresholds, alerts)
-- Admin orders module with full order lifecycle management
-- Admin catalog module for product CRUD and media management
-- Admin pricing module with bulk discounts and variant pricing
-- Production queue visualization and machine scheduling
-- Finance dashboard with revenue, cost, margin analytics
-- Labor tracking and time entry system
+- Phase 1 foundation hardening (shared auth helper, audit log, webhook idempotency, admin endpoint throttling)
+
+### Admin Implementation Plan (Execution Context)
+
+This section defines the practical rollout strategy for full admin implementation so module work stays safe, testable, and aligned with locked requirements.
+
+#### Current baseline already in place
+- Admin auth/session is live (HMAC-signed cookie + protected admin route group).
+- Admin shell is live (module navigation, notification bell surface, quick search entrypoint).
+- Custom request quote workflow is live (approve/reject + Stripe Payment Link generation).
+- Admin settings CRUD is live for runtime storefront toggles.
+
+#### Phase 1 - Admin foundation hardening (required before broad CRUD)
+- Add shared admin authorization helper for all admin APIs/pages so auth behavior is consistent.
+- Add admin write audit log table + helper and wire all mutable admin endpoints to it.
+- Add webhook idempotency table/checks to prevent duplicate Stripe event processing.
+- Add admin endpoint rate limiting and explicit destructive-action confirmation contracts.
+
+Exit criteria:
+- Every admin write endpoint has audit logging and standardized auth checks.
+- Duplicate webhook deliveries produce a single state transition.
+
+#### Phase 2 - Catalog CRUD (products, variants, media, options)
+- Build full catalog list/search/filter/archive controls.
+- Build product create/edit for title, slug, category, base price, visibility, production estimate band.
+- Build variant/media/options CRUD with validation and pre-publish checklist.
+- Add soft-delete/archive and restore workflows (avoid hard deletes in UI).
+
+Exit criteria:
+- Admin can create/publish/archive/restore products without direct SQL edits.
+- Product publish flow blocks invalid/incomplete records.
+
+#### Phase 3 - Pricing and discount CRUD
+- Build pricing module for base price, variant deltas, option value deltas.
+- Build bulk discount tier manager (`exp_product_bulk_discounts`) with preview calculations.
+- Add server-side pricing integrity checks to ensure checkout totals always match DB pricing rules.
+
+Exit criteria:
+- Pricing changes are reflected in storefront and checkout deterministically.
+- No cart/checkout mismatch under option/variant/discount combinations.
+
+#### Phase 4 - Inventory CRUD and availability control
+- Add/complete inventory schema for stock quantity, low-stock thresholds, and availability overrides.
+- Build inventory admin module with bulk updates and reason codes.
+- Add atomic stock decrement strategy for checkout/order writes to prevent overselling.
+
+Exit criteria:
+- Ready-made items respect stock state from DB.
+- Concurrency tests confirm no double-sell under simultaneous purchases.
+
+#### Phase 5 - Orders and fulfillment module
+- Build orders list/detail with guarded status transitions (`awaiting_payment` -> `paid` -> `in_production` -> `ready_to_ship` -> `shipped` -> `delivered|cancelled`).
+- Add production scheduling hooks and internal notes.
+- Add cancellation/refund action trails with audit entries.
+
+Exit criteria:
+- Status changes are valid, traceable, and recoverable.
+- Fulfillment operations run without manual DB updates.
+
+#### Phase 6 - Custom requests completion
+- Extend custom request admin module with filters/search, quote expiry extension, resend quote, and paid-to-production handoff.
+- Enforce quote expiry consistently in API and webhook paths.
+
+Exit criteria:
+- Custom request lifecycle is closed-loop from intake to fulfillment.
+
+#### Phase 7 - Admin notifications + global search
+- Implement persistent notification event log backing the bell/unread UI.
+- Implement admin global quick search across orders, products, and custom requests.
+
+Exit criteria:
+- Notification bell reflects persistent unread state.
+- Quick search routes admin directly to operational records.
+
+#### Phase 8 - Finance and labor analytics
+- Add finance dashboard (revenue, margin, trend reporting) and item-level contribution views.
+- Add labor tracking/time-entry surfaces and effective hourly reporting.
+
+Exit criteria:
+- Finance and labor metrics are queryable in-app and exportable.
+
+#### Primary risks to design around
+- Concurrency errors in order status and stock updates.
+- Pricing drift if server-side validation is not authoritative.
+- Missing audit trail for destructive edits and reversals.
+- Webhook replay/idempotency gaps causing duplicate transitions.
+
+#### Implementation guardrails (non-negotiable)
+- All business-critical values remain DB/admin-driven (no hardcoded pricing, inventory, visibility, or capacity values).
+- Customer-sensitive data remains protected by RLS + role grants; service-role access stays server-side only.
+- All destructive actions require explicit confirmation + audit log entry.
+- Soft-delete over hard-delete for catalog entities used by historical orders.
+
+#### Recommended sprint order
+- Sprint A: Phase 1 only.
+- Sprint B: Phase 2 (Catalog CRUD).
+- Sprint C: Phase 3 + Phase 4 in parallel.
+- Sprint D: Phase 5.
+- Sprint E: Phase 6 + Phase 7.
+- Sprint F: Phase 8 and final hardening.
+
+#### Verification baseline per phase
+- `npm run type-check`
+- `npm run build`
+- `npm run test:security:rls`
+- Admin smoke tests for auth gate, CRUD happy-path, validation failures, and rollback behavior.
 
 ### Remaining (Pending Implementation)
 
 **High Priority (user-facing)**:
-1. Customer authentication and account system (login, signup, password reset)
-2. Customer account dashboard with order history
-3. Global product search with filters and suggestions
-4. Wishlist/save-for-later system
-5. Recently viewed products tracking
+1. Product recommendations engine completion (ranking/scoring, analytics events, configurable overrides)
+2. Guided "start here" flow for order path routing
+3. Back-in-stock and capacity reopening notifications
+4. Gift ideas page and gift messaging at checkout
+5. Abandoned cart recovery emails
+6. Abandoned custom request recovery emails
 
-**Medium Priority (conversion + retention)**:
-6. Newsletter signup and preference center
-7. Abandoned cart recovery emails
-8. Abandoned custom request recovery emails
-9. Back-in-stock and capacity reopening notifications
-10. Guided "start here" flow for order path routing
-11. Product recommendations and cross-sell UI
-12. Gift ideas page and gift messaging at checkout
+**Medium Priority (admin operations)**:
+7. Admin foundation hardening (auth helper, audit log, webhook idempotency, throttling)
+8. Admin catalog module for full CRUD and publish checklist
+9. Admin pricing module with variant/option deltas and bulk discount management
+10. Admin inventory management with full CRUD and low-stock workflows
+11. Admin orders module with shipment tracking and guarded status transitions
+12. Production queue visualization and machine scheduling
 
 **Lower Priority (operations)**:
-13. Admin inventory management with full CRUD
-14. Admin orders module with shipment tracking
-15. Production queue visualization and machine scheduling
-16. Finance dashboard and analytics reporting
-17. Labor time tracking and effective hourly earnings
-18. Art Guard integration and restricted artwork workflow
+13. Finance dashboard and analytics reporting
+14. Labor time tracking and effective hourly earnings
+15. Art Guard integration and restricted artwork workflow
 
 **Compliance & Quality**:
-19. WCAG 2.2 AA accessibility audit and fixes across customer pages
-20. Cookie consent banner and consent management
-21. Analytics instrumentation with Vercel Analytics
-22. SEO metadata and structured data for all pages
-23. Mobile responsiveness refinement and testing
-24. Performance optimization (image loading, code splitting, caching)
-25. Error handling and user feedback messaging
+16. WCAG 2.2 AA accessibility audit and fixes across customer pages
+17. Cookie consent banner and consent management
+18. Analytics instrumentation with Vercel Analytics
+19. SEO metadata and structured data for all pages
+20. Mobile responsiveness refinement and testing
+21. Performance optimization (image loading, code splitting, caching)
+22. Error handling and user feedback messaging
 
 **Operational Completeness**:
-26. Machine scheduling and capacity planning UI
-27. Material tracking and low-stock alerts
-28. Automated notification system (back-in-stock, capacity, status updates)
-29. Tax calculation and financial reporting
-30. Multi-carrier shipping adapter system
+23. Material tracking and low-stock alerts
+24. Automated notification system (back-in-stock, capacity, status updates)
+25. Tax calculation and financial reporting
+26. Multi-carrier shipping adapter system
 
 ### Critical Notes
 
@@ -1622,7 +1703,7 @@ Email delivery system: Resend
 
 - **Guest-First Model** is production behavior: Customers can shop, add to cart, checkout, and track orders without creating an account. Customer authentication is optional and intended for Phase 2 retention features (wishlist sync, order history dashboard, saved addresses).
 
-- **All Migrations Created** but not applied to live Supabase. Manual step required to run migrations 001–009 on the database before new features become active.
+- **Migrations 001–014 Created** but not all are applied to live Supabase. Manual step required to run pending migrations in order before all new features become active.
 
 - **Environment Variables Required**:
   - `ADMIN_LOGIN_KEY`: Password for admin panel login
@@ -1631,28 +1712,26 @@ Email delivery system: Resend
   - `STRIPE_WEBHOOK_SECRET`: Stripe webhook signing secret
   - Optional: `CUSTOM_REQUEST_NOTIFY_EMAIL`, `ORDER_TRACKING_NOTIFY_EMAIL` for fallback notifications
 
-- **Next Immediate Priority**: Customer authentication system. This unblocks order history pages, wishlist persistence, account preferences, and retention features (abandoned cart/request recovery, newsletters, back-in-stock alerts).
+- **Next Immediate Priority**: Admin Phase 1 foundation hardening (shared auth helper, audit logging, webhook idempotency, endpoint throttling), then full Catalog/Pricing/Inventory CRUD.
 
 ### Estimated Effort Remaining (Rough)
 
-- Customer auth (login/signup/password reset): **2-3 hours**
-- Customer account dashboard + order history: **3-4 hours**
-- Product search with filters: **4-5 hours**
-- Wishlist + recently viewed: **2-3 hours**
-- Newsletter signup + preference center: **2-3 hours**
-- Admin module expansion (inventory, orders, catalog, pricing): **8-12 hours**
+- Recommendations engine completion + analytics: **3-5 hours**
+- Admin phase 1 foundation hardening: **4-6 hours**
+- Admin CRUD expansion (catalog/pricing/inventory/orders): **10-16 hours**
+- Production queue and scheduling UI: **4-6 hours**
 - Finance dashboard and labor tracking: **5-8 hours**
 - WCAG 2.2 AA compliance audit + fixes: **3-6 hours**
 - Analytics and cookie consent: **2-3 hours**
-- Email notification system (back-in-stock, capacity, etc.): **4-6 hours**
+- Retention notifications + recovery emails: **4-6 hours**
 - Performance optimization and testing: **3-5 hours**
 
-**Total Remaining**: ~40-60 hours of development work to reach feature-complete status (assuming no major architectural changes or external integrations).
+**Total Remaining**: ~38-61 hours of development work to reach feature-complete status (assuming no major architectural changes or external integrations).
 
 ### Build Status (as of this document update)
 
 - **TypeScript**: ✅ Passing (npx tsc --noEmit: no errors)
-- **Next.js Build**: ✅ Successful (34+ routes confirmed live including /shop/*, /orders/*, /custom-orders/*, /admin/*, /api/*, /resources/*)
+- **Next.js Build**: ✅ Successful (50 routes confirmed live including /shop/*, /orders/*, /custom-orders/*, /admin/*, /api/*, /resources/*)
 - **Routes Live**: Home, Shop (categories + products), Cart, Checkout, Order success, Guest order tracking, Custom request intake/status, Resources hub, About, How It Works, Gallery, Admin login/dashboard/modules, Admin APIs
 - **No Deployment Blockers**: All components type-safe, builds deterministic, no unresolved dependencies or warnings
 

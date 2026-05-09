@@ -53,6 +53,14 @@ const HOW_SECTIONS: SectionDef[] = [
       'Artwork is prepped for print, mirrored, and heat transferred into coated substrates so color bonds into the surface instead of sitting on top.',
   },
   {
+    id: 'stickers',
+    title: 'Sticker Production Workflow',
+    eyebrow: 'Step 2C',
+    emoji: '🪄',
+    description:
+      'Sticker jobs move through print prep, contour-cut calibration, and finish selection (matte, glossy, or holographic) with optional laminate before final trim and pack-out.',
+  },
+  {
     id: 'cutting',
     title: 'Cutting and Finishing',
     eyebrow: 'Step 3',
@@ -96,7 +104,9 @@ export default async function HowItWorksPage() {
   const [categories, materials] = await Promise.all([getCategories(), getMaterials()])
 
   const categoriesByAnchor = categories.reduce<Record<string, typeof categories>>((acc, cat) => {
-    const anchor = normalizeAnchor(cat.how_it_works_anchor) ?? 'production'
+    const normalized = normalizeAnchor(cat.how_it_works_anchor)
+    const stickerLike = /sticker/i.test(cat.key) || /sticker/i.test(cat.slug) || /sticker/i.test(cat.display_name)
+    const anchor = normalized ?? (stickerLike ? 'stickers' : 'production')
     if (!acc[anchor]) acc[anchor] = []
     acc[anchor].push(cat)
     return acc

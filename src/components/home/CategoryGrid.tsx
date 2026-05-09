@@ -29,6 +29,15 @@ interface CategoryGridProps {
 // TODO: Replace with Supabase taxonomy query — categories read from exp_taxonomy table.
 const STATIC_CATEGORIES: CategoryDisplayItem[] = [
   {
+    key: 'stickers',
+    display_name: 'Stickers',
+    slug: 'stickers',
+    tagline: 'Custom sticker sheets and singles with finish + laminate options.',
+    emoji: '🏷️',
+    gradient: `linear-gradient(135deg, #22100A 0%, #4A2612 40%, #32190F 100%)`,
+    glow_color: brandTokens.forgeGold,
+  },
+  {
     key: 'engraved_drinkware',
     display_name: 'Engraved Drinkware',
     slug: 'engraved-drinkware',

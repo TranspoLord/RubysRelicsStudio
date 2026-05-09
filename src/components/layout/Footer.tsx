@@ -12,6 +12,7 @@ import { alpha } from '@mui/material/styles'
 import { brandTokens } from '@/theme/theme'
 
 const SHOP_LINKS = [
+  { label: 'Stickers', href: '/shop/categories/stickers' },
   { label: 'Engraved Drinkware', href: '/shop/categories/engraved-drinkware' },
   { label: 'Sublimated Gifts', href: '/shop/categories/sublimated-gifts' },
   { label: 'Signs & Decor', href: '/shop/categories/signs-and-decor' },
