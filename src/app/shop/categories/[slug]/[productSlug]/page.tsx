@@ -10,11 +10,12 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import VerifiedOutlinedIcon from '@mui/icons-material/VerifiedOutlined'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
+import Link from 'next/link'
 
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { Breadcrumb } from '@/components/layout/Breadcrumb'
-import { getProductBySlug, getProductsByCategory } from '@/lib/supabase/queries/products'
+import { getProductBySlug, getProductsByCategory, getRecommendedProducts } from '@/lib/supabase/queries/products'
 import { ProductConfigurator } from '@/components/shop/ProductConfigurator'
 import { brandTokens } from '@/theme/theme'
 
@@ -59,6 +60,7 @@ export default async function ProductDetailPage({ params }: Props) {
   if (!product) notFound()
 
   const category = categoryData.category
+  const recommendations = await getRecommendedProducts(product.id, product.category_key, 4)
   const featuredMedia = product.media.find((m) => m.is_featured) ?? product.media[0] ?? null
   const hasImage = featuredMedia?.url && featuredMedia.url.length > 0
   const cardGradient =
@@ -285,6 +287,99 @@ export default async function ProductDetailPage({ params }: Props) {
               >
                 {product.description}
               </Typography>
+            </Box>
+          )}
+
+          {recommendations.length > 0 && (
+            <Box
+              sx={{
+                mt: { xs: 5, md: 8 },
+                pt: { xs: 4, md: 6 },
+                borderTop: `1px solid ${alpha(brandTokens.parchment, 0.07)}`,
+              }}
+            >
+              <Typography variant="h3" component="h2" sx={{ mb: 2 }}>
+                You May Also Like
+              </Typography>
+              <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62), mb: 3.2 }}>
+                Hand-picked suggestions from the same workshop lane.
+              </Typography>
+
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: {
+                    xs: '1fr',
+                    sm: 'repeat(2, minmax(0, 1fr))',
+                    lg: 'repeat(4, minmax(0, 1fr))',
+                  },
+                  gap: 2,
+                }}
+              >
+                {recommendations.map((item) => {
+                  const image = item.featured_media
+                  const href = `/shop/categories/${item.category_slug ?? slug}/${item.slug}`
+                  const gradient =
+                    image?.gradient ??
+                    item.category_gradient ??
+                    `linear-gradient(135deg, ${brandTokens.bgSurface} 0%, ${brandTokens.bgVoid} 100%)`
+
+                  return (
+                    <Box
+                      key={item.id}
+                      component={Link}
+                      href={href}
+                      sx={{
+                        textDecoration: 'none',
+                        borderRadius: 2,
+                        overflow: 'hidden',
+                        background: alpha(brandTokens.bgSurface, 0.72),
+                        border: `1px solid ${alpha(brandTokens.parchment, 0.08)}`,
+                        transition: 'transform 180ms ease, border-color 180ms ease',
+                        '&:hover': {
+                          transform: 'translateY(-3px)',
+                          borderColor: alpha(brandTokens.forgeGold, 0.45),
+                        },
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          aspectRatio: '4/3',
+                          background: gradient,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        {image?.url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={image.url}
+                            alt={image.alt || item.title}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                        ) : (
+                          <Typography aria-hidden="true" sx={{ fontSize: '2.5rem', opacity: 0.55 }}>
+                            {image?.emoji ?? item.category_emoji ?? '✨'}
+                          </Typography>
+                        )}
+                      </Box>
+
+                      <Box sx={{ p: 1.6 }}>
+                        <Typography sx={{ color: brandTokens.parchment, fontWeight: 600, mb: 0.4 }}>
+                          {item.title}
+                        </Typography>
+                        <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.85rem', mb: 0.9 }}>
+                          {item.category_display_name ?? 'Shop pick'}
+                        </Typography>
+                        <Typography sx={{ color: brandTokens.forgeGold, fontWeight: 700 }}>
+                          From ${item.base_price.toFixed(2)}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  )
+                })}
+              </Box>
             </Box>
           )}
         </Container>

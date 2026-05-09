@@ -36,14 +36,23 @@ export function NewsletterBlock() {
     Analytics.newsletterSignupAttempted('homepage_footer')
 
     try {
-      // TODO: Wire to /api/newsletter/subscribe → Resend contact list / Supabase consent record.
-      // For now, simulate a short delay.
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const response = await fetch('/api/newsletter/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: trimmed, source: 'homepage_footer' }),
+      })
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string }
+        throw new Error(payload.error || 'Subscription failed.')
+      }
+
       setState('success')
       setEmail('')
-    } catch {
+    } catch (error) {
       setState('error')
-      setErrorMsg('Something went wrong. Please try again in a moment.')
+      const message = error instanceof Error ? error.message : 'Something went wrong. Please try again in a moment.'
+      setErrorMsg(message)
     }
   }
 

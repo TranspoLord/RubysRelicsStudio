@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test:security:rls": "node ./scripts/test-rls-lockdown.mjs",
+    "test:security": "npm run test:security:rls"
   },
   "dependencies": {
     "next": "16.2.4",

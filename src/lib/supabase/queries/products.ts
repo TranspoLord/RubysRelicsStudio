@@ -378,6 +378,89 @@ export async function getProductCountsByCategory(): Promise<
   return counts
 }
 
+/**
+ * Fetch related product recommendations for a product detail page.
+ * Prioritizes same-category items and falls back to global active products.
+ */
+export async function getRecommendedProducts(
+  currentProductId: string,
+  categoryKey: string,
+  limit: number = 4
+): Promise<DbProduct[]> {
+  const [categoriesResult, sameCategoryResult] = await Promise.all([
+    supabase
+      .from('exp_taxonomy')
+      .select('key, display_name, slug, emoji, gradient')
+      .eq('type', 'category'),
+
+    supabase
+      .from('exp_products')
+      .select(`
+        id, title, slug, short_description, description,
+        category_key, base_price, is_ready_made, is_customizable,
+        is_active, sort_order, production_estimate_band,
+        how_it_works_anchor, seo_title, seo_description,
+        media:exp_product_media (
+          id, product_id, url, alt, emoji, gradient, is_featured, sort_order
+        )
+      `)
+      .eq('category_key', categoryKey)
+      .eq('is_active', true)
+      .eq('is_archived', false)
+      .neq('id', currentProductId)
+      .order('sort_order', { ascending: true })
+      .limit(limit),
+  ])
+
+  const catMap = Object.fromEntries(
+    (categoriesResult.data ?? []).map((c) => [c.key, c])
+  )
+
+  if (sameCategoryResult.error) {
+    console.error('[getRecommendedProducts:same-category]', sameCategoryResult.error.message)
+  }
+
+  const primary = (sameCategoryResult.data ?? []).map((row) =>
+    normalizeProduct({ ...row, category: catMap[row.category_key] ?? null })
+  )
+
+  if (primary.length >= limit) {
+    return primary.slice(0, limit)
+  }
+
+  const remaining = limit - primary.length
+  const existingIds = new Set(primary.map((p) => p.id))
+  existingIds.add(currentProductId)
+
+  const { data: fallbackRows, error: fallbackError } = await supabase
+    .from('exp_products')
+    .select(`
+      id, title, slug, short_description, description,
+      category_key, base_price, is_ready_made, is_customizable,
+      is_active, sort_order, production_estimate_band,
+      how_it_works_anchor, seo_title, seo_description,
+      media:exp_product_media (
+        id, product_id, url, alt, emoji, gradient, is_featured, sort_order
+      )
+    `)
+    .eq('is_active', true)
+    .eq('is_archived', false)
+    .order('sort_order', { ascending: true })
+    .limit(limit + 10)
+
+  if (fallbackError) {
+    console.error('[getRecommendedProducts:fallback]', fallbackError.message)
+    return primary
+  }
+
+  const fallback = (fallbackRows ?? [])
+    .filter((row) => !existingIds.has(row.id))
+    .slice(0, remaining)
+    .map((row) => normalizeProduct({ ...row, category: catMap[row.category_key] ?? null }))
+
+  return [...primary, ...fallback]
+}
+
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 interface RawProductRow {
