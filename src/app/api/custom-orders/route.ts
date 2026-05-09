@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { branch, getSupabaseAdmin } from '@/lib/supabase/client'
 import { FROM_ADDRESS, getResend } from '@/lib/resend/client'
 import { randomBytes } from 'node:crypto'
+import { rateLimit, rateLimitResponse, getClientIp } from '@/lib/rate-limit'
 
 interface FileMeta {
   name?: unknown
@@ -96,6 +97,10 @@ async function sendAdminNotificationEmail(input: {
 
 export async function POST(request: Request) {
   try {
+    const ip = getClientIp(request)
+    const rl = rateLimit(`intake:${ip}`, 5, 60 * 60 * 1000)
+    if (!rl.allowed) return rateLimitResponse(rl.retryAfter!)
+
     const body = (await request.json()) as CustomOrderBody
 
     const customerName = asTrimmedString(body.customerName, 120)

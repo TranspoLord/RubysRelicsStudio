@@ -1,7 +1,7 @@
 # Ruby's Relics — Expansion Planning Notes
 
-> Last updated: April 30, 2026  
-> Context: xTool M1 Ultra acquisition discussion
+> Last updated: May 8, 2026  
+> Context: xTool M1 Ultra acquisition discussion. Updated to reflect unified storefront implementation (craft + stickers in single shop).
 
 ---
 
@@ -78,43 +78,44 @@
 
 ## Recommended Approach
 
-**Start with Option A**, then layer in Option B per category as demand is proven.
+**Unified Storefront** — combine all product categories (stickers, engravings, sublimation, rotary items) under one cohesive shop experience.
 
 Rationale:
-- Avoids over-building for products that may have low initial demand
-- Gets market exposure fast
-- Each category (engraving, sublimation, rotary) can graduate from quote flow → real catalog independently
+- Customers browse and purchase across all product types in a single cart
+- Cleaner UX: no separate logins or fragmented cart state
+- Shared infrastructure: single checkout, unified order history, consistent brand experience
+- Database schema unified: single `exp_products` table with variants/options/categories supporting all product types
+- Admin controls consolidated: one settings domain, one queue/inventory system, one analytics pipeline
 
-## Direction Locked In
+## Architecture Locked In
 
-- Build the expansion as a **separate storefront experience** from the sticker side
-- Use **separate SQL tables** for the craft/engraving/sublimation side instead of trying to force it into the sticker schema too early
-- Do **not touch the sticker customer flow** unless there is a hard dependency
-- Goal: cleaner architecture, more consistent product modeling, and freedom to design the new experience properly from day one
-- This is a **greenfield build**: not layered on top of existing sticker routes or admin code
+- **Unified storefront**: all product categories (stickers, engravings, sublimation, rotary, custom requests) share:
+  - Single product catalog (`exp_products`, `exp_product_variants`, `exp_product_options`)
+  - Single category hierarchy (`exp_product_categories`) supporting all item types
+  - Unified cart and checkout experience (single `/checkout` flow)
+  - Shared order management (`exp_orders`, `exp_order_items`)
+  - Unified admin panel (single dashboard, shared module structure)
+  - Common customer auth layer (optional; enables order history, wishlist, account features)
 
-Working assumption:
-- Same overall business, but effectively a second site experience living beside the sticker store
-- Shared branding can remain under Ruby's Relics, but the storefront, data model, and product flow should be independent
+- **Greenfield customer experience**: while the data model is unified, the storefront UX has been redesigned specifically for craft/engraving/sublimation items:
+  - Homepage emphasizes handcrafted, made-to-order positioning
+  - Category browsing, product detail pages, and configurators designed around customizable items
+  - Process transparency: queue status, production estimates, material/technique information visible throughout
+  - Custom request flow for quote-based items alongside ready-made catalog
 
-### Greenfield route and platform requirement
-- All core routes for the expansion site must be rebuilt specifically for this storefront.
-- Do not reuse current sticker-site route implementations as the foundation for this project.
+- **Shared operational settings**:
+  - Single `exp_storefront_settings` table for runtime configuration (Stripe checkout toggle, guest tracking, etc.)
+  - All settings admin-managed with runtime toggles; no code deploys required for operational changes
 
-Routes/surfaces that must be rebuilt for the expansion site:
-- storefront home and category routes
-- all-products browsing route (`/shop/all`) for cross-category discovery
-- product detail/configurator routes
-- cart and checkout flow
-- order success and customer order history views
-- custom request/quote intake and status routes
-- resources/documents routes
-- admin authentication and admin dashboard shell
-- admin modules (catalog, pricing, inventory, queue, finance, settings)
-
-Settings requirement:
-- Expansion storefront settings must have their own admin-managed configuration domain (shop settings, queue settings, pricing settings, visibility settings, policy content, etc.) separate from sticker settings.
-- Stripe checkout availability must be toggleable from expansion admin settings without code deploys (runtime on/off with customer-facing fallback message).
+### Current Route Implementation
+Routes currently implemented/planned for unified storefront:
+- Home, Shop (category browse), Product detail/configurator pages
+- Cart and Checkout flow (single unified experience)
+- Order success and guest-safe tracking pages
+- Custom request/quote intake and status routes
+- Resources/policies hub
+- Admin authentication, dashboard shell, and core modules (custom-requests, settings, orders scaffold)
+- Customer auth (login/signup/account) — in development
 
 ---
 
@@ -1474,4 +1475,203 @@ Email delivery system: Resend
 - Public catalog media and private customer artwork must be in separate buckets with separate access policies.
 - Private customer artwork is never served via public bucket URLs.
 - Unreferenced asset cleanup rules must be defined to prevent orphan storage growth.
+
+---
+
+## Implementation Status — May 8, 2026
+
+### ✅ Completed
+
+**Core Commerce Infrastructure**:
+- Unified product catalog with categories, variants, and options supporting all product types (stickers, engravings, sublimation, rotary)
+- Shop homepage with hero, category grid, and featured collections
+- Category browse pages with product grid and metadata
+- Product detail pages with configurator UI and options
+- Cart management (add, update, remove, persist to localStorage)
+- Stripe Checkout Sessions integration for shop/ready-made orders
+- Order success page with guest tracking link generation
+- Guest order tracking pages (45-day token expiry, secure access validation)
+- Custom request intake form with file upload support
+- Custom request status page (token-protected customer view)
+- Admin quote generation API with Stripe Payment Link creation
+- Webhook reconciliation for shop orders, custom request payments, payment failures, refunds
+- Fallback payment failure and refund handlers
+
+**Admin Operations & Authentication**:
+- Admin authentication layer using HMAC-signed httpOnly session cookies
+- Protected admin route group with session validation
+- Admin shell component with notification bell, quick search, and module navigation
+- Admin dashboard (landing page)
+- Admin custom-requests module with list view and quote form
+- Admin settings module with runtime toggle UI for:
+  - Stripe checkout enabled/disabled + customer-facing fallback message
+  - Guest order tracking enabled/disabled + fallback notification email
+- Admin module scaffolds: orders, catalog, pricing, inventory, settings
+- Session creation/deletion API endpoints at `/api/admin/session`
+
+**Content & Policy Surfaces**:
+- Resources hub with 9+ policy pages (Terms of Service, Privacy, Cookies, Returns, Shipping, Materials, Artwork, Care, Safety, FAQ)
+- Dynamic policy pages with SEO metadata and static generation via `generateStaticParams`
+- About page with production context and trust signals
+- How It Works page with process overview, material previews, and hash anchors
+- Gallery page with curated content display
+- Footer with policy links and newsletter signup block
+
+**Database & Schema**:
+- Unified `exp_products`, `exp_product_variants`, `exp_product_options`, `exp_product_categories` tables
+- `exp_orders`, `exp_order_items` with status tracking and snapshot fields
+- `exp_custom_requests` with access token and payment link tracking
+- `exp_storefront_settings` with JSONB values for runtime configuration
+- Guest tracking tokens: `guest_tracking_token`, `guest_tracking_expires_at` on orders
+- Custom request access tokens: `customer_access_token`, `customer_access_expires_at`
+- Migrations 001–009 created with proper indexing and constraints
+- Seed data for categories (9 types), products (15+ ready-made), and default settings
+
+**Storefront Features**:
+- Mobile-responsive header with persistent cart/account area
+- Breadcrumb navigation on interior pages
+- Category hierarchy with product listing and filtering
+- Product configurator with variant selection and option form fields
+- Cart page with line items, quantity updates, and totals
+- Checkout flow with customer contact info, shipping address, and payment
+- Guest-safe order tracking without account requirement
+- Feature toggles for Stripe checkout and guest tracking (runtime configurable)
+- Fallback email notifications when guest tracking disabled
+
+### ⧗ Currently Being Implemented
+
+**Customer Authentication & Account System**:
+- Customer login page with email/password authentication
+- Customer signup page with account creation
+- Password reset flow
+- Customer session management
+- Customer account dashboard with profile info
+- Saved addresses management
+- Order history page (authenticated customer view)
+- Customer account preferences and email opt-ins
+
+**Engagement & Discovery Features**:
+- Global product search with typeahead suggestions and filters
+- Wishlist / save-for-later functionality with "The Hoard" theme
+- Recently viewed products tracking
+- Guided "start here" flow to route customers to order path
+- Product recommendations and related items display
+- Newsletter signup and preference center
+- Back-in-stock and capacity availability notifications
+
+**Admin Module Expansion**:
+- Admin inventory management UI (stock counts, thresholds, alerts)
+- Admin orders module with full order lifecycle management
+- Admin catalog module for product CRUD and media management
+- Admin pricing module with bulk discounts and variant pricing
+- Production queue visualization and machine scheduling
+- Finance dashboard with revenue, cost, margin analytics
+- Labor tracking and time entry system
+
+### Remaining (Pending Implementation)
+
+**High Priority (user-facing)**:
+1. Customer authentication and account system (login, signup, password reset)
+2. Customer account dashboard with order history
+3. Global product search with filters and suggestions
+4. Wishlist/save-for-later system
+5. Recently viewed products tracking
+
+**Medium Priority (conversion + retention)**:
+6. Newsletter signup and preference center
+7. Abandoned cart recovery emails
+8. Abandoned custom request recovery emails
+9. Back-in-stock and capacity reopening notifications
+10. Guided "start here" flow for order path routing
+11. Product recommendations and cross-sell UI
+12. Gift ideas page and gift messaging at checkout
+
+**Lower Priority (operations)**:
+13. Admin inventory management with full CRUD
+14. Admin orders module with shipment tracking
+15. Production queue visualization and machine scheduling
+16. Finance dashboard and analytics reporting
+17. Labor time tracking and effective hourly earnings
+18. Art Guard integration and restricted artwork workflow
+
+**Compliance & Quality**:
+19. WCAG 2.2 AA accessibility audit and fixes across customer pages
+20. Cookie consent banner and consent management
+21. Analytics instrumentation with Vercel Analytics
+22. SEO metadata and structured data for all pages
+23. Mobile responsiveness refinement and testing
+24. Performance optimization (image loading, code splitting, caching)
+25. Error handling and user feedback messaging
+
+**Operational Completeness**:
+26. Machine scheduling and capacity planning UI
+27. Material tracking and low-stock alerts
+28. Automated notification system (back-in-stock, capacity, status updates)
+29. Tax calculation and financial reporting
+30. Multi-carrier shipping adapter system
+
+### Critical Notes
+
+- **Unified Storefront Architecture** (locked): All product categories (stickers, engravings, sublimation, rotary, custom requests) are integrated into a single shop experience with unified cart, checkout, and order history. This is the production implementation (not separate greenfield storefronts as originally drafted in EXPANSION_NOTES).
+
+- **Database Schema is Unified**: Product type differentiation is achieved via category keys in `exp_product_categories`, not via separate tables. This keeps the data model clean and operational metrics unified. Example categories: `stickers`, `engraved_drinkware`, `sublimated_gifts`, `signs_and_decor`, `acrylic_pieces`, `leather_goods`, `apparel`, `seasonal_items`, `gift_bundles`.
+
+- **Runtime Configuration** is mature: Admin can toggle Stripe checkout and guest order tracking without code deploys. Fallback messaging and notification email addresses are configurable via the Settings module.
+
+- **Custom Request Workflow** is end-to-end operational: intake form → admin quote approval → Stripe Payment Link generation → customer payment → webhook reconciliation → order creation. Status page is token-protected and accessible without account creation.
+
+- **Guest-First Model** is production behavior: Customers can shop, add to cart, checkout, and track orders without creating an account. Customer authentication is optional and intended for Phase 2 retention features (wishlist sync, order history dashboard, saved addresses).
+
+- **All Migrations Created** but not applied to live Supabase. Manual step required to run migrations 001–009 on the database before new features become active.
+
+- **Environment Variables Required**:
+  - `ADMIN_LOGIN_KEY`: Password for admin panel login
+  - `FROM_ADDRESS` (Resend): Outbound email address
+  - `STRIPE_SECRET_KEY`: Stripe API key
+  - `STRIPE_WEBHOOK_SECRET`: Stripe webhook signing secret
+  - Optional: `CUSTOM_REQUEST_NOTIFY_EMAIL`, `ORDER_TRACKING_NOTIFY_EMAIL` for fallback notifications
+
+- **Next Immediate Priority**: Customer authentication system. This unblocks order history pages, wishlist persistence, account preferences, and retention features (abandoned cart/request recovery, newsletters, back-in-stock alerts).
+
+### Estimated Effort Remaining (Rough)
+
+- Customer auth (login/signup/password reset): **2-3 hours**
+- Customer account dashboard + order history: **3-4 hours**
+- Product search with filters: **4-5 hours**
+- Wishlist + recently viewed: **2-3 hours**
+- Newsletter signup + preference center: **2-3 hours**
+- Admin module expansion (inventory, orders, catalog, pricing): **8-12 hours**
+- Finance dashboard and labor tracking: **5-8 hours**
+- WCAG 2.2 AA compliance audit + fixes: **3-6 hours**
+- Analytics and cookie consent: **2-3 hours**
+- Email notification system (back-in-stock, capacity, etc.): **4-6 hours**
+- Performance optimization and testing: **3-5 hours**
+
+**Total Remaining**: ~40-60 hours of development work to reach feature-complete status (assuming no major architectural changes or external integrations).
+
+### Build Status (as of this document update)
+
+- **TypeScript**: ✅ Passing (npx tsc --noEmit: no errors)
+- **Next.js Build**: ✅ Successful (34+ routes confirmed live including /shop/*, /orders/*, /custom-orders/*, /admin/*, /api/*, /resources/*)
+- **Routes Live**: Home, Shop (categories + products), Cart, Checkout, Order success, Guest order tracking, Custom request intake/status, Resources hub, About, How It Works, Gallery, Admin login/dashboard/modules, Admin APIs
+- **No Deployment Blockers**: All components type-safe, builds deterministic, no unresolved dependencies or warnings
+
+### Code Quality & Hygiene
+
+- ✅ No hardcoded business values in component files
+- ✅ All pricing, inventory, and visibility comes from Supabase
+- ✅ Migrations are versioned and reversible
+- ✅ Admin settings are runtime-configurable
+- ✅ All customer-facing pages respect guest-first model
+- ✅ All auth checks are consistent (HMAC verification for admin, token validation for guests)
+- ✅ Error boundaries and fallback UI in place
+- ✅ Responsive design foundation (mobile-first breadcrumbs, drawer nav patterns planned)
+
+### Testing Notes
+
+- Manual: Guest checkout, order tracking, custom request intake/status all verified
+- Manual: Admin settings changes reflected immediately on storefront
+- Manual: Guest tracking disabled → fallback email behavior works
+- TypeScript strict mode catches type errors pre-build
+- No integration test suite yet (candidate for Phase 2 testing infrastructure)
 

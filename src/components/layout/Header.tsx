@@ -24,6 +24,7 @@ import { alpha } from '@mui/material/styles'
 
 import { brandTokens } from '@/theme/theme'
 import { useCart } from '@/components/cart/CartProvider'
+import { SearchModal } from '@/components/search/SearchModal'
 
 const NAV_LINKS = [
   { label: 'Home', href: '/' },
@@ -42,6 +43,7 @@ interface HeaderProps {
 export function Header({ cartItemCount = 0, currentPath = '/' }: HeaderProps) {
   const cart = useCart()
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [searchModalOpen, setSearchModalOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
 
@@ -199,6 +201,7 @@ export function Header({ cartItemCount = 0, currentPath = '/' }: HeaderProps) {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <IconButton
             aria-label="Search"
+            onClick={() => setSearchModalOpen(true)}
             size="medium"
             sx={{
               color: 'text.secondary',
@@ -359,6 +362,8 @@ export function Header({ cartItemCount = 0, currentPath = '/' }: HeaderProps) {
           </Button>
         </Box>
       </Drawer>
+
+      <SearchModal open={searchModalOpen} onClose={() => setSearchModalOpen(false)} />
     </AppBar>
   )
 }

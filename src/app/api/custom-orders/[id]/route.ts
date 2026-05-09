@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { FROM_ADDRESS, getResend } from '@/lib/resend/client'
 import { getStripeServerClient } from '@/lib/stripe/server'
+import { timingSafeEqual } from 'node:crypto'
 
 interface RequestContext {
   params: Promise<{ id: string }>
@@ -109,7 +110,7 @@ export async function PATCH(request: Request, context: RequestContext) {
       return NextResponse.json({ error: 'ADMIN_LOGIN_KEY is not configured.' }, { status: 500 })
     }
 
-    if (!adminKey || adminKey !== expectedAdminKey) {
+    if (!adminKey || adminKey.length !== expectedAdminKey.length || !timingSafeEqual(Buffer.from(adminKey), Buffer.from(expectedAdminKey))) {
       return NextResponse.json({ error: 'Unauthorized admin action.' }, { status: 401 })
     }
 
