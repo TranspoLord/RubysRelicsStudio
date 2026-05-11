@@ -31,6 +31,8 @@ create index if not exists idx_exp_back_in_stock_alerts_product
 
 alter table exp_back_in_stock_alerts enable row level security;
 
+drop trigger if exists trg_exp_back_in_stock_alerts_updated_at on exp_back_in_stock_alerts;
+
 create trigger trg_exp_back_in_stock_alerts_updated_at
 before update on exp_back_in_stock_alerts
 for each row execute function exp_set_updated_at();
