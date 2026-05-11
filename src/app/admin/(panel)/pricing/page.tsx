@@ -16,9 +16,11 @@ export default function AdminPricingPage() {
       </Typography>
 
       <Box sx={{ display: 'flex', gap: 1 }}>
-        <Button component={Link} href="/admin/catalog" variant="contained">
-          Open Catalog Pricing Controls
-        </Button>
+        <Link href="/admin/catalog" style={{ textDecoration: 'none' }}>
+          <Button variant="contained">
+            Open Catalog Pricing Controls
+          </Button>
+        </Link>
       </Box>
 
       <Typography sx={{ color: alpha(brandTokens.parchment, 0.58), fontSize: '0.88rem' }}>

@@ -1585,6 +1585,48 @@ Exit criteria:
 - Admin can create/publish/archive/restore products without direct SQL edits.
 - Product publish flow blocks invalid/incomplete records.
 
+##### Catalog expansion (approved May 11, 2026)
+- Rework catalog admin information architecture to reduce density and improve guidance:
+	- `/admin/catalog` becomes an overview hub with summary stats and clear entry points.
+	- Add dedicated routes for:
+		- Categories management (`/admin/catalog/categories`)
+		- Products management (`/admin/catalog/products`)
+		- Pricing and promotions management (`/admin/catalog/pricing`)
+- Add full category CRUD in admin:
+	- Manage category name, visibility, media/image, and product assignment.
+	- Provide clear controls for whether a category is shown to customers.
+- Split product management into distinct editing surfaces:
+	- Product page/content editing (images, description, title, materials, and other PDP content).
+	- Product pricing editing (base price, variant deltas, option deltas, bulk tiers, pricing preview).
+	- Product list must support category-based filtering and fast navigation into each edit surface.
+- Expand pricing from per-product tiers to full promotions capability:
+	- Keep existing product bulk discounts.
+	- Add store-level discount codes.
+	- Add configurable bundle/combo deals engine.
+
+##### Deals engine requirements (approved May 11, 2026)
+- Support both trigger modes:
+	- Automatic deals (apply when cart conditions are met).
+	- Code-based deals (customer enters code).
+- Support fully custom condition logic (future-proof), including examples like:
+	- Buy 3 sticker sheets + 1 shirt -> free shipping.
+	- Buy 1 leather engraving -> printed mug at half price.
+	- Buy 1 shirt + 1 mug + 3 stickers sharing the same image -> half-price bundle reward.
+- Rewards must support extensible outcomes (not only percent/fixed discounts), including shipping and item-level reward actions.
+- Conflict and stacking policy:
+	- Deals may stack with promo codes.
+	- Pricing engine should choose the best resulting outcome for the customer when multiple combinations qualify.
+
+##### Labor reporting clarification (approved May 11, 2026)
+- Labor cost input must remain optional where labor is entered in finance workflows.
+- Labor analytics should support three views where feasible:
+	- Per-item profitability view.
+	- Per-order profitability view.
+	- Overall business profitability view.
+- Effective hourly profitability target formula should use:
+	- `(order total - COGS) / labor hours`
+- This supports viewing realized hourly earnings even when labor cost is not provided for every entry.
+
 #### Phase 3 - Pricing and discount CRUD ✅ COMPLETE (May 10, 2026)
 - Build pricing module for base price, variant deltas, option value deltas.
 - Build bulk discount tier manager (`exp_product_bulk_discounts`) with preview calculations.
@@ -1831,3 +1873,196 @@ Status is now normalized against code shipped through Phases 1-8. Admin foundati
 - TypeScript strict mode catches type errors pre-build
 - No integration test suite yet (candidate for Phase 2 testing infrastructure)
 
+
+
+
+
+Now here's the **updated comprehensive plan** that incorporates the catalog reorganization, bundle deals system, and labor tracking:
+
+## Plan: Catalog Hub + Bundle Deals + Labor Tracking System
+
+**TL;DR:** Restructure monolithic catalog page into a dashboard-driven hub with three sections (Categories CRUD, Products with page/pricing split, Store Pricing with promos & deals). Add a custom rules engine for bundle deals (automatic + code-based triggers, metadata matching). Implement three-level labor tracking (per-item, per-order, timesheet) with optional cost entry to calculate hourly profitability.
+
+**Steps**
+
+### Phase 1: Catalog Architecture & Routes
+1. Create new nested route structure:
+   - `/admin/catalog` → Dashboard (stats + quick actions + navigation)
+   - `/admin/catalog/categories` → Category management (CRUD, visibility, featured image, product assignments)
+   - `/admin/catalog/products` → Product list (search, category filter, status indicators)
+   - `/admin/catalog/products/[id]/layout` → Tabbed detail view
+   - `/admin/catalog/products/[id]/page` → Product page editor (media, description, materials, variants, options)
+   - `/admin/catalog/products/[id]/pricing` → Product pricing editor (base price, variant deltas, bulk tiers, preview)
+   - `/admin/catalog/pricing` → Store pricing hub (bulk discounts reference, promo codes, bundle deals)
+
+2. Create shared catalog navigation component (breadcrumbs, tab/section headers) (*depends on routes*)
+
+3. Create dashboard page with stats cards (total products, active products, categories, deals/promos) + quick action buttons
+
+### Phase 2: Database Schema Extensions
+4. Create migration for **bundle deals table** (`exp_bundle_deals`):
+   - Fields: id, name, description, trigger_type (auto/code), code (nullable), conditions_json (custom rule engine), reward_type (discount_percent/discount_fixed/free_shipping/mixed), reward_value (nullable), active_flag, usage_limit (nullable), used_count, valid_from/to, created/updated_at
+   - Indexes on active_flag, code, valid_dates
+   - (*note: conditions_json stores a flexible schema for the rules engine*)
+
+5. Create migration for **labor tracking tables**:
+   - `exp_labor_time_entries`: id, order_id, product_item_id (nullable), category, duration_minutes, cost (optional), notes, logged_at, admin_user
+   - `exp_order_item_labor`: product_item_id, total_labor_minutes, total_labor_cost (nullable), calculated_cost_per_item (nullable)
+   - `exp_order_labor_summary`: order_id, total_labor_minutes, total_labor_cost (nullable), effective_hourly_rate (calc'd)
+   - Indexes on order_id, product_item_id, logged_at
+   - Add RLS policies to protect from customer access
+
+### Phase 3: Bundle Deals Custom Rules Engine
+6. Create `/src/lib/bundle-deals.ts` (shared service):
+   - Function: `evaluateDealCondition(cartItems, condition)` — checks if cart matches rule (qty, product IDs, category, metadata match like image)
+   - Function: `applyDealReward(subtotal, reward)` — calculates discount/free-shipping value
+   - Function: `validateDealCode(code, deals)` — verify code exists, active, not expired, usage under limit
+   - Support for conditions: `{ type: 'product_qty', productIds: [...], minQty }`, `{ type: 'category_qty', category, minQty }`, `{ type: 'metadata_match', metadata_field, value }`
+
+7. Create API endpoint `/api/admin/catalog/bundle-deals` (GET, POST, PUT, DELETE, PATCH validate-code)
+
+8. Update checkout pricing engine to:
+   - Query active bundle deals (auto-trigger ones)
+   - Evaluate cart against all deal conditions
+   - Apply qualifying deals + promo codes (both stack)
+   - Choose best combination for customer
+
+### Phase 4: Category CRUD
+9. Create API endpoint `/api/admin/catalog/categories` (GET, POST, PUT, DELETE) — manages `exp_taxonomy` table
+
+10. Implement `/admin/catalog/categories` page UI:
+    - List table: name, visibility toggle, featured image, product count, actions
+    - Create button → modal form
+    - Edit: inline or modal with name, slug, visibility, featured image, description, featured flag
+    - Show products in category (with link to product page)
+    - Delete with cascade/safety check
+
+### Phase 5: Products Page Reorganization (*parallel with Phase 4*)
+11. Implement `/admin/catalog/products` (product list page):
+    - Search by title, filter by category, filter by status
+    - Product table: thumbnail, title, category, status (draft/active/archived), base price, media count, action menu
+    - Row click → navigate to `/admin/catalog/products/[id]`
+    - Create product button → new product form
+
+12. Implement `/admin/catalog/products/[id]/layout` (tabbed detail view):
+    - Tab 1: "Page Content" → `/admin/catalog/products/[id]/page`
+    - Tab 2: "Pricing" → `/admin/catalog/products/[id]/pricing`
+    - Shared header with product title, status, created/updated dates
+
+13. Implement `/admin/catalog/products/[id]/page` editor (*parallel with step 14*):
+    - Fields: title, slug, description, materials, care instructions, category assignment
+    - Media manager (upload, reorder, set featured, alt text, emoji/gradient previews)
+    - Variants editor (size/quantity options with SKU)
+    - Options editor (customization fields: select, text, textarea, file, checkbox, number with nested values for select)
+    - Publish checklist (media required, ≥1 variant, ≥1 option, etc.)
+
+14. Implement `/admin/catalog/products/[id]/pricing` editor (*parallel with step 13*):
+    - Base price editor
+    - Variants price delta table
+    - Bulk discount tiers (add/edit/delete with min/max qty, type, value)
+    - Pricing preview calculator (shows tier logic)
+    - Quick links to manage promos/deals that affect this product
+
+### Phase 6: Store-Wide Pricing & Deals
+15. Implement `/admin/catalog/pricing` page with tabs/sections:
+    - **Bulk Discounts**: Reference to per-product bulk tiers (maybe quickfilter by product)
+    - **Promo Codes**: Table (code, type, value, usage/limit, dates, toggle active), create/edit/delete
+    - **Bundle Deals**: Table (name, trigger type, condition summary, reward, usage/limit, dates, toggle active), create/edit/delete
+
+16. Create admin UI components for bundle deal builder:
+    - Condition builder: dropdown for condition type (product_qty, category_qty, metadata_match), select products/categories, input min quantities
+    - Reward builder: dropdown for reward type (discount_percent, discount_fixed, free_shipping), input value
+    - Code field (optional, for code-based deals)
+    - Expiration/usage limit fields
+
+### Phase 7: Labor Tracking System
+17. Create `/admin/finance` or `/admin/labor` section with two pages:
+    - **Labor Entries**: Form to log time (order picker, product item optional, duration minutes, optional cost, notes)
+    - **Labor Analytics**: Dashboard showing:
+      - Orders sorted by labor hours/cost
+      - Per-order breakdown: labor minutes, labor cost, order total, (order total - COGS) / labor_minutes × 60 = hourly rate
+      - Per-product summary: product, total labor across all orders, total cost, count of orders
+      - Timesheet view: entries by date, filterable by admin user
+
+18. Create API endpoints (*depends on Phase 2 schema*):
+    - `/api/admin/labor/time-entries` (POST create, GET list with filters, DELETE remove)
+    - `/api/admin/labor/analytics` (GET order summaries, GET product summaries)
+
+19. Update order detail page to show labor summary (total labor cost, effective hourly rate on that order) and allow quick time entry link
+
+20. Update product pricing preview to factor in average labor cost per item if available
+
+### Phase 8: Pricing Engine Integration
+21. Update engine.ts to support bundle deals:
+    - Check cart items against all active bundle deal conditions
+    - Apply qualifying auto-trigger deals
+    - Apply promo codes
+    - Stack both if applicable
+    - Return final line totals with deal breakdowns
+
+22. Update checkout flow to:
+    - Display applied deals/promos with discounts shown
+    - Allow customer to enter promo code (which auto-validates against promo table + bundle deals)
+
+### Phase 9: Validation & Testing
+23. Create comprehensive tests for:
+    - Bundle deal condition evaluation (product qty, category, metadata matching)
+    - Deal + promo code stacking logic
+    - Category CRUD (create, list, update visibility, delete)
+    - Product list filtering by category/status
+    - Labor time entry creation/deletion
+    - Hourly rate calculation (order total - COGS) / labor minutes × 60
+    - RLS policies on labor, deals, categories
+
+24. Verify:
+    - TypeScript strict mode, build pass, all tests green
+    - No regressions on existing catalog functionality
+    - Labor costs optional (nullable in DB)
+
+**Relevant files**
+- page.tsx → becomes dashboard with stats + navigation
+- `src/app/admin/(panel)/catalog/categories/page.tsx` — *new* category management
+- `src/app/admin/(panel)/catalog/products/page.tsx` — *new* product list
+- `src/app/admin/(panel)/catalog/products/[id]/layout.tsx` — *new* tabbed detail view
+- `src/app/admin/(panel)/catalog/products/[id]/page.tsx` — *new* page content editor
+- `src/app/admin/(panel)/catalog/products/[id]/pricing.tsx` — *new* pricing editor
+- `src/app/admin/(panel)/catalog/pricing/page.tsx` — *new* store pricing hub
+- page.tsx — *new* labor tracking dashboard
+- `src/app/api/admin/catalog/categories/route.ts` — *new* category CRUD
+- `src/app/api/admin/catalog/bundle-deals/route.ts` — *new* bundle deals CRUD
+- `src/app/api/admin/catalog/promo-codes/route.ts` — *new* promo codes CRUD
+- `src/app/api/admin/labor/time-entries/route.ts` — *new* labor entry CRUD
+- `src/app/api/admin/labor/analytics/route.ts` — *new* labor analytics queries
+- `src/lib/bundle-deals.ts` — *new* custom rules engine + evaluation logic
+- `supabase/migrations/023_bundle_deals.sql` — *new* bundle deals schema
+- `supabase/migrations/024_labor_tracking.sql` — *new* labor tracking schema
+- engine.ts — modify to apply bundle deals + promo code stacking
+
+**Verification**
+1. Catalog dashboard loads with stats and quick action buttons
+2. Categories: create, list, filter products, update visibility, delete (with safety check)
+3. Products: list with category/status filters, click product → detail page with Page/Pricing tabs
+4. Product page editor: all fields (media, variants, options) editable and persist
+5. Product pricing editor: base price, variant deltas, bulk tiers editable
+6. Store pricing hub: manage promo codes and bundle deals, toggle active, validate uniqueness
+7. Bundle deals: custom condition builder works (qty, category, metadata), reward builder calculates correctly
+8. Checkout: cart shows applied deals/promos with discount breakdown, stacking works
+9. Labor tracking: log time entries per order/item with optional cost, analytics show hourly rate calculation
+10. RLS: labor entries protected from customer access
+11. All tests green (TypeScript, build, integration, security)
+
+**Decisions**
+- **Navigation**: Nested routes (separate pages) for clarity + SEO
+- **Deal stacking**: Both promo codes and bundle deals can apply; system chooses best combination for customer
+- **Labor tracking**: Three-level (per-item, per-order, timesheet) with optional cost entry to enable hourly rate calculations
+- **Rules engine**: Flexible JSON conditions for future extensibility (not hard-coded)
+- **Bundle deal triggers**: Mixed (some auto-apply, others require code entry)
+
+**Further Considerations**
+1. **Promo code restrictions**: Should codes have format rules (alphanumeric only, 3-20 chars)? Should they support "one-time-use" or "per-customer limits"?
+2. **Bulk product edits**: Should product list support multi-select → bulk category change? Or keep single-product edits for safety?
+3. **Labor categories**: Should time entries be tagged with labor categories (e.g., "design", "production", "packaging", "QA")? This would enable reporting by task type.
+
+---
+
+Does this plan align with your vision? Any changes before we proceed with implementation?
