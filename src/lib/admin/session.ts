@@ -1,16 +1,17 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
+import { getAdminSessionSettings } from '@/lib/storefront-settings'
 
 export const ADMIN_COOKIE_NAME = 'rr_admin_session'
 
 const SESSION_VERSION = 'v1'
-const SESSION_TTL_SECONDS = 60 * 60 * 12
+const DEFAULT_SESSION_TTL_SECONDS = 60 * 60 * 12
 
 function signPayload(payload: string, key: string): string {
   return createHmac('sha256', key).update(payload).digest('hex')
 }
 
-export function createAdminSessionToken(adminKey: string): string {
-  const expiresAt = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS
+export function createAdminSessionToken(adminKey: string, ttlSeconds = DEFAULT_SESSION_TTL_SECONDS): string {
+  const expiresAt = Math.floor(Date.now() / 1000) + ttlSeconds
   const payload = `${SESSION_VERSION}.${expiresAt}`
   const sig = signPayload(payload, adminKey)
   return `${payload}.${sig}`
@@ -39,6 +40,7 @@ export function verifyAdminSessionToken(token: string | null | undefined, adminK
   return timingSafeEqual(actualBuf, expectedBuf)
 }
 
-export function getAdminSessionMaxAgeSeconds(): number {
-  return SESSION_TTL_SECONDS
+export async function getAdminSessionMaxAgeSeconds(): Promise<number> {
+  const settings = await getAdminSessionSettings()
+  return Math.floor(settings.ttl_hours * 60 * 60)
 }

@@ -1,12 +1,13 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Box from '@mui/material/Box'
 import Badge from '@mui/material/Badge'
 import IconButton from '@mui/material/IconButton'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
+import CircularProgress from '@mui/material/CircularProgress'
 import NotificationsOutlinedIcon from '@mui/icons-material/NotificationsOutlined'
 import SearchIcon from '@mui/icons-material/Search'
 import LogoutOutlinedIcon from '@mui/icons-material/LogoutOutlined'
@@ -28,19 +29,118 @@ interface AdminShellProps {
   moduleLinks: AdminModuleLink[]
 }
 
+interface AdminNotificationRow {
+  id: string
+  title: string
+  body: string | null
+  href: string | null
+  is_read: boolean
+  created_at: string
+}
+
+interface AdminSearchResult {
+  type: 'order' | 'product' | 'custom_request' | 'module'
+  id: string
+  title: string
+  subtitle: string
+  href: string
+}
+
 export function AdminShell({ children, notificationCount, moduleLinks }: AdminShellProps) {
   const router = useRouter()
   const pathname = usePathname()
   const [query, setQuery] = useState('')
+  const [searching, setSearching] = useState(false)
+  const [remoteResults, setRemoteResults] = useState<AdminSearchResult[]>([])
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [notificationsLoading, setNotificationsLoading] = useState(false)
+  const [notifications, setNotifications] = useState<AdminNotificationRow[]>([])
+  const [unreadCount, setUnreadCount] = useState(notificationCount)
 
-  const filtered = useMemo(() => {
+  const moduleMatches = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return []
-    return moduleLinks.filter((mod) => {
+    return moduleLinks
+      .filter((mod) => {
       const hay = `${mod.label} ${mod.description} ${mod.href}`.toLowerCase()
       return hay.includes(q)
     })
+      .slice(0, 7)
+      .map((mod) => ({
+        type: 'module' as const,
+        id: mod.href,
+        title: mod.label,
+        subtitle: mod.description,
+        href: mod.href,
+      }))
   }, [query, moduleLinks])
+
+  const mergedResults = useMemo(() => {
+    if (query.trim().length === 0) return []
+    return [...moduleMatches, ...remoteResults].slice(0, 12)
+  }, [moduleMatches, remoteResults, query])
+
+  useEffect(() => {
+    const q = query.trim()
+    if (q.length < 2) {
+      setRemoteResults([])
+      return
+    }
+
+    const timeout = setTimeout(async () => {
+      try {
+        setSearching(true)
+        const params = new URLSearchParams({ q })
+        const response = await fetch(`/api/admin/search?${params.toString()}`, { cache: 'no-store' })
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          setRemoteResults([])
+          return
+        }
+        setRemoteResults(Array.isArray(payload?.results) ? payload.results : [])
+      } catch {
+        setRemoteResults([])
+      } finally {
+        setSearching(false)
+      }
+    }, 180)
+
+    return () => clearTimeout(timeout)
+  }, [query])
+
+  async function loadNotifications() {
+    setNotificationsLoading(true)
+    try {
+      const response = await fetch('/api/admin/notifications', { cache: 'no-store' })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setNotifications([])
+        return
+      }
+      setNotifications(Array.isArray(payload?.notifications) ? payload.notifications : [])
+      setUnreadCount(typeof payload?.unreadCount === 'number' ? payload.unreadCount : 0)
+    } finally {
+      setNotificationsLoading(false)
+    }
+  }
+
+  async function markNotificationRead(notificationId: string) {
+    await fetch('/api/admin/notifications', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'mark_read', notificationId }),
+    })
+    await loadNotifications()
+  }
+
+  async function markAllNotificationsRead() {
+    await fetch('/api/admin/notifications', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'mark_all_read' }),
+    })
+    await loadNotifications()
+  }
 
   async function signOut() {
     await fetch('/api/admin/session', { method: 'DELETE' })
@@ -68,8 +168,18 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
             </Typography>
 
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
-              <IconButton aria-label="Notifications" sx={{ color: alpha(brandTokens.parchment, 0.8) }}>
-                <Badge badgeContent={notificationCount > 0 ? notificationCount : undefined} color="primary">
+              <IconButton
+                aria-label="Notifications"
+                sx={{ color: alpha(brandTokens.parchment, 0.8) }}
+                onClick={() => {
+                  const next = !notificationsOpen
+                  setNotificationsOpen(next)
+                  if (next) {
+                    void loadNotifications()
+                  }
+                }}
+              >
+                <Badge badgeContent={unreadCount > 0 ? unreadCount : undefined} color="primary">
                   <NotificationsOutlinedIcon fontSize="small" />
                 </Badge>
               </IconButton>
@@ -80,11 +190,78 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
             </Box>
           </Box>
 
+          {notificationsOpen && (
+            <Box
+              sx={{
+                border: `1px solid ${alpha(brandTokens.parchment, 0.12)}`,
+                borderRadius: 1.2,
+                backgroundColor: alpha(brandTokens.bgSurface, 0.97),
+                overflow: 'hidden',
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1.2, py: 0.9 }}>
+                <Typography sx={{ fontSize: '0.8rem', fontWeight: 700 }}>
+                  Notifications
+                </Typography>
+                <Button size="small" onClick={() => void markAllNotificationsRead()}>
+                  Mark all read
+                </Button>
+              </Box>
+
+              {notificationsLoading ? (
+                <Box sx={{ px: 1.2, py: 1.2, display: 'flex', justifyContent: 'center' }}>
+                  <CircularProgress size={18} />
+                </Box>
+              ) : notifications.length === 0 ? (
+                <Typography sx={{ px: 1.2, py: 1, color: alpha(brandTokens.parchment, 0.55), fontSize: '0.78rem' }}>
+                  No notifications right now.
+                </Typography>
+              ) : (
+                notifications.map((note) => (
+                  <Box
+                    key={note.id}
+                    sx={{
+                      px: 1.2,
+                      py: 0.95,
+                      borderTop: `1px solid ${alpha(brandTokens.parchment, 0.08)}`,
+                      backgroundColor: note.is_read ? 'transparent' : alpha(brandTokens.forgeGold, 0.08),
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ color: brandTokens.parchment, fontSize: '0.8rem', fontWeight: 700 }}>
+                          {note.title}
+                        </Typography>
+                        {note.body && (
+                          <Typography sx={{ color: alpha(brandTokens.parchment, 0.6), fontSize: '0.74rem' }}>
+                            {note.body}
+                          </Typography>
+                        )}
+                      </Box>
+                      {!note.is_read && (
+                        <Button size="small" onClick={() => void markNotificationRead(note.id)}>Read</Button>
+                      )}
+                    </Box>
+                    {note.href && (
+                      <Box
+                        component="a"
+                        href={note.href}
+                        sx={{ color: brandTokens.forgeGold, fontSize: '0.72rem', textDecoration: 'none' }}
+                      >
+                        Open
+                      </Box>
+                    )}
+                  </Box>
+                ))
+              )}
+            </Box>
+          )}
+
           <Box sx={{ position: 'relative' }}>
             <TextField
               size="small"
               fullWidth
-              placeholder="Quick search modules..."
+              placeholder="Global quick search (orders, products, custom requests)..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               InputProps={{
@@ -102,16 +279,16 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
                   overflow: 'hidden',
                 }}
               >
-                {filtered.length === 0 ? (
+                {mergedResults.length === 0 ? (
                   <Typography sx={{ px: 1.2, py: 1, color: alpha(brandTokens.parchment, 0.55), fontSize: '0.78rem' }}>
-                    No modules match your search.
+                    {searching ? 'Searching...' : 'No results matched your search.'}
                   </Typography>
                 ) : (
-                  filtered.slice(0, 7).map((mod) => (
+                  mergedResults.map((result) => (
                     <Box
-                      key={mod.href}
+                      key={`${result.type}:${result.id}`}
                       component="a"
-                      href={mod.href}
+                      href={result.href}
                       sx={{
                         display: 'block',
                         textDecoration: 'none',
@@ -123,10 +300,10 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
                       }}
                     >
                       <Typography sx={{ color: brandTokens.parchment, fontSize: '0.83rem', fontWeight: 600 }}>
-                        {mod.label}
+                        {result.title}
                       </Typography>
                       <Typography sx={{ color: alpha(brandTokens.parchment, 0.56), fontSize: '0.74rem' }}>
-                        {mod.description}
+                        [{result.type}] {result.subtitle}
                       </Typography>
                     </Box>
                   ))

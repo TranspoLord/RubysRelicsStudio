@@ -1,4 +1,5 @@
 import { Resend } from 'resend'
+import { getFromAddress } from '@/lib/storefront-settings'
 
 // ─── Resend client (server-only) ──────────────────────────────────────────────
 export function getResend(): Resend {
@@ -10,9 +11,9 @@ export function getResend(): Resend {
 }
 
 // ─── Sender identity ──────────────────────────────────────────────────────────
-export const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? 'hello@rubysrelics.com'
-export const FROM_NAME = process.env.RESEND_FROM_NAME ?? "Ruby's Relics"
-export const FROM_ADDRESS = `${FROM_NAME} <${FROM_EMAIL}>`
+export async function getEmailSenderAddress(): Promise<string> {
+  return getFromAddress()
+}
 
 // ─── Email catalog keys ───────────────────────────────────────────────────────
 // These match the transactional email catalog defined in EXPANSION_NOTES.

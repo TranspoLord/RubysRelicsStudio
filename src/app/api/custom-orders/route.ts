@@ -1,14 +1,23 @@
 import { NextResponse } from 'next/server'
 import { branch, getSupabaseAdmin } from '@/lib/supabase/client'
-import { FROM_ADDRESS, getResend } from '@/lib/resend/client'
+import { getEmailSenderAddress, getResend } from '@/lib/resend/client'
 import { randomBytes } from 'node:crypto'
 import { rateLimit, rateLimitResponse, getClientIp } from '@/lib/rate-limit'
+import {
+  getCustomOrderIntakeSettings,
+  getOperationalNotificationSettings,
+} from '@/lib/storefront-settings'
 
 interface FileMeta {
   name?: unknown
   size?: unknown
   type?: unknown
 }
+
+const MAX_SINGLE_FILE_BYTES = 15 * 1024 * 1024
+const MAX_TOTAL_FILE_BYTES = 40 * 1024 * 1024
+const ALLOWED_FILE_MIME_PREFIXES = ['image/', 'application/pdf']
+const ALLOWED_FILE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf']
 
 interface CustomOrderBody {
   customerName?: unknown
@@ -45,11 +54,21 @@ function asBoolean(value: unknown): boolean {
   return value === true
 }
 
-function parseFiles(value: unknown): Array<{ name: string; size: number; type: string }> {
-  if (!Array.isArray(value)) return []
+function parseFiles(
+  value: unknown,
+  maxFiles: number
+): { files: Array<{ name: string; size: number; type: string }>; error?: string } {
+  if (!Array.isArray(value)) return { files: [] }
 
-  return value
-    .slice(0, 5)
+  if (value.length > maxFiles) {
+    return {
+      files: [],
+      error: `You can upload up to ${maxFiles} files per request.`,
+    }
+  }
+
+  const files = value
+    .slice(0, maxFiles)
     .map((file: FileMeta) => {
       const name = asTrimmedString(file?.name, 180)
       const size = Number.isFinite(Number(file?.size)) ? Math.max(0, Number(file?.size)) : 0
@@ -57,6 +76,45 @@ function parseFiles(value: unknown): Array<{ name: string; size: number; type: s
       return { name, size, type }
     })
     .filter((file) => file.name.length > 0)
+
+  let totalBytes = 0
+  for (const file of files) {
+    if (file.size < 1) {
+      return {
+        files: [],
+        error: `File "${file.name}" appears empty or missing a valid size.`,
+      }
+    }
+
+    if (file.size > MAX_SINGLE_FILE_BYTES) {
+      return {
+        files: [],
+        error: `File "${file.name}" exceeds the ${Math.floor(MAX_SINGLE_FILE_BYTES / (1024 * 1024))}MB limit.`,
+      }
+    }
+
+    const mimeAllowed = ALLOWED_FILE_MIME_PREFIXES.some((prefix) => file.type.startsWith(prefix))
+    const extensionAllowed = ALLOWED_FILE_EXTENSIONS.some((ext) =>
+      file.name.toLowerCase().endsWith(ext)
+    )
+
+    if (!mimeAllowed && !extensionAllowed) {
+      return {
+        files: [],
+        error: `File "${file.name}" has unsupported type "${file.type || 'unknown'}".`,
+      }
+    }
+
+    totalBytes += file.size
+    if (totalBytes > MAX_TOTAL_FILE_BYTES) {
+      return {
+        files: [],
+        error: `Total upload size exceeds ${Math.floor(MAX_TOTAL_FILE_BYTES / (1024 * 1024))}MB.`,
+      }
+    }
+  }
+
+  return { files }
 }
 
 function createCustomerAccessToken(): string {
@@ -71,15 +129,17 @@ async function sendAdminNotificationEmail(input: {
   quantity: number
   description: string
 }) {
-  const notifyTo = process.env.CUSTOM_REQUEST_NOTIFY_EMAIL
   const resendKey = process.env.RESEND_API_KEY
 
-  if (!notifyTo || !resendKey) return
+  if (!resendKey) return
 
+  const notifications = await getOperationalNotificationSettings()
+  const notifyTo = notifications.custom_request_notify_email
   const resend = getResend()
+  const fromAddress = await getEmailSenderAddress()
 
   await resend.emails.send({
-    from: FROM_ADDRESS,
+    from: fromAddress,
     to: [notifyTo],
     subject: `New custom request: ${input.itemType} (${input.requestId.slice(0, 8)})`,
     html: `
@@ -102,11 +162,12 @@ export async function POST(request: Request) {
     if (!rl.allowed) return rateLimitResponse(rl.retryAfter!)
 
     const body = (await request.json()) as CustomOrderBody
+    const intakeSettings = await getCustomOrderIntakeSettings()
 
     const customerName = asTrimmedString(body.customerName, 120)
     const customerEmail = asTrimmedString(body.customerEmail, 180).toLowerCase()
     const itemType = asTrimmedString(body.itemType, 120)
-    const quantity = asPositiveInt(body.quantity, 1)
+    const quantity = Math.min(asPositiveInt(body.quantity, 1), intakeSettings.max_quantity)
     const deadline = asNullableString(body.deadline, 40)
     const budgetRange = asNullableString(body.budgetRange, 80)
     const description = asTrimmedString(body.description, 6000)
@@ -114,7 +175,11 @@ export async function POST(request: Request) {
     const ipRightsConfirmed = asBoolean(body.ipRightsConfirmed)
     const ageConfirmed = asBoolean(body.ageConfirmed)
     const tosAccepted = asBoolean(body.tosAccepted)
-    const files = parseFiles(body.files)
+    const parsedFiles = parseFiles(body.files, intakeSettings.max_files)
+    if (parsedFiles.error) {
+      return NextResponse.json({ error: parsedFiles.error }, { status: 400 })
+    }
+    const files = parsedFiles.files
     const customerAccessToken = createCustomerAccessToken()
     const customerAccessExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 60).toISOString()
 

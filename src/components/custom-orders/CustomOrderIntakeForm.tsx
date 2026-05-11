@@ -47,6 +47,12 @@ interface SubmitResult {
   accessToken: string | null
 }
 
+interface BudgetRangeOption {
+  id: string
+  label: string
+  value: string
+}
+
 const DEFAULT_STATE: FormState = {
   customerName: '',
   customerEmail: '',
@@ -64,12 +70,49 @@ const DEFAULT_STATE: FormState = {
 export function CustomOrderIntakeForm({ categories }: CustomOrderIntakeFormProps) {
   const [form, setForm] = useState<FormState>(DEFAULT_STATE)
   const [files, setFiles] = useState<File[]>([])
+  const [budgetRanges, setBudgetRanges] = useState<BudgetRangeOption[]>([])
+  const [maxQuantity, setMaxQuantity] = useState(500)
+  const [maxFiles, setMaxFiles] = useState(5)
   const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [result, setResult] = useState<SubmitResult | null>(null)
 
   useEffect(() => {
     Analytics.customRequestStarted()
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    void (async () => {
+      try {
+        const response = await fetch('/api/custom-orders/config', { cache: 'no-store' })
+        if (!response.ok) {
+          throw new Error('Failed to load custom order settings')
+        }
+
+        const payload = await response.json()
+        if (!active) return
+
+        setBudgetRanges(Array.isArray(payload?.budgetRanges) ? payload.budgetRanges : [])
+        setMaxQuantity(
+          typeof payload?.maxQuantity === 'number' && payload.maxQuantity > 0
+            ? payload.maxQuantity
+            : 500
+        )
+        setMaxFiles(
+          typeof payload?.maxFiles === 'number' && payload.maxFiles > 0
+            ? payload.maxFiles
+            : 5
+        )
+      } catch (error) {
+        console.error('Failed to load custom order settings:', error)
+      }
+    })()
+
+    return () => {
+      active = false
+    }
   }, [])
 
   const categoryOptions = useMemo(
@@ -92,7 +135,7 @@ export function CustomOrderIntakeForm({ categories }: CustomOrderIntakeFormProps
 
   function handleFileChange(next: FileList | null) {
     if (!next) return
-    const selected = Array.from(next).slice(0, 5)
+    const selected = Array.from(next).slice(0, maxFiles)
     setFiles(selected)
   }
 
@@ -304,7 +347,7 @@ export function CustomOrderIntakeForm({ categories }: CustomOrderIntakeFormProps
             type="number"
             value={form.quantity}
             onChange={(e) => updateField('quantity', e.target.value)}
-            inputProps={{ min: 1, max: 500 }}
+            inputProps={{ min: 1, max: maxQuantity }}
             fullWidth
           />
 
@@ -327,10 +370,11 @@ export function CustomOrderIntakeForm({ categories }: CustomOrderIntakeFormProps
             onChange={(e) => updateField('budgetRange', e.target.value)}
           >
             <MenuItem value="">No preference</MenuItem>
-            <MenuItem value="Under $50">Under $50</MenuItem>
-            <MenuItem value="$50 - $150">$50 - $150</MenuItem>
-            <MenuItem value="$150 - $300">$150 - $300</MenuItem>
-            <MenuItem value="$300+">$300+</MenuItem>
+            {budgetRanges.map((range) => (
+              <MenuItem key={range.id} value={range.label}>
+                {range.label}
+              </MenuItem>
+            ))}
           </Select>
         </FormControl>
 
@@ -347,7 +391,7 @@ export function CustomOrderIntakeForm({ categories }: CustomOrderIntakeFormProps
 
         <Box>
           <Typography sx={{ mb: 0.8, fontSize: '0.86rem', color: alpha(brandTokens.parchment, 0.72) }}>
-            Reference files (up to 5)
+            Reference files (up to {maxFiles})
           </Typography>
           <Button component="label" variant="outlined" size="small">
             Upload Files

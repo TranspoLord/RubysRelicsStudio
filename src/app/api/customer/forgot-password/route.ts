@@ -4,9 +4,9 @@ import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { Resend } from 'resend'
 import { rateLimit, rateLimitResponse, getClientIp } from '@/lib/rate-limit'
 import { validateEmail, safeHtmlEscape } from '@/lib/validate'
+import { getFromAddress } from '@/lib/storefront-settings'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
-const FROM_ADDRESS = process.env.FROM_ADDRESS || 'noreply@rubysrelicsstudio.com'
 
 export async function POST(request: Request) {
   try {
@@ -58,8 +58,9 @@ export async function POST(request: Request) {
 
         // Send email via Resend
         try {
+          const fromAddress = await getFromAddress()
           await resend.emails.send({
-            from: FROM_ADDRESS,
+            from: fromAddress,
             to: validEmail,
             subject: 'Reset Your Password - Ruby\'s Relics Studio',
             html: `
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
                 <p>We received a request to reset your password. Click the link below to create a new password:</p>
                 <p><a href="${resetLink}" style="background-color: #8B4513; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">Reset Password</a></p>
                 <p>Or copy and paste this link into your browser:</p>
-                <p><code>${resetLink}</code></p>
+                <p><code>${safeHtmlEscape(resetLink)}</code></p>
                 <p style="color: #666; font-size: 12px;">This link will expire in 24 hours.</p>
                 <p style="color: #666; font-size: 12px;">If you didn't request this, you can safely ignore this email.</p>
               </div>

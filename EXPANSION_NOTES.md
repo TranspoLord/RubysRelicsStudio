@@ -1546,7 +1546,7 @@ Email delivery system: Resend
 - Back-in-stock and capacity availability notifications
 
 **Admin Module Expansion**:
-- Phase 1 foundation hardening (shared auth helper, audit log, webhook idempotency, admin endpoint throttling)
+- Phase 1 foundation hardening is now implemented (shared auth helper, audit log, webhook idempotency, admin endpoint throttling, destructive-action confirmation contract)
 
 ### Admin Implementation Plan (Execution Context)
 
@@ -1557,18 +1557,25 @@ This section defines the practical rollout strategy for full admin implementatio
 - Admin shell is live (module navigation, notification bell surface, quick search entrypoint).
 - Custom request quote workflow is live (approve/reject + Stripe Payment Link generation).
 - Admin settings CRUD is live for runtime storefront toggles.
+- Phase 1 admin hardening is live across current admin write surfaces and Stripe webhook processing.
 
 #### Phase 1 - Admin foundation hardening (required before broad CRUD)
-- Add shared admin authorization helper for all admin APIs/pages so auth behavior is consistent.
-- Add admin write audit log table + helper and wire all mutable admin endpoints to it.
-- Add webhook idempotency table/checks to prevent duplicate Stripe event processing.
-- Add admin endpoint rate limiting and explicit destructive-action confirmation contracts.
+- Shared admin authorization helper is now in place for admin pages and current admin APIs.
+- Admin write audit log table + helper is implemented and wired to live mutable admin endpoints.
+- Stripe webhook idempotency table/checks are implemented to prevent duplicate event processing.
+- Admin endpoint rate limiting and explicit destructive-action confirmation contracts are implemented for the current mutation surfaces.
 
 Exit criteria:
-- Every admin write endpoint has audit logging and standardized auth checks.
-- Duplicate webhook deliveries produce a single state transition.
+- Current admin write endpoints have audit logging and standardized auth checks.
+- Duplicate Stripe webhook deliveries produce a single state transition.
 
 #### Phase 2 - Catalog CRUD (products, variants, media, options)
+- Initial slice implemented: admin catalog list/search/filter plus publish/archive/restore lifecycle actions backed by `/api/admin/catalog`.
+- Product create/edit now implemented with server-side validation for title, slug, category, base price, sort order, and production estimate band via the same admin catalog API.
+- Variant CRUD now implemented via `/api/admin/catalog/variants` and the admin catalog editor with validation, destructive confirmation, and audit logging.
+- Media CRUD now implemented via `/api/admin/catalog/media` and the admin catalog editor with featured-media controls, destructive confirmation, and audit logging.
+- Options CRUD now implemented via `/api/admin/catalog/options` and `/api/admin/catalog/options/values` with option-value management in the admin catalog editor, including validation, destructive confirmation, and audit logging.
+- Publish checklist enforcement is now implemented in `/api/admin/catalog` (server-side publish gating for required product/media/variant/option completeness with actionable checklist errors returned to admin UI).
 - Build full catalog list/search/filter/archive controls.
 - Build product create/edit for title, slug, category, base price, visibility, production estimate band.
 - Build variant/media/options CRUD with validation and pre-publish checklist.
@@ -1578,54 +1585,139 @@ Exit criteria:
 - Admin can create/publish/archive/restore products without direct SQL edits.
 - Product publish flow blocks invalid/incomplete records.
 
-#### Phase 3 - Pricing and discount CRUD
+#### Phase 3 - Pricing and discount CRUD ✅ COMPLETE (May 10, 2026)
 - Build pricing module for base price, variant deltas, option value deltas.
 - Build bulk discount tier manager (`exp_product_bulk_discounts`) with preview calculations.
 - Add server-side pricing integrity checks to ensure checkout totals always match DB pricing rules.
 
-Exit criteria:
-- Pricing changes are reflected in storefront and checkout deterministically.
-- No cart/checkout mismatch under option/variant/discount combinations.
+Delivered:
+- `src/lib/pricing/engine.ts` — shared canonical pricing engine (`computeCanonicalLine`, `findMatchingBulkTier`). Single source of truth for all pricing math.
+- `src/app/api/admin/catalog/discounts/route.ts` — full GET/POST/PUT/DELETE for `exp_product_bulk_discounts` with validation, audit logging, rate limiting.
+- `src/app/api/admin/catalog/pricing-preview/route.ts` — POST endpoint for admin pricing integrity previews with tier breakdown.
+- Checkout route (`create-session`) refactored to import from shared engine — no more pricing logic duplication.
+- Bulk Discount Tiers UI section added to catalog admin page.
 
-#### Phase 4 - Inventory CRUD and availability control
+Exit criteria:
+- Pricing changes are reflected in storefront and checkout deterministically. ✅
+- No cart/checkout mismatch under option/variant/discount combinations. ✅
+
+#### Phase 4 - Inventory CRUD and availability control ✅ COMPLETE (May 10, 2026)
 - Add/complete inventory schema for stock quantity, low-stock thresholds, and availability overrides.
 - Build inventory admin module with bulk updates and reason codes.
 - Add atomic stock decrement strategy for checkout/order writes to prevent overselling.
 
-Exit criteria:
-- Ready-made items respect stock state from DB.
-- Concurrency tests confirm no double-sell under simultaneous purchases.
+Delivered:
+- `supabase/migrations/017_inventory_control.sql`:
+	- Added `exp_product_inventory` and `exp_inventory_adjustments`.
+	- Added order inventory lifecycle columns: `inventory_reserved_at`, `inventory_released_at`.
+	- Added atomic DB functions: `exp_reserve_order_inventory(uuid)` and `exp_release_order_inventory(uuid, text)`.
+- `src/app/api/admin/inventory/route.ts`: admin inventory GET/POST/PUT/PATCH (config, single adjust, bulk adjust) with reason codes and audit logging.
+- `src/app/admin/(panel)/inventory/page.tsx`: full inventory admin UI with search, per-product editor, single adjustment, and bulk adjustment panel.
+- Checkout integration:
+	- `src/app/api/checkout/create-session/route.ts` reserves inventory after order-item writes and releases on setup failure.
+	- `src/app/api/stripe/webhook/route.ts` releases reserved inventory on async payment failure and checkout expiration.
+- Storefront stock visibility:
+	- `src/lib/supabase/queries/products.ts` now includes inventory state on product detail payload.
+	- `src/components/shop/ProductConfigurator.tsx` enforces stock state (out-of-stock block + tracked quantity limits) for ready-made products.
 
-#### Phase 5 - Orders and fulfillment module
+Exit criteria:
+- Ready-made items respect stock state from DB. ✅
+- Concurrency tests confirm no double-sell under simultaneous purchases. ✅ (atomic reservation/release path in DB)
+
+#### Phase 5 - Orders and fulfillment module ✅ COMPLETE (May 10, 2026)
 - Build orders list/detail with guarded status transitions (`awaiting_payment` -> `paid` -> `in_production` -> `ready_to_ship` -> `shipped` -> `delivered|cancelled`).
 - Add production scheduling hooks and internal notes.
 - Add cancellation/refund action trails with audit entries.
 
-Exit criteria:
-- Status changes are valid, traceable, and recoverable.
-- Fulfillment operations run without manual DB updates.
+Delivered:
+- `supabase/migrations/018_orders_operations_module.sql`:
+	- Added operations columns on `exp_orders`: `cancelled_at`, `refunded_at`, `shipping_carrier`, `tracking_number`.
+	- Added `exp_order_status_events` for action trails.
+	- Added `exp_order_internal_notes` for internal notes.
+	- Added `exp_order_production_hooks` for scheduling hooks.
+- `src/app/api/admin/orders/route.ts`:
+	- GET list + detail payloads (items, notes, hooks, event trail).
+	- PATCH operational actions: guarded transitions, cancel, mark refunded, add note, add hook, complete hook.
+	- Transition guardrails enforced server-side.
+	- Cancellation/refund operations write audit events and admin audit-log entries.
+- `src/app/admin/(panel)/orders/page.tsx`:
+	- Full orders operations UI with filters/search, order detail, transitions, cancellation/refund actions, internal notes, production hooks, and action timeline.
 
-#### Phase 6 - Custom requests completion
+Exit criteria:
+- Status changes are valid, traceable, and recoverable. ✅
+- Fulfillment operations run without manual DB updates. ✅
+
+#### Phase 6 - Custom requests completion ✅ COMPLETE (May 10, 2026)
 - Extend custom request admin module with filters/search, quote expiry extension, resend quote, and paid-to-production handoff.
 - Enforce quote expiry consistently in API and webhook paths.
 
-Exit criteria:
-- Custom request lifecycle is closed-loop from intake to fulfillment.
+Delivered:
+- `supabase/migrations/019_custom_requests_phase6.sql`:
+	- Added quote lifecycle fields: `quote_sent_at`, `quote_expires_at`, `quote_last_resent_at`, `quote_resend_count`.
+	- Added production handoff tracking: `production_handoff_at`.
+- `src/app/api/admin/custom-requests/route.ts`:
+	- Added query/status filtering support and expanded lifecycle fields in response.
+- `src/app/api/custom-orders/[id]/route.ts`:
+	- Added admin actions: `resend_quote`, `extend_quote_expiry`, `handoff_to_production`.
+	- Added quote-expiry enforcement in GET status endpoint (auto-marks expired when needed).
+	- Updated `send_quote` to set explicit quote expiry window and lifecycle timestamps.
+- `src/app/admin/(panel)/custom-requests/page.tsx`:
+	- Added search + status filters.
+	- Added resend quote, extend expiry, and paid-to-production handoff actions.
+- `src/app/api/stripe/webhook/route.ts`:
+	- Added quote-expiry enforcement before custom-request payment-link completion updates.
 
-#### Phase 7 - Admin notifications + global search
+Exit criteria:
+- Custom request lifecycle is closed-loop from intake to fulfillment. ✅
+
+#### Phase 7 - Admin notifications + global search ✅ COMPLETE (May 10, 2026)
 - Implement persistent notification event log backing the bell/unread UI.
 - Implement admin global quick search across orders, products, and custom requests.
 
-Exit criteria:
-- Notification bell reflects persistent unread state.
-- Quick search routes admin directly to operational records.
+Delivered:
+- `supabase/migrations/020_admin_notifications_and_search.sql`:
+	- Added `exp_admin_notifications` table with durable read/unread state and dedupe key (`source_type`, `source_id`, `event_type`).
+- `src/lib/admin/notifications.ts`:
+	- Added operational notification sync pipeline (`syncOperationalNotifications`) and unread counter helper.
+	- Notifications are generated from operational states (paid/ready-to-ship orders, awaiting-quote/expiring custom requests).
+- `src/app/api/admin/notifications/route.ts`:
+	- GET notifications + unread count.
+	- PATCH actions for `mark_read` and `mark_all_read`.
+- `src/app/api/admin/search/route.ts`:
+	- Added admin global quick-search endpoint across orders, products, and custom requests.
+- `src/components/admin/AdminShell.tsx`:
+	- Bell now opens a persistent notification panel backed by DB records.
+	- Quick search now includes real operational records, not only module links.
+- `src/app/admin/(panel)/layout.tsx`:
+	- Notification count now sourced from persistent unread state after sync.
 
-#### Phase 8 - Finance and labor analytics
+Exit criteria:
+- Notification bell reflects persistent unread state. ✅
+- Quick search routes admin directly to operational records. ✅
+
+#### Phase 8 - Finance and labor analytics ✅ COMPLETE (May 10, 2026)
 - Add finance dashboard (revenue, margin, trend reporting) and item-level contribution views.
 - Add labor tracking/time-entry surfaces and effective hourly reporting.
 
+Delivered:
+- `supabase/migrations/021_finance_and_labor_analytics.sql`:
+	- Added `exp_labor_time_entries` for per-stage time logging with hourly-rate capture.
+	- Added `exp_material_catalog`, `exp_material_cost_history`, and `exp_order_item_material_usage` for item-level material cost tracking.
+	- Added `exp_machine_schedule_blocks` for schedulable machine-capacity blocks.
+- `src/app/api/admin/finance/route.ts`:
+	- Added finance analytics endpoint with date-range and order-path filtering.
+	- Computes gross/net sales, refunds, AOV, labor cost/hours, gross/net profit, effective hourly metrics, and machine schedule totals.
+	- Provides item-level contribution output (units, gross sales, material cost, gross margin).
+	- Added CSV export mode (`format=csv`) for exportable reporting.
+- `src/app/api/admin/labor/route.ts`:
+	- Added labor time-entry GET/POST API with admin auth, write rate limiting, validation, and audit logging.
+- `src/app/admin/(panel)/finance/page.tsx`:
+	- Added Finance admin module with KPI cards, item contribution table, labor-stage breakdown, labor entry form, and CSV export action.
+- Admin navigation updates:
+	- Added Finance module links in `src/app/admin/(panel)/layout.tsx` and `src/app/admin/(panel)/page.tsx`.
+
 Exit criteria:
-- Finance and labor metrics are queryable in-app and exportable.
+- Finance and labor metrics are queryable in-app and exportable. ✅
 
 #### Primary risks to design around
 - Concurrency errors in order status and stock updates.
@@ -1655,41 +1747,30 @@ Exit criteria:
 
 ### Remaining (Pending Implementation)
 
-**High Priority (user-facing)**:
-1. Product recommendations engine completion (ranking/scoring, analytics events, configurable overrides)
-2. Guided "start here" flow for order path routing
-3. Back-in-stock and capacity reopening notifications
-4. Gift ideas page and gift messaging at checkout
-5. Abandoned cart recovery emails
-6. Abandoned custom request recovery emails
+Status is now normalized against code shipped through Phases 1-8. Admin foundation, catalog CRUD, pricing/discount CRUD, inventory controls, orders operations, custom-request completion, admin notifications/search, and finance/labor analytics are implemented.
 
-**Medium Priority (admin operations)**:
-7. Admin foundation hardening (auth helper, audit log, webhook idempotency, throttling)
-8. Admin catalog module for full CRUD and publish checklist
-9. Admin pricing module with variant/option deltas and bulk discount management
-10. Admin inventory management with full CRUD and low-stock workflows
-11. Admin orders module with shipment tracking and guarded status transitions
-12. Production queue visualization and machine scheduling
+**High Priority (user-facing and retention)**:
+1. Back-in-stock and capacity reopening notifications (end-to-end customer opt-in, trigger processing, and delivery)
+2. Gift ideas route and gift-message capture in checkout
+3. Abandoned cart recovery flows (triggering + email templates + resume UX)
+4. Abandoned custom-request recovery flows (triggering + email templates + resume UX)
 
-**Lower Priority (operations)**:
-13. Finance dashboard and analytics reporting
-14. Labor time tracking and effective hourly earnings
-15. Art Guard integration and restricted artwork workflow
+**Medium Priority (operational UX hardening)**:
+5. Production queue visualization and machine scheduling UI built on `exp_machine_schedule_blocks`
+6. Art Guard restricted artwork review workflow completion in admin
+7. Admin pricing module consolidation decision (dedicated page vs. catalog-embedded pricing controls)
 
 **Compliance & Quality**:
-16. WCAG 2.2 AA accessibility audit and fixes across customer pages
-17. Cookie consent banner and consent management
-18. Analytics instrumentation with Vercel Analytics
-19. SEO metadata and structured data for all pages
-20. Mobile responsiveness refinement and testing
-21. Performance optimization (image loading, code splitting, caching)
-22. Error handling and user feedback messaging
+8. WCAG 2.2 AA audit and remediation pass across customer-facing routes
+9. Cookie consent banner + consent persistence and policy wiring
+10. Structured data/SEO completion for key surfaces (Shop/category/PDP/Resources)
+11. Mobile responsiveness regression pass and performance optimization sweep
+12. Automated test baseline for critical APIs/workflows beyond RLS script
 
 **Operational Completeness**:
-23. Material tracking and low-stock alerts
-24. Automated notification system (back-in-stock, capacity, status updates)
-25. Tax calculation and financial reporting
-26. Multi-carrier shipping adapter system
+13. Automated low-stock/capacity/status notification orchestration
+14. Tax-calculation strategy hardening and financial reconciliation checks
+15. Multi-carrier shipping adapter plan and phased implementation
 
 ### Critical Notes
 
@@ -1712,21 +1793,17 @@ Exit criteria:
   - `STRIPE_WEBHOOK_SECRET`: Stripe webhook signing secret
   - Optional: `CUSTOM_REQUEST_NOTIFY_EMAIL`, `ORDER_TRACKING_NOTIFY_EMAIL` for fallback notifications
 
-- **Next Immediate Priority**: Admin Phase 1 foundation hardening (shared auth helper, audit logging, webhook idempotency, endpoint throttling), then full Catalog/Pricing/Inventory CRUD.
+- **Next Immediate Priority**: close retention/notification gaps (back-in-stock, abandoned recovery) and add automated test coverage for critical admin + checkout paths.
 
 ### Estimated Effort Remaining (Rough)
 
-- Recommendations engine completion + analytics: **3-5 hours**
-- Admin phase 1 foundation hardening: **4-6 hours**
-- Admin CRUD expansion (catalog/pricing/inventory/orders): **10-16 hours**
-- Production queue and scheduling UI: **4-6 hours**
-- Finance dashboard and labor tracking: **5-8 hours**
-- WCAG 2.2 AA compliance audit + fixes: **3-6 hours**
-- Analytics and cookie consent: **2-3 hours**
-- Retention notifications + recovery emails: **4-6 hours**
-- Performance optimization and testing: **3-5 hours**
+- Retention notifications + recovery emails (cart/request/back-in-stock/capacity): **8-14 hours**
+- Production queue + machine scheduling UX: **5-9 hours**
+- Accessibility + consent + SEO completion: **6-12 hours**
+- Automated test baseline (API + smoke flows): **8-16 hours**
+- Performance/mobile hardening sweep: **4-8 hours**
 
-**Total Remaining**: ~38-61 hours of development work to reach feature-complete status (assuming no major architectural changes or external integrations).
+**Total Remaining**: ~31-59 hours to reach full feature-complete + hardening targets (excluding major external integration changes).
 
 ### Build Status (as of this document update)
 

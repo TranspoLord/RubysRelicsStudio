@@ -11,7 +11,8 @@ export interface ResourcePageContent {
   sections: ResourceSection[]
 }
 
-export const RESOURCE_PAGES: Record<string, ResourcePageContent> = {
+export function getResourcePages(supportEmail: string): Record<string, ResourcePageContent> {
+  return {
   terms: {
     slug: 'terms',
     title: 'Terms of Service',
@@ -65,7 +66,7 @@ export const RESOURCE_PAGES: Record<string, ResourcePageContent> = {
         heading: 'Retention and Contact',
         body: [
           'Order and request records may be retained for operations, support, legal compliance, and financial reporting.',
-          'Questions about privacy handling can be sent to orders@rubysrelics.com.',
+          `Questions about privacy handling can be sent to ${supportEmail}.`,
         ],
       },
     ],
@@ -122,7 +123,7 @@ export const RESOURCE_PAGES: Record<string, ResourcePageContent> = {
       {
         heading: 'How to Start a Claim',
         body: [
-          'Contact orders@rubysrelics.com with order ID, issue description, and clear photos when relevant.',
+          `Contact ${supportEmail} with order ID, issue description, and clear photos when relevant.`,
           'Claims are reviewed in intake order; resolution timelines can vary based on queue and complexity.',
         ],
       },
@@ -152,7 +153,7 @@ export const RESOURCE_PAGES: Record<string, ResourcePageContent> = {
         heading: 'Delays and Exceptions',
         body: [
           'Severe weather, carrier network events, and address issues may cause transit delays outside studio control.',
-          'If there is a fulfillment issue, contact orders@rubysrelics.com with order details for support.',
+          `If there is a fulfillment issue, contact ${supportEmail} with order details for support.`,
         ],
       },
     ],
@@ -302,6 +303,7 @@ export const RESOURCE_PAGES: Record<string, ResourcePageContent> = {
       },
     ],
   },
+  }
 }
 
 export const RESOURCE_INDEX = [
@@ -316,5 +318,5 @@ export const RESOURCE_INDEX = [
   'safety',
   'faq',
 ]
-  .map((slug) => RESOURCE_PAGES[slug])
+  .map((slug) => getResourcePages('support@example.com')[slug])
   .filter((item): item is ResourcePageContent => Boolean(item))

@@ -1,8 +1,12 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
+import MenuItem from '@mui/material/MenuItem'
+import Select from '@mui/material/Select'
+import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
@@ -12,13 +16,31 @@ import { brandTokens } from '@/theme/theme'
 interface CustomRequestRow {
   id: string
   status: string
+  customer_name: string
   customer_email: string
   item_type: string
   quantity: number
   quote_amount: number | null
   stripe_payment_link_url: string | null
+  quote_sent_at: string | null
+  quote_expires_at: string | null
+  quote_last_resent_at: string | null
+  quote_resend_count: number
+  production_handoff_at: string | null
   created_at: string
+  updated_at: string
 }
+
+type StatusFilter =
+  | 'all'
+  | 'awaiting_quote'
+  | 'quote_sent'
+  | 'paid'
+  | 'expired'
+  | 'cancelled'
+  | 'restricted_pending_review'
+  | 'restricted_rejected'
+  | 'restricted_approved'
 
 function prettyStatus(status: string) {
   return status
@@ -31,15 +53,24 @@ export default function AdminCustomRequestsPage() {
   const [rows, setRows] = useState<CustomRequestRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [adminKey, setAdminKey] = useState('')
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [quoteDrafts, setQuoteDrafts] = useState<Record<string, string>>({})
+  const [extendDrafts, setExtendDrafts] = useState<Record<string, string>>({})
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({})
+  const [queryDraft, setQueryDraft] = useState('')
+  const [query, setQuery] = useState('')
+  const [status, setStatus] = useState<StatusFilter>('all')
   const [submittingId, setSubmittingId] = useState<string | null>(null)
 
-  async function loadRows() {
+  async function loadRows(nextQuery = query, nextStatus = status) {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch('/api/admin/custom-requests', { cache: 'no-store' })
+      const params = new URLSearchParams()
+      if (nextQuery.trim().length > 0) params.set('q', nextQuery.trim())
+      if (nextStatus !== 'all') params.set('status', nextStatus)
+
+      const response = await fetch(`/api/admin/custom-requests?${params.toString()}`, { cache: 'no-store' })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
         throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to load custom requests.')
@@ -53,17 +84,13 @@ export default function AdminCustomRequestsPage() {
   }
 
   useEffect(() => {
-    void loadRows()
-  }, [])
+    void loadRows(query, status)
+  }, [query, status])
 
   const pending = useMemo(() => rows.filter((row) => row.status === 'awaiting_quote'), [rows])
+  const quoteSent = useMemo(() => rows.filter((row) => row.status === 'quote_sent'), [rows])
 
   async function sendQuote(row: CustomRequestRow) {
-    if (!adminKey.trim()) {
-      setError('Enter admin key before quote actions.')
-      return
-    }
-
     const quoteAmountRaw = quoteDrafts[row.id]
     const quoteAmount = Number(quoteAmountRaw)
     if (!Number.isFinite(quoteAmount) || quoteAmount <= 0) {
@@ -73,17 +100,18 @@ export default function AdminCustomRequestsPage() {
 
     setSubmittingId(row.id)
     setError(null)
+  setSuccessMessage(null)
 
     try {
       const response = await fetch(`/api/custom-orders/${row.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-key': adminKey,
         },
         body: JSON.stringify({
           action: 'send_quote',
           quoteAmount,
+          note: noteDrafts[row.id] ?? '',
         }),
       })
 
@@ -92,6 +120,7 @@ export default function AdminCustomRequestsPage() {
         throw new Error(typeof payload?.error === 'string' ? payload.error : 'Could not send quote.')
       }
 
+      setSuccessMessage('Quote sent successfully.')
       await loadRows()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not send quote.')
@@ -100,12 +129,106 @@ export default function AdminCustomRequestsPage() {
     }
   }
 
-  async function rejectRequest(row: CustomRequestRow) {
-    if (!adminKey.trim()) {
-      setError('Enter admin key before status actions.')
+  async function resendQuote(row: CustomRequestRow) {
+    setSubmittingId(row.id)
+    setError(null)
+    setSuccessMessage(null)
+
+    try {
+      const response = await fetch(`/api/custom-orders/${row.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'resend_quote',
+          note: noteDrafts[row.id] ?? '',
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Could not resend quote.')
+      }
+
+      setSuccessMessage('Quote email resent.')
+      await loadRows()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not resend quote.')
+    } finally {
+      setSubmittingId(null)
+    }
+  }
+
+  async function extendQuoteExpiry(row: CustomRequestRow) {
+    const extendDays = Number(extendDrafts[row.id] ?? '3')
+    if (!Number.isInteger(extendDays) || extendDays < 1 || extendDays > 30) {
+      setError('Extend days must be an integer between 1 and 30.')
       return
     }
 
+    setSubmittingId(row.id)
+    setError(null)
+    setSuccessMessage(null)
+
+    try {
+      const response = await fetch(`/api/custom-orders/${row.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'extend_quote_expiry',
+          extendDays,
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Could not extend quote expiry.')
+      }
+
+      setSuccessMessage('Quote expiry extended.')
+      await loadRows()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not extend quote expiry.')
+    } finally {
+      setSubmittingId(null)
+    }
+  }
+
+  async function handoffToProduction(row: CustomRequestRow) {
+    setSubmittingId(row.id)
+    setError(null)
+    setSuccessMessage(null)
+
+    try {
+      const response = await fetch(`/api/custom-orders/${row.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'handoff_to_production',
+          note: noteDrafts[row.id] ?? '',
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Could not hand off request.')
+      }
+
+      setSuccessMessage('Paid request handed off to production.')
+      await loadRows()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not hand off request.')
+    } finally {
+      setSubmittingId(null)
+    }
+  }
+
+  async function rejectRequest(row: CustomRequestRow) {
     const proceed = window.confirm(
       `Reject request ${row.id.slice(0, 8)}? This is a destructive status change.`
     )
@@ -113,16 +236,17 @@ export default function AdminCustomRequestsPage() {
 
     setSubmittingId(row.id)
     setError(null)
+    setSuccessMessage(null)
 
     try {
       const response = await fetch(`/api/custom-orders/${row.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-key': adminKey,
         },
         body: JSON.stringify({
           action: 'mark_rejected',
+          confirmAction: 'mark_rejected',
           note: 'Rejected by admin review.',
         }),
       })
@@ -132,6 +256,7 @@ export default function AdminCustomRequestsPage() {
         throw new Error(typeof payload?.error === 'string' ? payload.error : 'Could not reject request.')
       }
 
+      setSuccessMessage('Request rejected.')
       await loadRows()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not reject request.')
@@ -146,25 +271,54 @@ export default function AdminCustomRequestsPage() {
         Custom Requests
       </Typography>
       <Typography sx={{ color: alpha(brandTokens.parchment, 0.62) }}>
-        Review intake requests, issue Stripe Payment Link quotes, or reject with confirmation.
+        Review intake requests with search/filters, send and resend quotes, extend expiry, and hand off paid requests to production.
       </Typography>
 
-      <TextField
-        label="Admin key for actions"
-        type="password"
-        value={adminKey}
-        onChange={(e) => setAdminKey(e.target.value)}
-        size="small"
-      />
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
+        <TextField
+          fullWidth
+          size="small"
+          label="Search id, email, name, or item"
+          value={queryDraft}
+          onChange={(event) => setQueryDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') setQuery(queryDraft)
+          }}
+        />
+        <Select
+          size="small"
+          value={status}
+          onChange={(event) => setStatus(event.target.value as StatusFilter)}
+          sx={{ minWidth: 220 }}
+        >
+          <MenuItem value="all">All statuses</MenuItem>
+          <MenuItem value="awaiting_quote">awaiting_quote</MenuItem>
+          <MenuItem value="quote_sent">quote_sent</MenuItem>
+          <MenuItem value="paid">paid</MenuItem>
+          <MenuItem value="expired">expired</MenuItem>
+          <MenuItem value="cancelled">cancelled</MenuItem>
+          <MenuItem value="restricted_pending_review">restricted_pending_review</MenuItem>
+          <MenuItem value="restricted_rejected">restricted_rejected</MenuItem>
+          <MenuItem value="restricted_approved">restricted_approved</MenuItem>
+        </Select>
+        <Button variant="outlined" onClick={() => setQuery(queryDraft)}>Search</Button>
+      </Stack>
 
-      {error && (
-        <Typography sx={{ color: '#f3aaaa', fontSize: '0.82rem' }}>{error}</Typography>
-      )}
+      {error && <Alert severity="error">{error}</Alert>}
+      {successMessage && <Alert severity="success">{successMessage}</Alert>}
 
       <Box sx={{ border: `1px solid ${alpha(brandTokens.parchment, 0.1)}`, borderRadius: 1.2, p: 1.1, backgroundColor: alpha(brandTokens.bgSurface, 0.42) }}>
-        <Typography sx={{ fontSize: '0.8rem', color: alpha(brandTokens.parchment, 0.66) }}>
-          Awaiting quote: {pending.length}
-        </Typography>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+          <Typography sx={{ fontSize: '0.8rem', color: alpha(brandTokens.parchment, 0.66) }}>
+            Awaiting quote: {pending.length}
+          </Typography>
+          <Typography sx={{ fontSize: '0.8rem', color: alpha(brandTokens.parchment, 0.66) }}>
+            Quote sent: {quoteSent.length}
+          </Typography>
+          <Typography sx={{ fontSize: '0.8rem', color: alpha(brandTokens.parchment, 0.66) }}>
+            Loaded rows: {rows.length}
+          </Typography>
+        </Stack>
       </Box>
 
       {loading ? (
@@ -187,11 +341,21 @@ export default function AdminCustomRequestsPage() {
                 {row.id}
               </Typography>
               <Typography sx={{ color: alpha(brandTokens.parchment, 0.65), fontSize: '0.77rem' }}>
-                {row.customer_email} · {row.item_type} · Qty {row.quantity}
+                {row.customer_name} · {row.customer_email} · {row.item_type} · Qty {row.quantity}
               </Typography>
               <Typography sx={{ color: alpha(brandTokens.parchment, 0.58), fontSize: '0.75rem', mt: 0.2 }}>
                 Status: {prettyStatus(row.status)}
               </Typography>
+              {row.quote_expires_at && (
+                <Typography sx={{ color: alpha(brandTokens.parchment, 0.54), fontSize: '0.73rem' }}>
+                  Quote expires: {new Date(row.quote_expires_at).toLocaleString()} · Resent {row.quote_resend_count}x
+                </Typography>
+              )}
+              {row.production_handoff_at && (
+                <Typography sx={{ color: alpha(brandTokens.forgeGold, 0.86), fontSize: '0.73rem' }}>
+                  Handed to production: {new Date(row.production_handoff_at).toLocaleString()}
+                </Typography>
+              )}
 
               {row.stripe_payment_link_url && (
                 <Button
@@ -220,6 +384,31 @@ export default function AdminCustomRequestsPage() {
                   }
                   sx={{ width: 140 }}
                 />
+                <TextField
+                  size="small"
+                  label="Extend days"
+                  type="number"
+                  value={extendDrafts[row.id] ?? '3'}
+                  onChange={(e) =>
+                    setExtendDrafts((prev) => ({
+                      ...prev,
+                      [row.id]: e.target.value,
+                    }))
+                  }
+                  sx={{ width: 130 }}
+                />
+                <TextField
+                  size="small"
+                  label="Admin note"
+                  value={noteDrafts[row.id] ?? ''}
+                  onChange={(e) =>
+                    setNoteDrafts((prev) => ({
+                      ...prev,
+                      [row.id]: e.target.value,
+                    }))
+                  }
+                  sx={{ minWidth: 220 }}
+                />
                 <Button
                   size="small"
                   variant="contained"
@@ -227,6 +416,30 @@ export default function AdminCustomRequestsPage() {
                   onClick={() => void sendQuote(row)}
                 >
                   Send Quote
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={submittingId === row.id || row.status !== 'quote_sent'}
+                  onClick={() => void resendQuote(row)}
+                >
+                  Resend Quote
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={submittingId === row.id || row.status !== 'quote_sent'}
+                  onClick={() => void extendQuoteExpiry(row)}
+                >
+                  Extend Expiry
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={submittingId === row.id || row.status !== 'paid'}
+                  onClick={() => void handoffToProduction(row)}
+                >
+                  Handoff to Production
                 </Button>
                 <Button
                   size="small"

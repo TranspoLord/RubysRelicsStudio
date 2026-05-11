@@ -8,7 +8,8 @@ import { alpha } from '@mui/material/styles'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { Breadcrumb } from '@/components/layout/Breadcrumb'
-import { RESOURCE_PAGES } from '@/app/resources/content'
+import { getResourcePages } from '@/app/resources/content'
+import { getContactSettings } from '@/lib/storefront-settings'
 import { brandTokens } from '@/theme/theme'
 
 interface Props {
@@ -16,12 +17,12 @@ interface Props {
 }
 
 export async function generateStaticParams() {
-  return Object.keys(RESOURCE_PAGES).map((slug) => ({ slug }))
+  return Object.keys(getResourcePages('support@example.com')).map((slug) => ({ slug }))
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const routeParams = await params
-  const page = RESOURCE_PAGES[routeParams.slug]
+  const page = getResourcePages('support@example.com')[routeParams.slug]
 
   if (!page) {
     return {
@@ -38,7 +39,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function ResourceDocumentPage({ params }: Props) {
   const routeParams = await params
-  const page = RESOURCE_PAGES[routeParams.slug]
+  const contact = await getContactSettings()
+  const page = getResourcePages(contact.support_email)[routeParams.slug]
 
   if (!page) notFound()
 
@@ -115,7 +117,7 @@ export default async function ResourceDocumentPage({ params }: Props) {
                 }}
               >
                 <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.8) }}>
-                  Questions about this policy can be sent to orders@rubysrelics.com.
+                  Questions about this policy can be sent to {contact.support_email}.
                 </Typography>
               </Box>
             </Box>

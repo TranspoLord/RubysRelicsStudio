@@ -27,45 +27,11 @@ interface FeaturedCollectionsProps {
   collections?: FeaturedCollectionItem[]
 }
 
-// TODO: Replace with Supabase query to exp_featured_collections.
-const STATIC_COLLECTIONS: FeaturedCollectionItem[] = [
-  {
-    id: 'tavern-collection',
-    title: 'The Tavern Collection',
-    tagline: 'For feasts worthy of legend.',
-    description: 'Engraved tumblers, ceramic mugs, and coordinating coasters — the complete drinkware set for any adventurer\'s table.',
-    slug: 'collections/tavern-collection',
-    emoji: '🍺',
-    tag_label: 'Best Sellers',
-    gradient: `linear-gradient(135deg, ${alpha(brandTokens.forgeGoldDark, 0.25)} 0%, ${alpha(brandTokens.copper, 0.15)} 60%, ${alpha(brandTokens.bgCard, 0.8)} 100%)`,
-    border_color: alpha(brandTokens.forgeGold, 0.25),
-  },
-  {
-    id: 'adventurers-pack',
-    title: "Adventurer's Pack",
-    tagline: 'Gear for the road ahead.',
-    description: 'Laser-engraved leather patches, personalised tumblers, and acrylic keychains built for those who travel far and collect everything.',
-    slug: 'collections/adventurers-pack',
-    emoji: '🗡️',
-    tag_label: 'Popular',
-    gradient: `linear-gradient(135deg, ${alpha(brandTokens.rubyRed, 0.2)} 0%, ${alpha('#4A1500', 0.6)} 60%, ${alpha(brandTokens.bgCard, 0.8)} 100%)`,
-    border_color: alpha(brandTokens.rubyRed, 0.25),
-  },
-  {
-    id: 'forest-hearth-holiday',
-    title: 'Forest Hearth Holiday',
-    tagline: 'Gifts straight from the grove.',
-    description: 'Engraved wood ornaments, sublimated coaster sets, and personalised mugs perfect for seasonal gifting and winter celebrations.',
-    slug: 'collections/forest-hearth-holiday',
-    emoji: '🌲',
-    tag_label: 'Seasonal',
-    gradient: `linear-gradient(135deg, ${alpha('#0A2A10', 0.8)} 0%, ${alpha('#142A10', 0.6)} 60%, ${alpha(brandTokens.bgCard, 0.8)} 100%)`,
-    border_color: alpha('#4A8A3A', 0.3),
-  },
-]
-
 export function FeaturedCollections({ collections }: FeaturedCollectionsProps = {}) {
-  const items = collections && collections.length > 0 ? collections : STATIC_COLLECTIONS
+  const items = collections ?? []
+  if (items.length === 0) {
+    return null
+  }
   return (
     <Box
       component="section"

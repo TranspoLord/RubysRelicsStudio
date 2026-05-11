@@ -49,6 +49,24 @@ export const Analytics = {
     track('file_uploaded', { product_id: productId, file_type: fileType })
   },
 
+  recommendationsViewed(productId: string, recommendationIds: string[], algorithm: string) {
+    track('recommendations_viewed', {
+      product_id: productId,
+      recommendation_ids_csv: recommendationIds.join(','),
+      recommendation_count: recommendationIds.length,
+      algorithm,
+    })
+  },
+
+  recommendationClicked(productId: string, recommendedProductId: string, position: number, algorithm: string) {
+    track('recommendation_clicked', {
+      product_id: productId,
+      recommended_product_id: recommendedProductId,
+      position,
+      algorithm,
+    })
+  },
+
   addedToCart(productId: string, categoryKey: string, quantity: number) {
     track('added_to_cart', { product_id: productId, category_key: categoryKey, quantity })
   },
@@ -91,6 +109,10 @@ export const Analytics = {
   // ─── Start-here chooser ──────────────────────────────────────────────────────
   startHereStepCompleted(step: string, answer: string) {
     track('start_here_step', { step, answer })
+  },
+
+  startHereCompleted(path: OrderPathAnalytic) {
+    track('start_here_completed', { path })
   },
 
   // ─── Wishlist ────────────────────────────────────────────────────────────────

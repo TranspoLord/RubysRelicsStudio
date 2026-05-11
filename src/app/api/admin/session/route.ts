@@ -5,7 +5,8 @@ import {
   getAdminSessionMaxAgeSeconds,
   verifyAdminSessionToken,
 } from '@/lib/admin/session'
-import { timingSafeEqual } from 'node:crypto'
+import { extractAdminSessionToken, getExpectedAdminKey, hasValidAdminKey } from '@/lib/admin/auth'
+import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 
 interface SessionBody {
   key?: unknown
@@ -17,47 +18,50 @@ function asTrimmedString(value: unknown, maxLen: number): string {
 }
 
 export async function GET(request: Request) {
-  const expectedKey = process.env.ADMIN_LOGIN_KEY
-  if (!expectedKey) {
+  let expectedKey: string
+  try {
+    expectedKey = getExpectedAdminKey()
+  } catch {
     return NextResponse.json({ authenticated: false, error: 'ADMIN_LOGIN_KEY is missing.' }, { status: 500 })
   }
 
-  const cookieHeader = request.headers.get('cookie') ?? ''
-  const sessionToken = cookieHeader
-    .split(';')
-    .map((entry) => entry.trim())
-    .find((entry) => entry.startsWith(`${ADMIN_COOKIE_NAME}=`))
-    ?.split('=')
-    .slice(1)
-    .join('=')
+  const sessionToken = extractAdminSessionToken(request.headers.get('cookie'))
 
   const authenticated = verifyAdminSessionToken(sessionToken, expectedKey)
   return NextResponse.json({ authenticated }, { status: 200 })
 }
 
 export async function POST(request: Request) {
-  const expectedKey = process.env.ADMIN_LOGIN_KEY
-
-  if (!expectedKey) {
+  let expectedKey: string
+  try {
+    expectedKey = getExpectedAdminKey()
+  } catch {
     return NextResponse.json({ error: 'ADMIN_LOGIN_KEY is missing.' }, { status: 500 })
+  }
+
+  const ip = getClientIp(request)
+  const rl = rateLimit(`admin-login:${ip}`, 8, 15 * 60 * 1000)
+  if (!rl.allowed) {
+    return rateLimitResponse(rl.retryAfter ?? 60)
   }
 
   const body = (await request.json().catch(() => ({}))) as SessionBody
   const provided = asTrimmedString(body.key, 256)
 
-  if (!provided || provided.length !== expectedKey.length || !timingSafeEqual(Buffer.from(provided), Buffer.from(expectedKey))) {
+  if (!hasValidAdminKey(provided, expectedKey)) {
     return NextResponse.json({ error: 'Invalid admin key.' }, { status: 401 })
   }
 
   const response = NextResponse.json({ ok: true }, { status: 200 })
+  const maxAge = await getAdminSessionMaxAgeSeconds()
   response.cookies.set({
     name: ADMIN_COOKIE_NAME,
-    value: createAdminSessionToken(expectedKey),
+    value: createAdminSessionToken(expectedKey, maxAge),
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
-    maxAge: getAdminSessionMaxAgeSeconds(),
+    maxAge,
   })
 
   return response

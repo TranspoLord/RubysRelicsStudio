@@ -16,66 +16,11 @@ interface FreshFromTheForgeProps {
   items?: DbGalleryItem[]
 }
 
-// Static fallback — used until Supabase is connected
-const STATIC_ITEMS: DbGalleryItem[] = [
-  {
-    id: 'fg-001', title: 'Walnut Tumbler — Dragon Motif',
-    caption: 'Deep engraving on a powder-coated tumbler with a custom dragon scale pattern.',
-    category_key: 'engraved_drinkware', category_display_name: 'Engraved Drinkware', category_slug: 'engraved-drinkware',
-    media_url: '', media_alt: '', emoji: '🐉',
-    gradient: 'linear-gradient(135deg, #2A1800, #4A2E00)',
-    material_used: 'Powder Coated Tumbler', turnaround_band: '4 days',
-    moderation_status: 'published', visible: true, sort_order: 1,
-  },
-  {
-    id: 'fg-002', title: 'Leather Patch — Runic Lettering',
-    caption: 'Engraved leather patch with custom runic script and a reinforced border.',
-    category_key: 'leather_goods', category_display_name: 'Leather Goods', category_slug: 'leather-goods',
-    media_url: '', media_alt: '', emoji: '⚔️',
-    gradient: 'linear-gradient(135deg, #1A0E00, #3A2010)',
-    material_used: 'Leather', turnaround_band: '3 days',
-    moderation_status: 'published', visible: true, sort_order: 2,
-  },
-  {
-    id: 'fg-003', title: 'Sublimated Mug — Watercolor Mountains',
-    caption: 'Full-color sublimation transfer of a watercolor mountain landscape on ceramic.',
-    category_key: 'sublimated_gifts', category_display_name: 'Sublimated Gifts', category_slug: 'sublimated-gifts',
-    media_url: '', media_alt: '', emoji: '🏔️',
-    gradient: 'linear-gradient(135deg, #1A0A2A, #2E1A4A)',
-    material_used: 'Ceramic Mug Blank', turnaround_band: '3 days',
-    moderation_status: 'published', visible: true, sort_order: 3,
-  },
-  {
-    id: 'fg-004', title: 'Basswood Sign — "Here Be Cozy"',
-    caption: 'Cut and engraved basswood wall sign with a hand-styled lettering layout.',
-    category_key: 'signs_and_decor', category_display_name: 'Signs & Decor', category_slug: 'signs-and-decor',
-    media_url: '', media_alt: '', emoji: '🏡',
-    gradient: 'linear-gradient(135deg, #0A1A0A, #1A3A10)',
-    material_used: 'Basswood', turnaround_band: '5 days',
-    moderation_status: 'published', visible: true, sort_order: 4,
-  },
-  {
-    id: 'fg-005', title: 'Frosted Acrylic Lantern Panel',
-    caption: 'Custom-cut frosted acrylic panel with an intricate geometric pattern for a lantern frame.',
-    category_key: 'acrylic_pieces', category_display_name: 'Acrylic Pieces', category_slug: 'acrylic-pieces',
-    media_url: '', media_alt: '', emoji: '🔮',
-    gradient: 'linear-gradient(135deg, #001A2A, #003A4A)',
-    material_used: 'Frosted Acrylic', turnaround_band: '4 days',
-    moderation_status: 'published', visible: true, sort_order: 5,
-  },
-  {
-    id: 'fg-006', title: 'Sublimated Coaster Set',
-    caption: 'Set of four full-color sublimated coasters featuring a tarot card art series.',
-    category_key: 'sublimated_gifts', category_display_name: 'Sublimated Gifts', category_slug: 'sublimated-gifts',
-    media_url: '', media_alt: '', emoji: '🎴',
-    gradient: 'linear-gradient(135deg, #2A001A, #4A1030)',
-    material_used: 'Ceramic Mug Blank', turnaround_band: '3 days',
-    moderation_status: 'published', visible: true, sort_order: 6,
-  },
-]
-
 export function FreshFromTheForge({ items }: FreshFromTheForgeProps = {}) {
-  const forgeItems = items && items.length > 0 ? items : STATIC_ITEMS
+  const forgeItems = items ?? []
+  if (forgeItems.length === 0) {
+    return null
+  }
   return (
     <Box
       component="section"

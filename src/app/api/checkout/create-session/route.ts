@@ -2,12 +2,11 @@ import { NextResponse } from 'next/server'
 import { branch, getSupabaseAdmin } from '@/lib/supabase/client'
 import { getStripeServerClient } from '@/lib/stripe/server'
 import { randomBytes } from 'node:crypto'
-
-const DEFAULT_STRIPE_ENABLED = true
-const DEFAULT_DISABLED_MESSAGE =
-  'Checkout is temporarily unavailable. Please submit a custom request.'
-const DEFAULT_GUEST_TRACKING_ENABLED = true
-const DEFAULT_GUEST_TRACKING_NOTIFY_EMAIL = 'orders@rubysrelics.com'
+import {
+  getGuestOrderTrackingSettings,
+  getStripeCheckoutSettings,
+} from '@/lib/storefront-settings'
+import { computeCanonicalLine } from '@/lib/pricing/engine'
 
 interface CheckoutItemOption {
   key?: unknown
@@ -42,10 +41,6 @@ function asMoney(value: unknown): number {
   const n = Number(value)
   if (!Number.isFinite(n)) return 0
   return Math.max(0, n)
-}
-
-function toCents(value: number): number {
-  return Math.max(1, Math.round(value * 100))
 }
 
 function asNullableString(value: unknown, maxLen: number): string | null {
@@ -101,37 +96,8 @@ interface ProductContext {
   }>
 }
 
-interface CanonicalLine {
-  productId: string
-  name: string
-  variantLabel: string | null
-  selectedOptions: Record<string, string>
-  lineSubtotal: number
-  lineDiscount: number
-  lineTotal: number
-  quantity: number
-  unitAmountCents: number
-  description?: string
-}
-
 function createGuestTrackingToken(): string {
   return randomBytes(24).toString('base64url')
-}
-
-function findMatchingBulkTier(
-  tiers: ProductContext['bulk_discounts'],
-  quantity: number
-) {
-  const sorted = [...tiers]
-    .filter((t) => t.is_enabled)
-    .sort((a, b) => a.sort_order - b.sort_order)
-
-  return (
-    sorted.find((tier) => {
-      const max = tier.max_qty ?? Number.POSITIVE_INFINITY
-      return quantity >= tier.min_qty && quantity <= max
-    }) ?? null
-  )
 }
 
 function normalizeCheckoutItems(rawItems: CheckoutItemBody[]): NormalizedCheckoutItem[] {
@@ -211,155 +177,63 @@ async function loadProductContext(productId: string): Promise<ProductContext | n
   }
 }
 
-function buildCanonicalLine(
-  item: NormalizedCheckoutItem,
-  product: ProductContext
-): CanonicalLine | null {
-  if (!product.is_active || product.is_archived) {
-    return null
-  }
-
-  let unitPrice = Number(product.base_price)
-
-  const variant = item.variantId
-    ? product.variants.find((v) => v.id === item.variantId && v.is_enabled)
-    : null
-
-  if (item.variantId && !variant) {
-    return null
-  }
-
-  if (variant) {
-    unitPrice += Number(variant.price_delta)
-  }
-
-  const optionMap = new Map(product.options.map((opt) => [opt.option_key, opt]))
-  const selectedMap = new Map(item.options.map((opt) => [opt.key, opt.value]))
-
-  for (const opt of product.options) {
-    if (!opt.is_required) continue
-    const selected = selectedMap.get(opt.option_key)
-    if (!selected || selected.trim().length === 0) {
-      return null
-    }
-  }
-
-  const descriptionParts: string[] = []
-  if (variant?.label) descriptionParts.push(variant.label)
-  const selectedOptions: Record<string, string> = {}
-
-  for (const selected of item.options) {
-    const def = optionMap.get(selected.key)
-    if (!def) continue
-
-    const valueMeta = def.values.find((v) => v.value === selected.value)
-    if (valueMeta) {
-      unitPrice += Number(valueMeta.price_delta)
-      descriptionParts.push(`${def.label}: ${valueMeta.label}`)
-      selectedOptions[def.option_key] = valueMeta.value
-    } else {
-      descriptionParts.push(`${def.label}: ${selected.value}`)
-      selectedOptions[def.option_key] = selected.value
-    }
-  }
-
-  const subtotal = unitPrice * item.quantity
-  const bulkTier = findMatchingBulkTier(product.bulk_discounts, item.quantity)
-
-  let discount = 0
-  if (bulkTier) {
-    if (bulkTier.discount_type === 'percent') {
-      discount = subtotal * (Number(bulkTier.discount_value) / 100)
-    } else if (bulkTier.discount_type === 'fixed_amount') {
-      discount = Number(bulkTier.discount_value) * item.quantity
-    } else if (bulkTier.discount_type === 'unit_price') {
-      discount = Math.max(0, (unitPrice - Number(bulkTier.discount_value)) * item.quantity)
-    }
-  }
-
-  const total = Math.max(0, subtotal - discount)
-  const unitAmountCents = toCents(total / item.quantity)
-
-  const description =
-    descriptionParts.length > 0
-      ? descriptionParts.join(' | ').slice(0, 240)
-      : undefined
-
-  return {
-    productId: product.id,
-    name: product.title,
-    variantLabel: variant?.label ?? null,
-    selectedOptions,
-    lineSubtotal: subtotal,
-    lineDiscount: discount,
-    lineTotal: total,
-    quantity: item.quantity,
-    unitAmountCents,
-    description,
-  }
-}
-
 async function getStripeCheckoutConfig() {
   try {
-    const supabase = getSupabaseAdmin()
-
-    const { data, error } = await supabase
-      .from('exp_storefront_settings')
-      .select('setting_key, setting_value')
-      .in('setting_key', ['stripe_checkout_enabled', 'guest_order_tracking'])
-
-    if (error) {
-      console.error('[checkout:create-session:settings]', error.message)
-    }
-
-    const byKey = new Map(
-      (data ?? []).map((row) => [row.setting_key, row.setting_value as Record<string, unknown>])
-    )
-
-    const stripeConfig = byKey.get('stripe_checkout_enabled')
-    const trackingConfig = byKey.get('guest_order_tracking')
-
-    const stripeCheckoutEnabled =
-      typeof stripeConfig?.enabled === 'boolean'
-        ? stripeConfig.enabled
-        : DEFAULT_STRIPE_ENABLED
-
-    const stripeDisabledMessage =
-      typeof stripeConfig?.disabled_message === 'string'
-        ? stripeConfig.disabled_message
-        : DEFAULT_DISABLED_MESSAGE
-
-    const guestOrderTrackingEnabled =
-      typeof trackingConfig?.enabled === 'boolean'
-        ? trackingConfig.enabled
-        : DEFAULT_GUEST_TRACKING_ENABLED
-
-    const guestOrderTrackingNotifyEmail =
-      typeof trackingConfig?.notify_email === 'string' && trackingConfig.notify_email.trim().length > 3
-        ? trackingConfig.notify_email.trim()
-        : process.env.ORDER_TRACKING_NOTIFY_EMAIL ?? DEFAULT_GUEST_TRACKING_NOTIFY_EMAIL
+    const [stripeConfig, trackingConfig] = await Promise.all([
+      getStripeCheckoutSettings(),
+      getGuestOrderTrackingSettings(),
+    ])
 
     return {
-      stripeCheckoutEnabled,
-      stripeDisabledMessage,
-      guestOrderTrackingEnabled,
-      guestOrderTrackingNotifyEmail,
+      stripeCheckoutEnabled: stripeConfig.enabled,
+      stripeDisabledMessage: stripeConfig.disabled_message,
+      guestOrderTrackingEnabled: trackingConfig.enabled,
+      guestOrderTrackingNotifyEmail: trackingConfig.notify_email,
     }
   } catch (error) {
     console.error('[checkout:create-session:settings]', error)
+    const [stripeConfig, trackingConfig] = await Promise.all([
+      getStripeCheckoutSettings(),
+      getGuestOrderTrackingSettings(),
+    ])
     return {
-      stripeCheckoutEnabled: DEFAULT_STRIPE_ENABLED,
-      stripeDisabledMessage: DEFAULT_DISABLED_MESSAGE,
-      guestOrderTrackingEnabled: DEFAULT_GUEST_TRACKING_ENABLED,
-      guestOrderTrackingNotifyEmail:
-        process.env.ORDER_TRACKING_NOTIFY_EMAIL ?? DEFAULT_GUEST_TRACKING_NOTIFY_EMAIL,
+      stripeCheckoutEnabled: stripeConfig.enabled,
+      stripeDisabledMessage: stripeConfig.disabled_message,
+      guestOrderTrackingEnabled: trackingConfig.enabled,
+      guestOrderTrackingNotifyEmail: trackingConfig.notify_email,
     }
+  }
+}
+
+async function callInventoryFunction(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  fnName: 'exp_reserve_order_inventory' | 'exp_release_order_inventory',
+  args: Record<string, unknown>
+) {
+  const { data, error } = await supabase.rpc(fnName, args)
+  if (error) {
+    console.error(`[checkout:create-session:${fnName}]`, error.message)
+    return { ok: false, reason: 'rpc_error', payload: null as Record<string, unknown> | null }
+  }
+
+  const payload =
+    typeof data === 'object' && data !== null
+      ? (data as Record<string, unknown>)
+      : null
+
+  return {
+    ok: payload?.ok === true,
+    reason: typeof payload?.reason === 'string' ? payload.reason : 'unknown',
+    payload,
   }
 }
 
 export async function POST(request: Request) {
+  const supabase = getSupabaseAdmin()
+  let createdOrderId: string | null = null
+  let inventoryReserved = false
+
   try {
-    const supabase = getSupabaseAdmin()
     const config = await getStripeCheckoutConfig()
 
     if (!config.stripeCheckoutEnabled) {
@@ -412,9 +286,9 @@ export async function POST(request: Request) {
       .map((item) => {
         const context = contextMap.get(item.productId)
         if (!context) return null
-        return buildCanonicalLine(item, context)
+        return computeCanonicalLine(context, item.quantity, item.variantId, item.options)
       })
-      .filter((line): line is CanonicalLine => line !== null)
+      .filter((line): line is NonNullable<ReturnType<typeof computeCanonicalLine>> => line !== null)
 
     const lineItems = canonicalLines.map((line) => ({
       price_data: {
@@ -486,6 +360,8 @@ export async function POST(request: Request) {
       )
     }
 
+    createdOrderId = orderRow.id
+
     const orderItemsPayload = canonicalLines.map((line) => ({
       order_id: orderRow.id,
       product_id: line.productId,
@@ -511,6 +387,39 @@ export async function POST(request: Request) {
       )
     }
 
+    const reserveResult = await callInventoryFunction(supabase, 'exp_reserve_order_inventory', {
+      p_order_id: orderRow.id,
+    })
+
+    if (!reserveResult.ok) {
+      const inventoryReason =
+        reserveResult.reason === 'insufficient_stock' || reserveResult.reason === 'forced_out_of_stock'
+          ? 'Some ready-made items sold out while checkout was initializing. Please refresh your cart quantities and try again.'
+          : 'Inventory could not be reserved for this checkout session.'
+
+      const releaseNote =
+        reserveResult.reason === 'insufficient_stock'
+          ? 'Checkout reservation failed due to insufficient stock.'
+          : 'Checkout reservation failed before Stripe session creation.'
+
+      await callInventoryFunction(supabase, 'exp_release_order_inventory', {
+        p_order_id: orderRow.id,
+        p_note: releaseNote,
+      })
+
+      await supabase
+        .from('exp_orders')
+        .update({ payment_status: 'failed', status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq('id', orderRow.id)
+
+      return NextResponse.json(
+        { error: inventoryReason },
+        { status: 409 }
+      )
+    }
+
+    inventoryReserved = true
+
     const stripe = getStripeServerClient()
     const origin = new URL(request.url).origin
 
@@ -528,6 +437,16 @@ export async function POST(request: Request) {
     })
 
     if (!session.url) {
+      await callInventoryFunction(supabase, 'exp_release_order_inventory', {
+        p_order_id: orderRow.id,
+        p_note: 'Checkout session URL missing; inventory released.',
+      })
+
+      await supabase
+        .from('exp_orders')
+        .update({ payment_status: 'failed', status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq('id', orderRow.id)
+
       return NextResponse.json(
         { error: 'Could not initialize Stripe checkout.' },
         { status: 500 }
@@ -555,6 +474,18 @@ export async function POST(request: Request) {
     )
   } catch (error) {
     console.error('[checkout:create-session]', error)
+
+    if (createdOrderId && inventoryReserved) {
+      await callInventoryFunction(supabase, 'exp_release_order_inventory', {
+        p_order_id: createdOrderId,
+        p_note: 'Unexpected checkout error after inventory reservation.',
+      })
+
+      await supabase
+        .from('exp_orders')
+        .update({ payment_status: 'failed', status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq('id', createdOrderId)
+    }
 
     return NextResponse.json(
       {

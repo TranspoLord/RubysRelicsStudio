@@ -1,4 +1,6 @@
 import { getSupabaseAdmin } from '../client'
+import { evaluateInventoryState, type InventoryAvailabilityOverride } from '@/lib/inventory/state'
+import { getRecommendationSettings } from '@/lib/storefront-settings'
 
 const supabase = getSupabaseAdmin()
 
@@ -37,6 +39,20 @@ export interface DbProduct {
   category_gradient?: string | null
   // First featured media (if any)
   featured_media?: DbProductMedia | null
+  // Inventory state for ready-made products
+  inventory_qty?: number | null
+  low_stock_threshold?: number | null
+  availability_override?: InventoryAvailabilityOverride | null
+  is_track_inventory?: boolean | null
+  is_in_stock?: boolean
+  is_low_stock?: boolean
+  inventory_status?:
+    | 'forced_in_stock'
+    | 'forced_out_of_stock'
+    | 'in_stock'
+    | 'low_stock'
+    | 'out_of_stock'
+    | 'untracked'
 }
 
 export interface DbProductVariant {
@@ -271,7 +287,7 @@ export async function getProductBySlug(
 
   const productId = product.id
 
-  const [categoryResult, variantsResult, mediaResult, optionsResult, bulkDiscountsResult] = await Promise.all([
+  const [categoryResult, variantsResult, mediaResult, optionsResult, bulkDiscountsResult, inventoryResult] = await Promise.all([
     supabase
       .from('exp_taxonomy')
       .select('key, display_name, slug, emoji, gradient, tagline, how_it_works_anchor')
@@ -309,6 +325,12 @@ export async function getProductBySlug(
       .eq('product_id', productId)
       .eq('is_enabled', true)
       .order('sort_order', { ascending: true }),
+
+    supabase
+      .from('exp_product_inventory')
+      .select('available_qty, low_stock_threshold, availability_override, is_track_inventory')
+      .eq('product_id', productId)
+      .maybeSingle(),
   ])
 
   if (variantsResult.error) {
@@ -322,6 +344,9 @@ export async function getProductBySlug(
   }
   if (bulkDiscountsResult.error) {
     console.error('[getProductBySlug:bulkDiscounts]', bulkDiscountsResult.error.message)
+  }
+  if (inventoryResult.error) {
+    console.error('[getProductBySlug:inventory]', inventoryResult.error.message)
   }
 
   const base = normalizeProduct({
@@ -344,8 +369,23 @@ export async function getProductBySlug(
       .sort((a, b) => a.sort_order - b.sort_order),
   }))
 
+  const inventoryRow = inventoryResult.data
+  const inventoryState = evaluateInventoryState({
+    available_qty: inventoryRow?.available_qty ?? null,
+    low_stock_threshold: inventoryRow?.low_stock_threshold ?? null,
+    availability_override: (inventoryRow?.availability_override as InventoryAvailabilityOverride | null) ?? null,
+    is_track_inventory: inventoryRow?.is_track_inventory ?? null,
+  })
+
   return {
     ...base,
+    inventory_qty: inventoryRow?.available_qty ?? null,
+    low_stock_threshold: inventoryRow?.low_stock_threshold ?? null,
+    availability_override: (inventoryRow?.availability_override as InventoryAvailabilityOverride | null) ?? null,
+    is_track_inventory: inventoryRow?.is_track_inventory ?? null,
+    is_in_stock: inventoryState.isInStock,
+    is_low_stock: inventoryState.isLowStock,
+    inventory_status: inventoryState.status,
     variants: (variantsResult.data ?? []) as DbProductVariant[],
     media: (mediaResult.data ?? []) as DbProductMedia[],
     options,
@@ -385,9 +425,12 @@ export async function getProductCountsByCategory(): Promise<
 export async function getRecommendedProducts(
   currentProductId: string,
   categoryKey: string,
+  currentBasePrice: number,
+  currentIsReadyMade: boolean,
+  currentIsCustomizable: boolean,
   limit: number = 4
 ): Promise<DbProduct[]> {
-  const [categoriesResult, sameCategoryResult] = await Promise.all([
+  const [categoriesResult, candidateResult, recommendationSettings] = await Promise.all([
     supabase
       .from('exp_taxonomy')
       .select('key, display_name, slug, emoji, gradient')
@@ -409,56 +452,52 @@ export async function getRecommendedProducts(
       .eq('is_archived', false)
       .neq('id', currentProductId)
       .order('sort_order', { ascending: true })
-      .limit(limit),
+      .limit(120),
+
+    getRecommendationSettings(),
   ])
 
   const catMap = Object.fromEntries(
     (categoriesResult.data ?? []).map((c) => [c.key, c])
   )
 
-  if (sameCategoryResult.error) {
-    console.error('[getRecommendedProducts:same-category]', sameCategoryResult.error.message)
+  if (candidateResult.error) {
+    console.error('[getRecommendedProducts:candidates]', candidateResult.error.message)
+    return []
   }
 
-  const primary = (sameCategoryResult.data ?? []).map((row) =>
+  const pinnedIds = new Set<string>([
+    ...recommendationSettings.pinned_global,
+    ...(recommendationSettings.pinned_by_category[categoryKey] ?? []),
+  ])
+
+  const ranked = (candidateResult.data ?? [])
+    .map((row) => {
+      const normalizedPrice = Math.max(1, Number(currentBasePrice ?? 0))
+      const priceDelta = Math.abs(Number(row.base_price ?? 0) - normalizedPrice)
+      const priceSimilarity = Math.max(0, 1 - Math.min(1, priceDelta / normalizedPrice))
+
+      const sameCategoryScore = row.category_key === categoryKey ? 4 : 0
+      const readyMadeScore = row.is_ready_made === currentIsReadyMade ? 1.5 : 0
+      const customizableScore = row.is_customizable === currentIsCustomizable ? 1 : 0
+      const priceScore = priceSimilarity * 2
+      const sortScore = 1 / (1 + Math.max(0, Number(row.sort_order ?? 0)))
+      const pinScore = recommendationSettings.enabled && pinnedIds.has(row.id) ? 100 : 0
+
+      const score = pinScore + sameCategoryScore + readyMadeScore + customizableScore + priceScore + sortScore
+
+      return { row, score }
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+
+  const selected = ranked.map((entry) => entry.row)
+
+  const primary = selected.map((row) =>
     normalizeProduct({ ...row, category: catMap[row.category_key] ?? null })
   )
 
-  if (primary.length >= limit) {
-    return primary.slice(0, limit)
-  }
-
-  const remaining = limit - primary.length
-  const existingIds = new Set(primary.map((p) => p.id))
-  existingIds.add(currentProductId)
-
-  const { data: fallbackRows, error: fallbackError } = await supabase
-    .from('exp_products')
-    .select(`
-      id, title, slug, short_description, description,
-      category_key, base_price, is_ready_made, is_customizable,
-      is_active, sort_order, production_estimate_band,
-      how_it_works_anchor, seo_title, seo_description,
-      media:exp_product_media (
-        id, product_id, url, alt, emoji, gradient, is_featured, sort_order
-      )
-    `)
-    .eq('is_active', true)
-    .eq('is_archived', false)
-    .order('sort_order', { ascending: true })
-    .limit(limit + 10)
-
-  if (fallbackError) {
-    console.error('[getRecommendedProducts:fallback]', fallbackError.message)
-    return primary
-  }
-
-  const fallback = (fallbackRows ?? [])
-    .filter((row) => !existingIds.has(row.id))
-    .slice(0, remaining)
-    .map((row) => normalizeProduct({ ...row, category: catMap[row.category_key] ?? null }))
-
-  return [...primary, ...fallback]
+  return primary
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────

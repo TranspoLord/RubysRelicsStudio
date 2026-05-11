@@ -2,10 +2,8 @@ import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { branch, getSupabaseAdmin } from '@/lib/supabase/client'
 import { getStripeServerClient } from '@/lib/stripe/server'
-import { FROM_ADDRESS, getResend } from '@/lib/resend/client'
-
-const DEFAULT_GUEST_TRACKING_ENABLED = true
-const DEFAULT_GUEST_TRACKING_NOTIFY_EMAIL = 'orders@rubysrelics.com'
+import { getEmailSenderAddress, getResend } from '@/lib/resend/client'
+import { getGuestOrderTrackingSettings } from '@/lib/storefront-settings'
 
 function escapeHtml(value: string): string {
   return value
@@ -17,30 +15,11 @@ function escapeHtml(value: string): string {
 }
 
 async function getGuestOrderTrackingConfig() {
-  const supabase = getSupabaseAdmin()
-  const { data, error } = await supabase
-    .from('exp_storefront_settings')
-    .select('setting_value')
-    .eq('setting_key', 'guest_order_tracking')
-    .single()
-
-  if (error && error.code !== 'PGRST116') {
-    console.error('[stripe:webhook:settings]', error.message)
-  }
-
-  const enabled =
-    typeof data?.setting_value?.enabled === 'boolean'
-      ? data.setting_value.enabled
-      : DEFAULT_GUEST_TRACKING_ENABLED
-
-  const notifyEmail =
-    typeof data?.setting_value?.notify_email === 'string' && data.setting_value.notify_email.trim().length > 3
-      ? data.setting_value.notify_email.trim()
-      : process.env.ORDER_TRACKING_NOTIFY_EMAIL ?? DEFAULT_GUEST_TRACKING_NOTIFY_EMAIL
+  const settings = await getGuestOrderTrackingSettings()
 
   return {
-    enabled,
-    notifyEmail,
+    enabled: settings.enabled,
+    notifyEmail: settings.notify_email,
   }
 }
 
@@ -54,8 +33,9 @@ async function sendTrackingFallbackEmail(input: {
   if (!process.env.RESEND_API_KEY) return
 
   const resend = getResend()
+  const fromAddress = await getEmailSenderAddress()
   await resend.emails.send({
-    from: FROM_ADDRESS,
+    from: fromAddress,
     to: [input.notifyEmail],
     subject: `Manual tracking needed for order ${input.orderId.slice(0, 8)}`,
     html: `
@@ -69,7 +49,32 @@ async function sendTrackingFallbackEmail(input: {
   })
 }
 
+async function releaseOrderInventory(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  orderId: string,
+  note: string
+) {
+  const { data, error } = await supabase.rpc('exp_release_order_inventory', {
+    p_order_id: orderId,
+    p_note: note,
+  })
+
+  if (error) {
+    console.error('[stripe:webhook:inventory-release]', error.message)
+    return
+  }
+
+  if (!data || typeof data !== 'object') return
+
+  const payload = data as Record<string, unknown>
+  if (payload.ok !== true) {
+    console.error('[stripe:webhook:inventory-release]', payload)
+  }
+}
+
 export async function POST(request: Request) {
+  let eventId: string | null = null
+
   try {
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
 
@@ -95,6 +100,24 @@ export async function POST(request: Request) {
     }
 
     const supabase = getSupabaseAdmin()
+    eventId = event.id
+
+    const { error: insertWebhookError } = await supabase
+      .from('exp_stripe_webhook_events')
+      .insert({
+        event_id: event.id,
+        event_type: event.type,
+        status: 'processing',
+      })
+
+    if (insertWebhookError) {
+      if (insertWebhookError.code === '23505') {
+        return NextResponse.json({ received: true, duplicate: true }, { status: 200 })
+      }
+
+      console.error('[stripe:webhook] Failed to register event', insertWebhookError.message)
+      return NextResponse.json({ error: 'Webhook processing could not be initialized.' }, { status: 500 })
+    }
 
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session
@@ -124,6 +147,7 @@ export async function POST(request: Request) {
 
         if (error) {
           console.error('[stripe:webhook] Order update failed', error.message)
+          await markWebhookEventFailed(supabase, event.id, error.message)
           return NextResponse.json({ error: 'Failed to update order status.' }, { status: 500 })
         }
 
@@ -168,13 +192,26 @@ export async function POST(request: Request) {
 
         const { data: customRequest, error: customRequestError } = await supabase
           .from('exp_custom_requests')
-          .select('id, quote_amount')
+          .select('id, status, quote_amount, quote_expires_at')
           .eq('id', customRequestId)
           .single()
 
         if (customRequestError || !customRequest) {
           console.error('[stripe:webhook] Missing custom request for payment link flow', customRequestError?.message)
         } else {
+          if (customRequest.status === 'quote_sent' && customRequest.quote_expires_at) {
+            const quoteExpiresAt = new Date(customRequest.quote_expires_at)
+            if (!Number.isNaN(quoteExpiresAt.getTime()) && quoteExpiresAt.getTime() < Date.now()) {
+              await supabase
+                .from('exp_custom_requests')
+                .update({ status: 'expired', updated_at: new Date().toISOString() })
+                .eq('id', customRequest.id)
+
+              console.error('[stripe:webhook] Quote expired before payment completion', customRequest.id)
+              return NextResponse.json({ received: true, ignored: 'quote_expired' }, { status: 200 })
+            }
+          }
+
           const quotedTotal = Number(customRequest.quote_amount ?? 0)
 
           const { error: upsertError } = await supabase
@@ -242,6 +279,8 @@ export async function POST(request: Request) {
 
         if (error) {
           console.error('[stripe:webhook] Async payment failed update failed', error.message)
+        } else {
+          await releaseOrderInventory(supabase, orderId, 'Checkout async payment failed.')
         }
       }
     }
@@ -262,6 +301,8 @@ export async function POST(request: Request) {
 
         if (error) {
           console.error('[stripe:webhook] Expired update failed', error.message)
+        } else {
+          await releaseOrderInventory(supabase, orderId, 'Checkout session expired before payment.')
         }
       }
     }
@@ -304,9 +345,57 @@ export async function POST(request: Request) {
       }
     }
 
+    await markWebhookEventProcessed(supabase, event.id)
+
     return NextResponse.json({ received: true }, { status: 200 })
   } catch (error) {
     console.error('[stripe:webhook]', error)
+    if (eventId) {
+      const supabase = getSupabaseAdmin()
+      await markWebhookEventFailed(
+        supabase,
+        eventId,
+        error instanceof Error ? error.message : 'Unknown webhook processing error.'
+      )
+    }
     return NextResponse.json({ error: 'Webhook processing failed.' }, { status: 500 })
+  }
+}
+
+async function markWebhookEventProcessed(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  eventId: string
+) {
+  const { error } = await supabase
+    .from('exp_stripe_webhook_events')
+    .update({
+      status: 'processed',
+      processed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      last_error: null,
+    })
+    .eq('event_id', eventId)
+
+  if (error) {
+    console.error('[stripe:webhook] Failed to mark processed', error.message)
+  }
+}
+
+async function markWebhookEventFailed(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  eventId: string,
+  message: string
+) {
+  const { error } = await supabase
+    .from('exp_stripe_webhook_events')
+    .update({
+      status: 'failed',
+      last_error: message.slice(0, 1000),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('event_id', eventId)
+
+  if (error) {
+    console.error('[stripe:webhook] Failed to mark failed', error.message)
   }
 }

@@ -62,6 +62,11 @@ const MODULE_CARDS = [
     detail: 'Monitor ready-made stock and restock priorities.',
   },
   {
+    title: 'Finance',
+    href: '/admin/finance',
+    detail: 'Review revenue, margins, labor, and export reports.',
+  },
+  {
     title: 'Settings',
     href: '/admin/settings',
     detail: 'Toggle storefront runtime behavior safely.',

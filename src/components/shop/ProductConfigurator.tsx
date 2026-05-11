@@ -50,6 +50,13 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
   })
   const [addedToCart, setAddedToCart] = useState(false)
 
+  const isReadyMade = product.is_ready_made
+  const maxPurchasable =
+    isReadyMade && product.is_track_inventory
+      ? Math.max(0, Number(product.inventory_qty ?? 0))
+      : null
+  const isOutOfStock = isReadyMade && product.is_in_stock === false
+
   // ── Computed price ──────────────────────────────────────────────────────────
   const pricing = useMemo(() => {
     let unitPrice = product.base_price
@@ -98,7 +105,8 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
     requiredOptions.every((o) => {
       const val = state.optionValues[o.option_key]
       return val !== undefined && val.trim().length > 0
-    })
+    }) &&
+    !isOutOfStock
 
   // ── Handlers ────────────────────────────────────────────────────────────────
   const handleVariantChange = (variantId: string) =>
@@ -111,7 +119,13 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
     }))
 
   const handleQuantityChange = (delta: number) =>
-    setState((prev) => ({ ...prev, quantity: Math.max(1, prev.quantity + delta) }))
+    setState((prev) => {
+      const next = Math.max(1, prev.quantity + delta)
+      if (typeof maxPurchasable === 'number') {
+        return { ...prev, quantity: Math.min(next, Math.max(1, maxPurchasable)) }
+      }
+      return { ...prev, quantity: next }
+    })
 
   const handleAddToCart = () => {
     const selectedVariant = variants.find((v) => v.id === state.variantId)
@@ -230,6 +244,7 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
             component="button"
             onClick={() => handleQuantityChange(1)}
             aria-label="Increase quantity"
+            disabled={typeof maxPurchasable === 'number' && state.quantity >= Math.max(1, maxPurchasable)}
             sx={{
               width: 32,
               height: 32,
@@ -242,7 +257,8 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
               alignItems: 'center',
               justifyContent: 'center',
               fontSize: '1.1rem',
-              '&:hover': { backgroundColor: alpha(brandTokens.parchment, 0.07) },
+              '&:disabled': { opacity: 0.35, cursor: 'not-allowed' },
+              '&:hover:not(:disabled)': { backgroundColor: alpha(brandTokens.parchment, 0.07) },
             }}
           >
             +
@@ -281,6 +297,34 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
           </Typography>
           <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.55), mt: 0.35 }}>
             Subtotal ${pricing.subtotal.toFixed(2)} → Total ${pricing.total.toFixed(2)}
+          </Typography>
+        </Box>
+      )}
+
+      {isReadyMade && (
+        <Box
+          sx={{
+            mt: -0.5,
+            p: 1,
+            borderRadius: 1,
+            border: `1px solid ${alpha(brandTokens.parchment, 0.16)}`,
+            backgroundColor: alpha(brandTokens.bgSurface, 0.52),
+          }}
+        >
+          <Typography sx={{ fontSize: '0.75rem', fontWeight: 600 }}>
+            Inventory: {
+              product.inventory_status === 'forced_out_of_stock'
+                ? 'Out of stock (manual override)'
+                : product.inventory_status === 'forced_in_stock'
+                    ? 'In stock (manual override)'
+                    : product.inventory_status === 'low_stock'
+                      ? `Low stock (${product.inventory_qty ?? 0} left)`
+                      : product.inventory_status === 'out_of_stock'
+                        ? 'Out of stock'
+                        : product.inventory_status === 'untracked'
+                          ? 'In stock (not tracked)'
+                          : `In stock${typeof product.inventory_qty === 'number' ? ` (${product.inventory_qty} left)` : ''}`
+            }
           </Typography>
         </Box>
       )}
@@ -330,7 +374,7 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
           },
         }}
       >
-        {addedToCart ? '✓ Added to Cart' : 'Add to Cart'}
+        {isOutOfStock ? 'Out of Stock' : addedToCart ? '✓ Added to Cart' : 'Add to Cart'}
       </Button>
 
       {!isValid && requiredOptions.length > 0 && (

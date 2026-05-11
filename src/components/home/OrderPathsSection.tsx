@@ -9,6 +9,7 @@ import Link from 'next/link'
 import { alpha } from '@mui/material/styles'
 import { brandTokens } from '@/theme/theme'
 import { Analytics } from '@/lib/analytics/events'
+import { StartHereChooser } from '@/components/home/StartHereChooser'
 
 const ORDER_PATHS = [
   {
@@ -84,6 +85,10 @@ export function OrderPathsSection() {
             Whether you have a design ready, want something off the shelf, or need a one-of-a-kind
             creation — there&apos;s a path for you.
           </Typography>
+
+          <Box sx={{ mt: 2 }}>
+            <StartHereChooser />
+          </Box>
         </Box>
 
         <Box

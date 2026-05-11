@@ -19,6 +19,22 @@ values
       "notify_email": "orders@rubysrelics.com"
     }'::jsonb,
     'Controls guest order tracking links. If disabled, paid orders trigger a notification email for manual customer updates.'
+  ),
+  (
+    'operational_notifications',
+    '{
+      "custom_request_notify_email": "orders@rubysrelics.com"
+    }'::jsonb,
+    'Controls internal notification recipients for operational storefront events.'
+  ),
+  (
+    'recommendations',
+    '{
+      "enabled": true,
+      "pinned_global": [],
+      "pinned_by_category": {}
+    }'::jsonb,
+    'Controls product recommendation ranking overrides and pinning.'
   )
 on conflict (setting_key) do update
 set
