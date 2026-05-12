@@ -3,14 +3,9 @@ import { Cinzel, Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/react'
 import { ThemeRegistry } from '@/theme/ThemeRegistry'
 import { SkipToMain } from '@/components/common/SkipToMain'
+import { CookieBanner } from '@/components/common/CookieBanner'
 import { CartProvider } from '@/components/cart/CartProvider'
 import './globals.css'
-import dynamic from 'next/dynamic'
-
-const CookieBanner = dynamic(
-  () => import('@/components/common/CookieBanner').then((m) => m.CookieBanner),
-  { ssr: false }
-)
 
 // ─── Fonts ────────────────────────────────────────────────────────────────────
 const cinzel = Cinzel({

@@ -3,54 +3,66 @@
 import { useEffect, useState } from 'react'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
+import Dialog from '@mui/material/Dialog'
+import DialogActions from '@mui/material/DialogActions'
+import DialogContent from '@mui/material/DialogContent'
+import DialogTitle from '@mui/material/DialogTitle'
+import FormControlLabel from '@mui/material/FormControlLabel'
 import Link from '@mui/material/Link'
+import Switch from '@mui/material/Switch'
 import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
 
+import {
+  createAcceptedConsent,
+  defaultConsentState,
+  readConsentState,
+  type CookieConsentState,
+  writeConsentState,
+} from '@/lib/cookie-consent'
 import { brandTokens } from '@/theme/theme'
-
-const CONSENT_KEY = 'rr_cookie_consent'
-const CONSENT_VERSION = '1'
-
-function getStoredConsent(): string | null {
-  if (typeof window === 'undefined') return null
-  try {
-    return window.localStorage.getItem(CONSENT_KEY)
-  } catch {
-    return null
-  }
-}
-
-function storeConsent(value: string): void {
-  try {
-    window.localStorage.setItem(CONSENT_KEY, value)
-  } catch {
-    // localStorage unavailable — silently skip
-  }
-}
 
 export function CookieBanner() {
   const [visible, setVisible] = useState(false)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [state, setState] = useState<CookieConsentState>(defaultConsentState())
 
   useEffect(() => {
-    const stored = getStoredConsent()
+    const stored = readConsentState()
     if (!stored) {
       // Slight delay so the page renders first
       const timer = window.setTimeout(() => setVisible(true), 800)
       return () => window.clearTimeout(timer)
     }
+
+    setState(stored)
   }, [])
 
-  function handleAccept() {
-    storeConsent(CONSENT_VERSION)
+  function persistAndClose(next: CookieConsentState) {
+    setState(next)
+    writeConsentState(next)
     setVisible(false)
+    setDialogOpen(false)
+  }
+
+  function handleAcceptAll() {
+    persistAndClose(createAcceptedConsent(true, true))
+  }
+
+  function handleEssentialOnly() {
+    persistAndClose(createAcceptedConsent(false, false))
+  }
+
+  function handleSavePreferences() {
+    persistAndClose(
+      createAcceptedConsent(state.preferences.analytics, state.preferences.preferences)
+    )
   }
 
   function handleDismiss() {
-    // Dismissed without explicit acceptance — store a "dismissed" marker so
-    // we do not pester on every page load in the same session.
-    storeConsent('dismissed')
-    setVisible(false)
+    const next = defaultConsentState()
+    next.level = 'dismissed'
+    persistAndClose(next)
   }
 
   if (!visible) return null
@@ -95,16 +107,25 @@ export function CookieBanner() {
         <Button
           size="small"
           variant="text"
-          onClick={handleDismiss}
-          sx={{ color: '#999', fontSize: 13, px: 2 }}
-          aria-label="Dismiss cookie notice"
+          onClick={() => setDialogOpen(true)}
+          sx={{ color: brandTokens.forgeGold, fontSize: 13, px: 1.5 }}
+          aria-label="Manage cookie preferences"
         >
-          Dismiss
+          Manage
+        </Button>
+        <Button
+          size="small"
+          variant="text"
+          onClick={handleEssentialOnly}
+          sx={{ color: '#999', fontSize: 13, px: 2 }}
+          aria-label="Use essential cookies only"
+        >
+          Essential Only
         </Button>
         <Button
           size="small"
           variant="contained"
-          onClick={handleAccept}
+          onClick={handleAcceptAll}
           sx={{
             background: brandTokens.forgeGold,
             color: '#fff',
@@ -117,6 +138,60 @@ export function CookieBanner() {
           Accept
         </Button>
       </Box>
+
+      <Dialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        aria-labelledby="cookie-preferences-title"
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle id="cookie-preferences-title">Cookie Preferences</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
+            Essential storage is always enabled for cart and session continuity. You can opt in to analytics and preference storage below.
+          </Typography>
+
+          <FormControlLabel
+            control={<Switch checked disabled />}
+            label="Essential storage (required)"
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={state.preferences.analytics}
+                onChange={(event) =>
+                  setState((prev) => ({
+                    ...prev,
+                    preferences: { ...prev.preferences, analytics: event.target.checked },
+                  }))
+                }
+              />
+            }
+            label="Analytics (aggregate performance insights)"
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={state.preferences.preferences}
+                onChange={(event) =>
+                  setState((prev) => ({
+                    ...prev,
+                    preferences: { ...prev.preferences, preferences: event.target.checked },
+                  }))
+                }
+              />
+            }
+            label="Preferences (remember UI choices)"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDismiss}>Dismiss</Button>
+          <Button onClick={handleSavePreferences} variant="contained">
+            Save Preferences
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

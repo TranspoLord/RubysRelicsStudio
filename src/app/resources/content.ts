@@ -92,8 +92,25 @@ export function getResourcePages(supportEmail: string): Record<string, ResourceP
         ],
       },
       {
+        heading: 'Cookie Categories',
+        body: [
+          'Essential: cart/session continuity and security controls required for normal checkout behavior.',
+          'Analytics: aggregate storefront performance metrics (for example traffic and conversion trend reporting).',
+          'Preferences: optional UI-state persistence such as dismissed notices and interface selections.',
+        ],
+      },
+      {
+        heading: 'Retention Windows',
+        body: [
+          'Essential cart/session storage may persist up to 30 days unless cleared earlier by the browser or user.',
+          'Consent preference storage persists until changed in the cookie preference manager or manually cleared.',
+          'Analytics retention follows provider defaults for aggregate reporting and does not include direct customer identity data.',
+        ],
+      },
+      {
         heading: 'Managing Preferences',
         body: [
+          'Use the cookie preference manager in the banner to opt in/out of analytics and preference categories.',
           'You can clear browser storage and cookie data from your browser settings at any time.',
           'Some storefront features may behave differently if storage is blocked entirely.',
         ],

@@ -95,6 +95,14 @@ function hoursBetween(start: string, end: string): number {
   return Math.round(((new Date(end).getTime() - new Date(start).getTime()) / 3600000) * 10) / 10
 }
 
+function isOverlap(aStart: string, aEnd: string, bStart: string, bEnd: string): boolean {
+  const a0 = new Date(aStart).getTime()
+  const a1 = new Date(aEnd).getTime()
+  const b0 = new Date(bStart).getTime()
+  const b1 = new Date(bEnd).getTime()
+  return a0 < b1 && b0 < a1
+}
+
 function toLocalDateTimeInput(iso: string): string {
   if (!iso) return ''
   const d = new Date(iso)
@@ -267,6 +275,35 @@ export default function AdminSchedulePage() {
     return acc
   }, [blocks])
 
+  const conflictIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (let i = 0; i < blocks.length; i += 1) {
+      for (let j = i + 1; j < blocks.length; j += 1) {
+        if (isOverlap(blocks[i].start_at, blocks[i].end_at, blocks[j].start_at, blocks[j].end_at)) {
+          ids.add(blocks[i].id)
+          ids.add(blocks[j].id)
+        }
+      }
+    }
+    return ids
+  }, [blocks])
+
+  const timelineRows = useMemo(() => {
+    if (blocks.length === 0) return [] as Array<{ id: string; stage: Stage; leftPct: number; widthPct: number }>
+
+    const minStart = Math.min(...blocks.map((b) => new Date(b.start_at).getTime()))
+    const maxEnd = Math.max(...blocks.map((b) => new Date(b.end_at).getTime()))
+    const range = Math.max(maxEnd - minStart, 1)
+
+    return blocks.map((block) => {
+      const start = new Date(block.start_at).getTime()
+      const end = new Date(block.end_at).getTime()
+      const leftPct = ((start - minStart) / range) * 100
+      const widthPct = Math.max(((end - start) / range) * 100, 2)
+      return { id: block.id, stage: block.stage, leftPct, widthPct }
+    })
+  }, [blocks])
+
   return (
     <Box sx={{ p: 3, maxWidth: 1200 }}>
       {/* Header */}
@@ -317,6 +354,53 @@ export default function AdminSchedulePage() {
           />
         ))}
       </Stack>
+
+      {conflictIds.size > 0 && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          {conflictIds.size} block(s) overlap in time. Review highlighted rows and adjust windows to avoid machine conflicts.
+        </Alert>
+      )}
+
+      {timelineRows.length > 0 && (
+        <Box
+          sx={{
+            mb: 3,
+            borderRadius: 1.2,
+            border: `1px solid ${alpha(brandTokens.parchment, 0.14)}`,
+            backgroundColor: alpha(brandTokens.bgSurface, 0.56),
+            p: 1.2,
+          }}
+        >
+          <Typography sx={{ fontWeight: 700, mb: 1 }}>Timeline Preview</Typography>
+          <Box sx={{ display: 'grid', gap: 0.8 }}>
+            {timelineRows.map((row) => (
+              <Box
+                key={row.id}
+                sx={{
+                  position: 'relative',
+                  height: 26,
+                  borderRadius: 1,
+                  backgroundColor: alpha(brandTokens.bgVoid, 0.35),
+                  border: `1px solid ${alpha(brandTokens.parchment, 0.08)}`,
+                }}
+              >
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    left: `${row.leftPct}%`,
+                    width: `${row.widthPct}%`,
+                    top: 3,
+                    bottom: 3,
+                    borderRadius: 1,
+                    backgroundColor: alpha(STAGE_COLORS[row.stage], 0.5),
+                    border: `1px solid ${alpha(STAGE_COLORS[row.stage], 0.95)}`,
+                  }}
+                />
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      )}
 
       {/* Filters */}
       <Stack direction="row" spacing={2} mb={3} flexWrap="wrap" gap={2} alignItems="center">
@@ -401,7 +485,9 @@ export default function AdminSchedulePage() {
                     sx={{
                       background: block.is_locked
                         ? alpha(brandTokens.forgeGold, 0.04)
-                        : 'transparent',
+                        : conflictIds.has(block.id)
+                          ? alpha('#cf4040', 0.08)
+                          : 'transparent',
                       '&:hover': { background: alpha(brandTokens.parchment, 0.03) },
                     }}
                   >
@@ -435,11 +521,16 @@ export default function AdminSchedulePage() {
                       {block.note ?? '—'}
                     </TableCell>
                     <TableCell>
-                      {block.is_locked ? (
-                        <Chip label="Locked" size="small" color="warning" />
-                      ) : (
-                        <Chip label="Open" size="small" color="default" />
-                      )}
+                      <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                        {block.is_locked ? (
+                          <Chip label="Locked" size="small" color="warning" />
+                        ) : (
+                          <Chip label="Open" size="small" color="default" />
+                        )}
+                        {conflictIds.has(block.id) && (
+                          <Chip label="Conflict" size="small" color="error" />
+                        )}
+                      </Stack>
                     </TableCell>
                     <TableCell align="right">
                       <Stack direction="row" spacing={0.5} justifyContent="flex-end">

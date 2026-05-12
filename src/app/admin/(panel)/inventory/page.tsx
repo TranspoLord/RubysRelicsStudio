@@ -81,6 +81,8 @@ export default function AdminInventoryPage() {
   const [bulkReason, setBulkReason] = useState<ReasonCode>('bulk_update')
   const [bulkNote, setBulkNote] = useState('')
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([])
+  const [capacityCategories, setCapacityCategories] = useState('')
+  const [processingCapacityAlerts, setProcessingCapacityAlerts] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
@@ -259,6 +261,43 @@ export default function AdminInventoryPage() {
     })
   }
 
+  async function processCapacityAlerts() {
+    setProcessingCapacityAlerts(true)
+    setError(null)
+    setSuccessMessage(null)
+
+    try {
+      const categoryKeys = capacityCategories
+        .split(',')
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0)
+
+      const response = await fetch('/api/admin/capacity-alerts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categoryKeys, limit: 250 }),
+      })
+
+      const payload = await response.json().catch(() => ({})) as {
+        result?: { scanned?: number; sent?: number; skipped?: number; failed?: number }
+        error?: string
+      }
+
+      if (!response.ok) {
+        throw new Error(typeof payload.error === 'string' ? payload.error : 'Failed to process capacity alerts.')
+      }
+
+      const result = payload.result ?? {}
+      setSuccessMessage(
+        `Capacity alerts processed. Scanned ${result.scanned ?? 0}, sent ${result.sent ?? 0}, skipped ${result.skipped ?? 0}, failed ${result.failed ?? 0}.`
+      )
+    } catch (processError) {
+      setError(processError instanceof Error ? processError.message : 'Failed to process capacity alerts.')
+    } finally {
+      setProcessingCapacityAlerts(false)
+    }
+  }
+
   return (
     <Box sx={{ display: 'grid', gap: 1.1 }}>
       <Typography variant="h4" component="h1">Inventory</Typography>
@@ -288,6 +327,39 @@ export default function AdminInventoryPage() {
           Reset
         </Button>
       </Stack>
+
+      <Box
+        sx={{
+          borderRadius: 1.2,
+          border: `1px solid ${alpha(brandTokens.parchment, 0.14)}`,
+          backgroundColor: alpha(brandTokens.bgSurface, 0.56),
+          p: 1.2,
+          display: 'grid',
+          gap: 1,
+        }}
+      >
+        <Typography sx={{ fontWeight: 700 }}>Capacity Reopened Notifications</Typography>
+        <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.78rem' }}>
+          Trigger category-capacity reopen email alerts. Optionally provide comma-separated category keys.
+        </Typography>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
+          <TextField
+            fullWidth
+            size="small"
+            label="Category keys (optional, comma-separated)"
+            value={capacityCategories}
+            onChange={(event) => setCapacityCategories(event.target.value)}
+            placeholder="engraved_drinkware, apparel"
+          />
+          <Button
+            variant="contained"
+            disabled={processingCapacityAlerts}
+            onClick={() => void processCapacityAlerts()}
+          >
+            {processingCapacityAlerts ? 'Processing...' : 'Process Alerts'}
+          </Button>
+        </Stack>
+      </Box>
 
       {error && <Alert severity="error">{error}</Alert>}
       {successMessage && <Alert severity="success">{successMessage}</Alert>}

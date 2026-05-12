@@ -53,6 +53,8 @@ interface BudgetRangeOption {
   value: string
 }
 
+const DRAFT_STORAGE_KEY = 'rr_custom_request_draft_v1'
+
 const DEFAULT_STATE: FormState = {
   customerName: '',
   customerEmail: '',
@@ -76,6 +78,78 @@ export function CustomOrderIntakeForm({ categories }: CustomOrderIntakeFormProps
   const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [result, setResult] = useState<SubmitResult | null>(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    try {
+      const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY)
+      if (!raw) return
+
+      const parsed = JSON.parse(raw) as Record<string, unknown>
+      if (!parsed || typeof parsed !== 'object') return
+
+      const shouldResume = window.confirm('You have an unfinished custom request. Continue where you left off?')
+      if (!shouldResume) return
+
+      setForm((prev) => ({
+        ...prev,
+        customerName: typeof parsed.customerName === 'string' ? parsed.customerName : prev.customerName,
+        customerEmail: typeof parsed.customerEmail === 'string' ? parsed.customerEmail : prev.customerEmail,
+        itemType: typeof parsed.itemType === 'string' ? parsed.itemType : prev.itemType,
+        quantity: typeof parsed.quantity === 'string' ? parsed.quantity : prev.quantity,
+        deadline: typeof parsed.deadline === 'string' ? parsed.deadline : prev.deadline,
+        budgetRange: typeof parsed.budgetRange === 'string' ? parsed.budgetRange : prev.budgetRange,
+        description: typeof parsed.description === 'string' ? parsed.description : prev.description,
+        designHelpNeeded: Boolean(parsed.designHelpNeeded),
+        ipRightsConfirmed: Boolean(parsed.ipRightsConfirmed),
+        ageConfirmed: Boolean(parsed.ageConfirmed),
+        tosAccepted: Boolean(parsed.tosAccepted),
+      }))
+    } catch {
+      // Ignore malformed drafts
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (submitState === 'success') {
+      window.localStorage.removeItem(DRAFT_STORAGE_KEY)
+      return
+    }
+
+    const hasContent =
+      form.customerName.trim().length > 0 ||
+      form.customerEmail.trim().length > 0 ||
+      form.itemType.trim().length > 0 ||
+      form.description.trim().length > 0
+
+    if (!hasContent) {
+      window.localStorage.removeItem(DRAFT_STORAGE_KEY)
+      return
+    }
+
+    const payload = {
+      customerName: form.customerName,
+      customerEmail: form.customerEmail,
+      itemType: form.itemType,
+      quantity: form.quantity,
+      deadline: form.deadline,
+      budgetRange: form.budgetRange,
+      description: form.description,
+      designHelpNeeded: form.designHelpNeeded,
+      ipRightsConfirmed: form.ipRightsConfirmed,
+      ageConfirmed: form.ageConfirmed,
+      tosAccepted: form.tosAccepted,
+      savedAt: new Date().toISOString(),
+    }
+
+    try {
+      window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(payload))
+    } catch {
+      // Ignore storage write failures
+    }
+  }, [form, submitState])
 
   useEffect(() => {
     Analytics.customRequestStarted()

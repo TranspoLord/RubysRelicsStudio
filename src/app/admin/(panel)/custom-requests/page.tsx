@@ -27,6 +27,7 @@ interface CustomRequestRow {
   quote_last_resent_at: string | null
   quote_resend_count: number
   production_handoff_at: string | null
+  recovery_reminder_sent_at: string | null
   created_at: string
   updated_at: string
 }
@@ -61,6 +62,7 @@ export default function AdminCustomRequestsPage() {
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [submittingId, setSubmittingId] = useState<string | null>(null)
+  const [runningRecoveryBatch, setRunningRecoveryBatch] = useState(false)
 
   async function loadRows(nextQuery = query, nextStatus = status) {
     setLoading(true)
@@ -265,6 +267,39 @@ export default function AdminCustomRequestsPage() {
     }
   }
 
+  async function runRecoveryBatch() {
+    setRunningRecoveryBatch(true)
+    setError(null)
+    setSuccessMessage(null)
+
+    try {
+      const response = await fetch('/api/admin/custom-requests/recovery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thresholdHours: 24, limit: 80 }),
+      })
+
+      const payload = await response.json().catch(() => ({})) as {
+        result?: { scanned?: number; sent?: number; skipped?: number; failed?: number }
+        error?: string
+      }
+
+      if (!response.ok) {
+        throw new Error(typeof payload.error === 'string' ? payload.error : 'Could not run recovery batch.')
+      }
+
+      const result = payload.result ?? {}
+      setSuccessMessage(
+        `Recovery batch complete. Scanned ${result.scanned ?? 0}, sent ${result.sent ?? 0}, skipped ${result.skipped ?? 0}, failed ${result.failed ?? 0}.`
+      )
+      await loadRows()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not run recovery batch.')
+    } finally {
+      setRunningRecoveryBatch(false)
+    }
+  }
+
   return (
     <Box sx={{ display: 'grid', gap: 1.4 }}>
       <Typography variant="h4" component="h1">
@@ -302,6 +337,13 @@ export default function AdminCustomRequestsPage() {
           <MenuItem value="restricted_approved">restricted_approved</MenuItem>
         </Select>
         <Button variant="outlined" onClick={() => setQuery(queryDraft)}>Search</Button>
+        <Button
+          variant="contained"
+          disabled={runningRecoveryBatch}
+          onClick={() => void runRecoveryBatch()}
+        >
+          {runningRecoveryBatch ? 'Sending reminders...' : 'Run Recovery Reminders'}
+        </Button>
       </Stack>
 
       {error && <Alert severity="error">{error}</Alert>}
@@ -354,6 +396,11 @@ export default function AdminCustomRequestsPage() {
               {row.production_handoff_at && (
                 <Typography sx={{ color: alpha(brandTokens.forgeGold, 0.86), fontSize: '0.73rem' }}>
                   Handed to production: {new Date(row.production_handoff_at).toLocaleString()}
+                </Typography>
+              )}
+              {row.recovery_reminder_sent_at && (
+                <Typography sx={{ color: alpha(brandTokens.parchment, 0.54), fontSize: '0.73rem' }}>
+                  Recovery reminder sent: {new Date(row.recovery_reminder_sent_at).toLocaleString()}
                 </Typography>
               )}
 
