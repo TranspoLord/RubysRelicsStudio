@@ -43,6 +43,16 @@ const ADMIN_MODULES: AdminModuleLink[] = [
     href: '/admin/settings',
     description: 'Storefront toggles and runtime controls.',
   },
+  {
+    label: 'Schedule',
+    href: '/admin/schedule',
+    description: 'Production queue and machine scheduling blocks.',
+  },
+  {
+    label: 'Abandoned Carts',
+    href: '/admin/abandoned-carts',
+    description: 'Cart captures and recovery email tracking.',
+  },
 ]
 
 async function loadUnreadNotificationCount() {

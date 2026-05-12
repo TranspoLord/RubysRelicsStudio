@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
   constructEvent: vi.fn(),
   getStripeServerClient: vi.fn(),
   getSupabaseAdmin: vi.fn(),
+  processBackInStockAlerts: vi.fn(),
+  processCheckoutAbandonmentRecovery: vi.fn(),
 }))
 
 vi.mock('@/lib/stripe/server', () => ({
@@ -22,6 +24,14 @@ vi.mock('@/lib/resend/client', () => ({
 
 vi.mock('@/lib/storefront-settings', () => ({
   getGuestOrderTrackingSettings: vi.fn(async () => ({ enabled: true, notify_email: 'ops@example.com' })),
+}))
+
+vi.mock('@/lib/back-in-stock', () => ({
+  processBackInStockAlerts: mocks.processBackInStockAlerts,
+}))
+
+vi.mock('@/lib/abandoned-cart', () => ({
+  processCheckoutAbandonmentRecovery: mocks.processCheckoutAbandonmentRecovery,
 }))
 
 import { POST } from './route'
@@ -72,6 +82,17 @@ function createWebhookSupabaseForSessionExpired() {
         }
       }
 
+      if (table === 'exp_order_items') {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(async () => ({
+              data: [{ product_id: 'prod_1' }],
+              error: null,
+            })),
+          })),
+        }
+      }
+
       return {
         update: vi.fn(() => ({
           eq: vi.fn(async () => ({ error: null })),
@@ -90,6 +111,8 @@ describe('POST /api/stripe/webhook', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test'
+    mocks.processBackInStockAlerts.mockResolvedValue({ scanned: 1, sent: 0, skipped: 1, failed: 0 })
+    mocks.processCheckoutAbandonmentRecovery.mockResolvedValue(true)
 
     mocks.getStripeServerClient.mockReturnValue({
       webhooks: {
@@ -162,6 +185,8 @@ describe('POST /api/stripe/webhook', () => {
       p_order_id: 'ord_expired_1',
       p_note: 'Checkout session expired before payment.',
     })
+    expect(mocks.processBackInStockAlerts).toHaveBeenCalledWith({ productIds: ['prod_1'], limit: 250 })
+    expect(mocks.processCheckoutAbandonmentRecovery).toHaveBeenCalledWith('ord_expired_1')
     expect(markProcessedEq).toHaveBeenCalledWith('event_id', 'evt_expired')
   })
 
@@ -199,6 +224,7 @@ describe('POST /api/stripe/webhook', () => {
       p_order_id: 'ord_async_1',
       p_note: 'Checkout async payment failed.',
     })
+    expect(mocks.processBackInStockAlerts).toHaveBeenCalledWith({ productIds: ['prod_1'], limit: 250 })
     expect(markProcessedEq).toHaveBeenCalledWith('event_id', 'evt_async_failed')
   })
 
@@ -499,5 +525,119 @@ describe('POST /api/stripe/webhook', () => {
     expect(response.status).toBe(200)
     expect(payload).toEqual({ received: true, ignored: 'quote_expired' })
     expect(customRequestUpdateEq).toHaveBeenCalledTimes(1)
+  })
+
+  it('increments promo and deal usage for storefront order on checkout.session.completed', async () => {
+    const insert = vi.fn(async () => ({ error: null }))
+    const markProcessedEq = vi.fn(async () => ({ error: null }))
+
+    const orderPrefetchMaybeSingle = vi.fn(async () => ({
+      data: {
+        id: 'ord_paid_1',
+        payment_status: 'pending',
+        cart_snapshot: {
+          promotions: {
+            promoCode: 'SAVE10',
+            appliedDeals: [{ id: 'deal_1' }],
+          },
+        },
+      },
+      error: null,
+    }))
+
+    const promoMaybeSingle = vi.fn(async () => ({ data: { id: 'promo_1', usage_count: 4 }, error: null }))
+    const dealMaybeSingle = vi.fn(async () => ({ data: { id: 'deal_1', usage_count: 2 }, error: null }))
+
+    const orderUpdateEq = vi.fn(async () => ({ error: null }))
+    const orderDiscountCodeEq = vi.fn(async () => ({ error: null }))
+    const promoUpdateEq = vi.fn(async () => ({ error: null }))
+    const dealUpdateEq = vi.fn(async () => ({ error: null }))
+
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === 'exp_stripe_webhook_events') {
+          return {
+            insert,
+            update: vi.fn(() => ({
+              eq: markProcessedEq,
+            })),
+          }
+        }
+
+        if (table === 'exp_orders') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({ maybeSingle: orderPrefetchMaybeSingle })),
+            })),
+            update: vi
+              .fn()
+              .mockReturnValueOnce({ eq: orderUpdateEq })
+              .mockReturnValueOnce({ eq: orderDiscountCodeEq }),
+          }
+        }
+
+        if (table === 'exp_promo_codes') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({ maybeSingle: promoMaybeSingle })),
+            })),
+            update: vi.fn(() => ({
+              eq: promoUpdateEq,
+            })),
+          }
+        }
+
+        if (table === 'exp_bundle_deals') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({ maybeSingle: dealMaybeSingle })),
+            })),
+            update: vi.fn(() => ({
+              eq: dealUpdateEq,
+            })),
+          }
+        }
+
+        return {
+          update: vi.fn(() => ({
+            eq: vi.fn(async () => ({ error: null })),
+          })),
+        }
+      }),
+      rpc: vi.fn(async () => ({ data: { ok: true }, error: null })),
+    }
+
+    mocks.getSupabaseAdmin.mockReturnValue(supabase)
+
+    mocks.constructEvent.mockReturnValue({
+      id: 'evt_paid_1',
+      type: 'checkout.session.completed',
+      data: {
+        object: {
+          id: 'cs_paid_1',
+          payment_intent: 'pi_paid_1',
+          payment_link: null,
+          metadata: { order_id: 'ord_paid_1' },
+        },
+      },
+    })
+
+    const request = new Request('http://localhost/api/stripe/webhook', {
+      method: 'POST',
+      headers: {
+        'stripe-signature': 'sig_test',
+      },
+      body: '{"ok":true}',
+    })
+
+    const response = await POST(request)
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(payload).toEqual({ received: true })
+    expect(orderUpdateEq).toHaveBeenCalledTimes(2)
+    expect(promoUpdateEq).toHaveBeenCalledWith('id', 'promo_1')
+    expect(dealUpdateEq).toHaveBeenCalledWith('id', 'deal_1')
+    expect(markProcessedEq).toHaveBeenCalledWith('event_id', 'evt_paid_1')
   })
 })

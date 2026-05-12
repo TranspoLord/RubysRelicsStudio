@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({
   getStripeCheckoutSettings: vi.fn(),
   getGuestOrderTrackingSettings: vi.fn(),
   computeCanonicalLine: vi.fn(),
+  validatePromoCode: vi.fn(),
+  resolveEligibleDeals: vi.fn(),
+  applyPromotions: vi.fn(),
   getStripeServerClient: vi.fn(),
 }))
 
@@ -20,6 +23,12 @@ vi.mock('@/lib/storefront-settings', () => ({
 
 vi.mock('@/lib/pricing/engine', () => ({
   computeCanonicalLine: mocks.computeCanonicalLine,
+}))
+
+vi.mock('@/lib/pricing/promotions', () => ({
+  validatePromoCode: mocks.validatePromoCode,
+  resolveEligibleDeals: mocks.resolveEligibleDeals,
+  applyPromotions: mocks.applyPromotions,
 }))
 
 vi.mock('@/lib/stripe/server', () => ({
@@ -46,6 +55,7 @@ function createSupabaseForReserveFailure() {
                 data: {
                   id: 'prod_1',
                   title: 'Ready Made Item',
+                  category_key: 'stickers',
                   is_active: true,
                   is_archived: false,
                   base_price: 25,
@@ -62,6 +72,27 @@ function createSupabaseForReserveFailure() {
         return {
           select: vi.fn(() => ({
             eq: vi.fn(async () => ({ data: [], error: null })),
+          })),
+        }
+      }
+
+      if (table === 'exp_promo_codes') {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+            })),
+          })),
+        }
+      }
+
+      if (table === 'exp_bundle_deals') {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn(async () => ({ data: [], error: null })),
+              or: vi.fn(async () => ({ data: [], error: null })),
+            })),
           })),
         }
       }
@@ -133,6 +164,17 @@ describe('POST /api/checkout/create-session', () => {
       description: undefined,
     })
 
+    mocks.validatePromoCode.mockReturnValue({ ok: true, promo: null })
+    mocks.resolveEligibleDeals.mockReturnValue({ ok: true, deals: [] })
+    mocks.applyPromotions.mockReturnValue({
+      lineDiscounts: [0],
+      dealDiscount: 0,
+      promoDiscount: 0,
+      shippingDiscount: 0,
+      appliedDeals: [],
+      appliedPromo: null,
+    })
+
     mocks.getStripeServerClient.mockReturnValue({
       checkout: {
         sessions: {
@@ -176,5 +218,59 @@ describe('POST /api/checkout/create-session', () => {
     })
 
     expect(orderUpdateEq).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns 400 when promo validation fails', async () => {
+    const { supabase } = createSupabaseForReserveFailure()
+    mocks.getSupabaseAdmin.mockReturnValue(supabase)
+    mocks.validatePromoCode.mockReturnValueOnce({ ok: false, reason: 'Promo code was not found.' })
+
+    const request = new Request('http://localhost/api/checkout/create-session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        items: [
+          {
+            productId: 'prod_1',
+            quantity: 1,
+            options: [],
+          },
+        ],
+        promoCode: 'NOPE',
+      }),
+    })
+
+    const response = await POST(request)
+    const payload = await response.json()
+
+    expect(response.status).toBe(400)
+    expect(payload).toEqual({ error: 'Promo code was not found.' })
+  })
+
+  it('returns 400 when deal code conditions are not met', async () => {
+    const { supabase } = createSupabaseForReserveFailure()
+    mocks.getSupabaseAdmin.mockReturnValue(supabase)
+    mocks.resolveEligibleDeals.mockReturnValueOnce({ ok: false, reason: 'Bundle deal code conditions were not met for this cart.' })
+
+    const request = new Request('http://localhost/api/checkout/create-session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        items: [
+          {
+            productId: 'prod_1',
+            quantity: 1,
+            options: [],
+          },
+        ],
+        dealCode: 'DRAGON',
+      }),
+    })
+
+    const response = await POST(request)
+    const payload = await response.json()
+
+    expect(response.status).toBe(400)
+    expect(payload).toEqual({ error: 'Bundle deal code conditions were not met for this cart.' })
   })
 })

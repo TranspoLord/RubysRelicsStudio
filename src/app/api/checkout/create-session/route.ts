@@ -7,6 +7,14 @@ import {
   getStripeCheckoutSettings,
 } from '@/lib/storefront-settings'
 import { computeCanonicalLine } from '@/lib/pricing/engine'
+import {
+  applyPromotions,
+  resolveEligibleDeals,
+  validatePromoCode,
+  type BundleDealRecord,
+  type PromoCodeRecord,
+  type PromotionLineInput,
+} from '@/lib/pricing/promotions'
 
 interface CheckoutItemOption {
   key?: unknown
@@ -24,6 +32,8 @@ interface CheckoutItemBody {
 
 interface CreateCheckoutSessionBody {
   items?: unknown
+  promoCode?: unknown
+  dealCode?: unknown
 }
 
 function asString(value: unknown, maxLen: number): string {
@@ -63,6 +73,7 @@ interface NormalizedCheckoutItem {
 interface ProductContext {
   id: string
   title: string
+  category_key: string | null
   is_active: boolean
   is_archived: boolean
   base_price: number
@@ -100,6 +111,13 @@ function createGuestTrackingToken(): string {
   return randomBytes(24).toString('base64url')
 }
 
+function normalizeCode(value: unknown): string | null {
+  const raw = asString(value, 40)
+    .toUpperCase()
+    .replace(/[^A-Z0-9_-]/g, '')
+  return raw.length > 0 ? raw : null
+}
+
 function normalizeCheckoutItems(rawItems: CheckoutItemBody[]): NormalizedCheckoutItem[] {
   return rawItems
     .map((item) => {
@@ -127,7 +145,7 @@ async function loadProductContext(productId: string): Promise<ProductContext | n
   const [productResult, variantResult, optionResult, bulkResult] = await Promise.all([
     supabase
       .from('exp_products')
-      .select('id, title, is_active, is_archived, base_price, production_estimate_band')
+      .select('id, title, category_key, is_active, is_archived, base_price, production_estimate_band')
       .eq('id', productId)
       .single(),
 
@@ -175,6 +193,46 @@ async function loadProductContext(productId: string): Promise<ProductContext | n
     })),
     bulk_discounts: bulkResult.data ?? [],
   }
+}
+
+async function loadActivePromoByCode(code: string): Promise<PromoCodeRecord | null> {
+  const supabase = getSupabaseAdmin()
+  const { data, error } = await supabase
+    .from('exp_promo_codes')
+    .select('id, code, discount_type, discount_value, is_active, usage_limit, usage_count, valid_from, valid_to')
+    .eq('code', code)
+    .maybeSingle()
+
+  if (error) {
+    console.error('[checkout:create-session:promo]', error.message)
+    return null
+  }
+
+  return (data ?? null) as PromoCodeRecord | null
+}
+
+async function loadPotentialDeals(code: string | null): Promise<BundleDealRecord[]> {
+  const supabase = getSupabaseAdmin()
+
+  let query = supabase
+    .from('exp_bundle_deals')
+    .select('id, name, trigger_type, code, conditions_json, rewards_json, is_active, is_stackable, usage_limit, usage_count, valid_from, valid_to')
+    .eq('is_active', true)
+
+  if (code) {
+    query = query.or(`trigger_type.eq.automatic,code.eq.${code}`)
+  } else {
+    query = query.eq('trigger_type', 'automatic')
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error('[checkout:create-session:deals]', error.message)
+    return []
+  }
+
+  return (data ?? []) as BundleDealRecord[]
 }
 
 async function getStripeCheckoutConfig() {
@@ -248,6 +306,8 @@ export async function POST(request: Request) {
 
     const body = (await request.json()) as CreateCheckoutSessionBody
     const rawItems = Array.isArray(body.items) ? (body.items as CheckoutItemBody[]) : []
+    const promoCodeInput = normalizeCode(body.promoCode)
+    const dealCodeInput = normalizeCode(body.dealCode)
 
     if (rawItems.length === 0) {
       return NextResponse.json(
@@ -290,17 +350,60 @@ export async function POST(request: Request) {
       })
       .filter((line): line is NonNullable<ReturnType<typeof computeCanonicalLine>> => line !== null)
 
-    const lineItems = canonicalLines.map((line) => ({
-      price_data: {
-        currency: 'usd',
-        product_data: {
-          name: line.name,
-          ...(line.description ? { description: line.description } : {}),
-        },
-        unit_amount: line.unitAmountCents,
-      },
+    const now = new Date()
+    const promo = promoCodeInput ? await loadActivePromoByCode(promoCodeInput) : null
+    const promoValidation = validatePromoCode(promo, promoCodeInput, now)
+    if (!promoValidation.ok) {
+      return NextResponse.json(
+        { error: promoValidation.reason },
+        { status: 400 }
+      )
+    }
+
+    const potentialDeals = await loadPotentialDeals(dealCodeInput)
+    const promotionLines: PromotionLineInput[] = canonicalLines.map((line) => ({
+      productId: line.productId,
+      categoryKey: contextMap.get(line.productId)?.category_key ?? null,
       quantity: line.quantity,
+      lineTotal: line.lineTotal,
+      selectedOptions: line.selectedOptions,
     }))
+
+    const eligibleDeals = resolveEligibleDeals(potentialDeals, promotionLines, dealCodeInput, now)
+    if (!eligibleDeals.ok) {
+      return NextResponse.json(
+        { error: eligibleDeals.reason },
+        { status: 400 }
+      )
+    }
+
+    const promotionOutcome = applyPromotions({
+      lines: promotionLines,
+      shippingCost: 0,
+      promo: promoValidation.promo,
+      deals: eligibleDeals.deals,
+    })
+
+    const finalLineTotals = canonicalLines.map((line, index) =>
+      Math.max(0, line.lineTotal - (promotionOutcome.lineDiscounts[index] ?? 0))
+    )
+
+    const lineItems = canonicalLines.map((line, index) => {
+      const finalLineTotal = finalLineTotals[index]
+      const finalUnitAmountCents = Math.max(1, Math.round((finalLineTotal / line.quantity) * 100))
+
+      return {
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: line.name,
+            ...(line.description ? { description: line.description } : {}),
+          },
+          unit_amount: finalUnitAmountCents,
+        },
+        quantity: line.quantity,
+      }
+    })
 
     if (lineItems.length === 0) {
       return NextResponse.json(
@@ -310,8 +413,10 @@ export async function POST(request: Request) {
     }
 
     const subtotal = canonicalLines.reduce((sum, line) => sum + line.lineSubtotal, 0)
-    const discountAmount = canonicalLines.reduce((sum, line) => sum + line.lineDiscount, 0)
-    const orderTotal = canonicalLines.reduce((sum, line) => sum + line.lineTotal, 0)
+    const baseDiscountAmount = canonicalLines.reduce((sum, line) => sum + line.lineDiscount, 0)
+    const promotionDiscountAmount = promotionOutcome.lineDiscounts.reduce((sum, amount) => sum + amount, 0)
+    const discountAmount = baseDiscountAmount + promotionDiscountAmount
+    const orderTotal = finalLineTotals.reduce((sum, lineTotal) => sum + lineTotal, 0)
     const guestTrackingToken = config.guestOrderTrackingEnabled ? createGuestTrackingToken() : null
     const guestTrackingExpiresAt = config.guestOrderTrackingEnabled
       ? new Date(Date.now() + 1000 * 60 * 60 * 24 * 45).toISOString()
@@ -336,16 +441,25 @@ export async function POST(request: Request) {
         guest_tracking_token: guestTrackingToken,
         guest_tracking_expires_at: guestTrackingExpiresAt,
         cart_snapshot: {
-          lines: canonicalLines.map((line) => ({
+          lines: canonicalLines.map((line, index) => ({
             productId: line.productId,
             title: line.name,
             variantLabel: line.variantLabel,
             selectedOptions: line.selectedOptions,
             quantity: line.quantity,
             lineSubtotal: line.lineSubtotal,
-            lineDiscount: line.lineDiscount,
-            lineTotal: line.lineTotal,
+            lineDiscount: line.lineDiscount + (promotionOutcome.lineDiscounts[index] ?? 0),
+            lineTotal: finalLineTotals[index] ?? line.lineTotal,
           })),
+          promotions: {
+            promoCode: promoValidation.promo?.code ?? null,
+            bundleDealCode: dealCodeInput,
+            appliedDeals: promotionOutcome.appliedDeals,
+            appliedPromo: promotionOutcome.appliedPromo,
+            dealDiscount: promotionOutcome.dealDiscount,
+            promoDiscount: promotionOutcome.promoDiscount,
+            shippingDiscount: promotionOutcome.shippingDiscount,
+          },
         },
         branch,
       })
@@ -362,16 +476,16 @@ export async function POST(request: Request) {
 
     createdOrderId = orderRow.id
 
-    const orderItemsPayload = canonicalLines.map((line) => ({
+    const orderItemsPayload = canonicalLines.map((line, index) => ({
       order_id: orderRow.id,
       product_id: line.productId,
       product_title: line.name,
       selected_options: line.selectedOptions,
-      unit_price: line.quantity > 0 ? line.lineTotal / line.quantity : 0,
+      unit_price: line.quantity > 0 ? (finalLineTotals[index] ?? line.lineTotal) / line.quantity : 0,
       quantity: line.quantity,
       line_subtotal: line.lineSubtotal,
-      line_discount: line.lineDiscount,
-      line_total: line.lineTotal,
+      line_discount: line.lineDiscount + (promotionOutcome.lineDiscounts[index] ?? 0),
+      line_total: finalLineTotals[index] ?? line.lineTotal,
       variant_label: line.variantLabel,
     }))
 

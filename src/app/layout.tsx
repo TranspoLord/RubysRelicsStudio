@@ -5,6 +5,12 @@ import { ThemeRegistry } from '@/theme/ThemeRegistry'
 import { SkipToMain } from '@/components/common/SkipToMain'
 import { CartProvider } from '@/components/cart/CartProvider'
 import './globals.css'
+import dynamic from 'next/dynamic'
+
+const CookieBanner = dynamic(
+  () => import('@/components/common/CookieBanner').then((m) => m.CookieBanner),
+  { ssr: false }
+)
 
 // ─── Fonts ────────────────────────────────────────────────────────────────────
 const cinzel = Cinzel({
@@ -72,6 +78,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </ThemeRegistry>
         {/* Vercel Analytics — aggregate only, no PII in events */}
         <Analytics />
+        {/* Cookie consent banner — client-only, no SSR */}
+        <CookieBanner />
       </body>
     </html>
   )

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { branch, getSupabaseAdmin } from '@/lib/supabase/client'
 import { getStripeServerClient } from '@/lib/stripe/server'
+import { processBackInStockAlerts } from '@/lib/back-in-stock'
+import { processCheckoutAbandonmentRecovery } from '@/lib/abandoned-cart'
 import { getEmailSenderAddress, getResend } from '@/lib/resend/client'
 import { getGuestOrderTrackingSettings } from '@/lib/storefront-settings'
 
@@ -72,6 +74,138 @@ async function releaseOrderInventory(
   }
 }
 
+async function processBackInStockForOrder(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  orderId: string
+) {
+  const { data, error } = await supabase
+    .from('exp_order_items')
+    .select('product_id')
+    .eq('order_id', orderId)
+
+  if (error) {
+    console.error('[stripe:webhook:back-in-stock:order-items]', error.message)
+    return
+  }
+
+  const productIds = Array.from(
+    new Set(
+      (data ?? [])
+        .map((row) => (typeof row.product_id === 'string' ? row.product_id : null))
+        .filter((value): value is string => value !== null)
+    )
+  )
+
+  if (productIds.length === 0) return
+
+  try {
+    await processBackInStockAlerts({ productIds, limit: 250 })
+  } catch (error) {
+    console.error('[stripe:webhook:back-in-stock:process]', error)
+  }
+}
+
+function asPromoSnapshot(
+  value: unknown
+): { promoCode: string | null; appliedDealIds: string[] } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { promoCode: null, appliedDealIds: [] }
+  }
+
+  const root = value as Record<string, unknown>
+  const promotions =
+    root.promotions && typeof root.promotions === 'object' && !Array.isArray(root.promotions)
+      ? (root.promotions as Record<string, unknown>)
+      : null
+
+  if (!promotions) {
+    return { promoCode: null, appliedDealIds: [] }
+  }
+
+  const promoCode =
+    typeof promotions.promoCode === 'string' && promotions.promoCode.trim().length > 0
+      ? promotions.promoCode.trim().toUpperCase()
+      : null
+
+  const appliedDealIds = Array.isArray(promotions.appliedDeals)
+    ? promotions.appliedDeals
+        .map((entry) => {
+          if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null
+          const id = (entry as Record<string, unknown>).id
+          return typeof id === 'string' && id.trim().length > 0 ? id.trim() : null
+        })
+        .filter((id): id is string => id !== null)
+    : []
+
+  return { promoCode, appliedDealIds: Array.from(new Set(appliedDealIds)) }
+}
+
+async function incrementPromotionUsageForOrder(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  orderId: string,
+  cartSnapshot: unknown
+) {
+  const promoSnapshot = asPromoSnapshot(cartSnapshot)
+
+  if (promoSnapshot.promoCode) {
+    const { data: promoRow, error: promoLoadError } = await supabase
+      .from('exp_promo_codes')
+      .select('id, usage_count')
+      .eq('code', promoSnapshot.promoCode)
+      .maybeSingle()
+
+    if (promoLoadError) {
+      console.error('[stripe:webhook:promo-usage:load]', promoLoadError.message)
+    } else if (promoRow?.id) {
+      const { error: promoUpdateError } = await supabase
+        .from('exp_promo_codes')
+        .update({ usage_count: Number(promoRow.usage_count ?? 0) + 1 })
+        .eq('id', promoRow.id)
+
+      if (promoUpdateError) {
+        console.error('[stripe:webhook:promo-usage:update]', promoUpdateError.message)
+      }
+
+      const { error: discountCodeUpdateError } = await supabase
+        .from('exp_orders')
+        .update({ discount_code_id: promoRow.id, updated_at: new Date().toISOString() })
+        .eq('id', orderId)
+
+      if (discountCodeUpdateError) {
+        console.error('[stripe:webhook:order-discount-code:update]', discountCodeUpdateError.message)
+      }
+    }
+  }
+
+  if (promoSnapshot.appliedDealIds.length > 0) {
+    await Promise.all(
+      promoSnapshot.appliedDealIds.map(async (dealId) => {
+        const { data: dealRow, error: dealLoadError } = await supabase
+          .from('exp_bundle_deals')
+          .select('id, usage_count')
+          .eq('id', dealId)
+          .maybeSingle()
+
+        if (dealLoadError) {
+          console.error('[stripe:webhook:deal-usage:load]', dealLoadError.message)
+          return
+        }
+
+        if (!dealRow?.id) return
+
+        const { error: dealUpdateError } = await supabase
+          .from('exp_bundle_deals')
+          .update({ usage_count: Number(dealRow.usage_count ?? 0) + 1 })
+          .eq('id', dealRow.id)
+
+        if (dealUpdateError) {
+          console.error('[stripe:webhook:deal-usage:update]', dealUpdateError.message)
+        }
+      })
+    )
+  }
+}
+
 export async function POST(request: Request) {
   let eventId: string | null = null
 
@@ -132,6 +266,16 @@ export async function POST(request: Request) {
         typeof session.payment_link === 'string' ? session.payment_link : null
 
       if (orderId) {
+        const { data: existingOrder, error: existingOrderError } = await supabase
+          .from('exp_orders')
+          .select('id, payment_status, cart_snapshot')
+          .eq('id', orderId)
+          .maybeSingle()
+
+        if (existingOrderError) {
+          console.error('[stripe:webhook] Order prefetch failed', existingOrderError.message)
+        }
+
         const { error } = await supabase
           .from('exp_orders')
           .update({
@@ -149,6 +293,10 @@ export async function POST(request: Request) {
           console.error('[stripe:webhook] Order update failed', error.message)
           await markWebhookEventFailed(supabase, event.id, error.message)
           return NextResponse.json({ error: 'Failed to update order status.' }, { status: 500 })
+        }
+
+        if (existingOrder?.payment_status !== 'paid') {
+          await incrementPromotionUsageForOrder(supabase, orderId, existingOrder?.cart_snapshot)
         }
 
         const trackingConfig = await getGuestOrderTrackingConfig()
@@ -281,6 +429,7 @@ export async function POST(request: Request) {
           console.error('[stripe:webhook] Async payment failed update failed', error.message)
         } else {
           await releaseOrderInventory(supabase, orderId, 'Checkout async payment failed.')
+          await processBackInStockForOrder(supabase, orderId)
         }
       }
     }
@@ -303,6 +452,12 @@ export async function POST(request: Request) {
           console.error('[stripe:webhook] Expired update failed', error.message)
         } else {
           await releaseOrderInventory(supabase, orderId, 'Checkout session expired before payment.')
+          await processBackInStockForOrder(supabase, orderId)
+          try {
+            await processCheckoutAbandonmentRecovery(orderId)
+          } catch (recoveryError) {
+            console.error('[stripe:webhook:abandoned-cart:recovery]', recoveryError)
+          }
         }
       }
     }

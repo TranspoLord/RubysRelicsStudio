@@ -5,6 +5,7 @@ import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
 import Divider from '@mui/material/Divider'
+import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
 
@@ -30,6 +31,9 @@ export function CheckoutPageView() {
   const [loadingConfig, setLoadingConfig] = useState(true)
   const [creatingSession, setCreatingSession] = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
+  const [customerEmail, setCustomerEmail] = useState('')
+  const [promoCode, setPromoCode] = useState('')
+  const [dealCode, setDealCode] = useState('')
 
   useEffect(() => {
     let active = true
@@ -78,10 +82,34 @@ export function CheckoutPageView() {
     setCreatingSession(true)
 
     try {
+      const normalizedEmail = customerEmail.trim().toLowerCase()
+
+      if (normalizedEmail) {
+        await fetch('/api/cart/capture', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: normalizedEmail,
+            cartItems: items.map((item) => ({
+              productId: item.productId,
+              title: item.title,
+              quantity: item.quantity,
+              lineTotal: item.lineTotal,
+              variantLabel: item.variantLabel,
+            })),
+          }),
+        })
+      }
+
       const response = await fetch('/api/checkout/create-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items }),
+        body: JSON.stringify({
+          items,
+          customerEmail: normalizedEmail || null,
+          promoCode,
+          dealCode,
+        }),
       })
 
       const payload = (await response.json()) as CheckoutResponse
@@ -207,6 +235,38 @@ export function CheckoutPageView() {
         </Box>
 
         <Divider sx={{ my: 1.4, borderColor: alpha(brandTokens.parchment, 0.08) }} />
+
+        <Box sx={{ display: 'grid', gap: 0.8, mb: 1.2 }}>
+          <TextField
+            size="small"
+            label="Email address"
+            type="email"
+            value={customerEmail}
+            onChange={(event) => setCustomerEmail(event.target.value)}
+            inputProps={{ maxLength: 254, autoComplete: 'email' }}
+            disabled={creatingSession}
+            required
+          />
+          <TextField
+            size="small"
+            label="Promo code"
+            value={promoCode}
+            onChange={(event) => setPromoCode(event.target.value)}
+            inputProps={{ maxLength: 40 }}
+            disabled={creatingSession}
+          />
+          <TextField
+            size="small"
+            label="Bundle deal code"
+            value={dealCode}
+            onChange={(event) => setDealCode(event.target.value)}
+            inputProps={{ maxLength: 40 }}
+            disabled={creatingSession}
+          />
+          <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.55) }}>
+            Codes are validated server-side and applied before Stripe checkout.
+          </Typography>
+        </Box>
 
         {loadingConfig ? (
           <Box sx={{ py: 1.2, display: 'flex', justifyContent: 'center' }}>

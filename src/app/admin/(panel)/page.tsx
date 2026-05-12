@@ -67,6 +67,16 @@ const MODULE_CARDS = [
     detail: 'Review revenue, margins, labor, and export reports.',
   },
   {
+    title: 'Schedule',
+    href: '/admin/schedule',
+    detail: 'Plan production blocks and manage the queue.',
+  },
+  {
+    title: 'Abandoned Carts',
+    href: '/admin/abandoned-carts',
+    detail: 'Review recovery captures and session abandons.',
+  },
+  {
     title: 'Settings',
     href: '/admin/settings',
     detail: 'Toggle storefront runtime behavior safely.',

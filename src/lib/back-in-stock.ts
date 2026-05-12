@@ -15,6 +15,7 @@ interface ProductRow {
   id: string
   title: string
   slug: string
+  category_key: string
   is_active: boolean
   is_archived: boolean
 }
@@ -76,10 +77,20 @@ function buildUnsubscribeUrl(token: string): string {
   return `${base.replace(/\/$/, '')}/api/back-in-stock/unsubscribe?token=${encodeURIComponent(token)}`
 }
 
-async function sendBackInStockEmail(input: { email: string; productTitle: string; token: string }) {
+async function sendBackInStockEmail(input: {
+  email: string
+  productTitle: string
+  token: string
+  productUrl: string
+  availableQty: number
+}) {
   const resend = getResend()
   const fromAddress = await getEmailSenderAddress()
   const unsubscribeUrl = buildUnsubscribeUrl(input.token)
+  const availabilityHint =
+    input.availableQty > 0
+      ? `${input.availableQty} unit${input.availableQty === 1 ? '' : 's'} just restocked.`
+      : 'Inventory has been refreshed.'
 
   await resend.emails.send({
     from: fromAddress,
@@ -88,13 +99,23 @@ async function sendBackInStockEmail(input: { email: string; productTitle: string
     html: `
       <h2>Good news - it's back in stock</h2>
       <p><strong>${input.productTitle}</strong> is available again.</p>
-      <p><a href="${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/shop">Shop now</a></p>
+      <p>${availabilityHint}</p>
+      <p><a href="${input.productUrl}">View product</a></p>
       <p style="margin-top:20px;font-size:12px;color:#666;">
         No longer interested?
         <a href="${unsubscribeUrl}">Unsubscribe from this product alert</a>
       </p>
     `,
   })
+}
+
+function buildProductUrl(productSlug: string, categorySlug: string | null): string {
+  const base = process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_URL || 'http://localhost:3000'
+  if (!categorySlug || !productSlug) {
+    return `${base.replace(/\/$/, '')}/shop`
+  }
+
+  return `${base.replace(/\/$/, '')}/shop/categories/${encodeURIComponent(categorySlug)}/${encodeURIComponent(productSlug)}`
 }
 
 function isProductBackInStock(product: ProductRow | undefined, inventory: InventoryRow | undefined): boolean {
@@ -144,7 +165,7 @@ export async function processBackInStockAlerts(options?: {
   const [productsResult, inventoryResult] = await Promise.all([
     supabase
       .from('exp_products')
-      .select('id, title, slug, is_active, is_archived')
+      .select('id, title, slug, category_key, is_active, is_archived')
       .in('id', productIds),
     supabase
       .from('exp_product_inventory')
@@ -160,6 +181,35 @@ export async function processBackInStockAlerts(options?: {
   if (inventoryResult.error) {
     console.error('[back-in-stock:process:inventory]', inventoryResult.error.message)
     return { scanned: activeAlerts.length, sent: 0, skipped: activeAlerts.length, failed: 1 }
+  }
+
+  const categoryKeys = Array.from(
+    new Set(
+      (productsResult.data ?? [])
+        .map((row) => (typeof row.category_key === 'string' && row.category_key.trim().length > 0 ? row.category_key : null))
+        .filter((value): value is string => value !== null)
+    )
+  )
+
+  let categorySlugByKey = new Map<string, string>()
+
+  if (categoryKeys.length > 0) {
+    const { data: taxonomyRows, error: taxonomyError } = await supabase
+      .from('exp_taxonomy')
+      .select('key, slug')
+      .eq('type', 'category')
+      .in('key', categoryKeys)
+
+    if (taxonomyError) {
+      console.error('[back-in-stock:process:taxonomy]', taxonomyError.message)
+      return { scanned: activeAlerts.length, sent: 0, skipped: activeAlerts.length, failed: 1 }
+    }
+
+    categorySlugByKey = new Map<string, string>(
+      (taxonomyRows ?? [])
+        .filter((row) => typeof row.key === 'string' && typeof row.slug === 'string')
+        .map((row) => [row.key as string, row.slug as string])
+    )
   }
 
   const productsById = new Map<string, ProductRow>((productsResult.data ?? []).map((row) => [row.id, row as ProductRow]))
@@ -182,10 +232,13 @@ export async function processBackInStockAlerts(options?: {
 
     try {
       const token = createBackInStockUnsubscribeToken(alert.product_id, alert.email)
+      const categorySlug = categorySlugByKey.get(product?.category_key ?? '') ?? null
       await sendBackInStockEmail({
         email: alert.email,
         productTitle: product?.title ?? 'Your product',
         token,
+        productUrl: buildProductUrl(product?.slug ?? '', categorySlug),
+        availableQty: Number(inventory?.available_qty ?? 0),
       })
 
       const now = new Date().toISOString()
