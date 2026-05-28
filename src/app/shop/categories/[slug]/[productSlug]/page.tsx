@@ -9,13 +9,13 @@ import { alpha } from '@mui/material/styles'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import VerifiedOutlinedIcon from '@mui/icons-material/VerifiedOutlined'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { Breadcrumb } from '@/components/layout/Breadcrumb'
 import { getProductBySlug, getProductsByCategory, getRecommendedProducts } from '@/lib/supabase/queries/products'
 import { ProductConfigurator } from '@/components/shop/ProductConfigurator'
+import { ProductMediaGallery } from '@/components/shop/ProductMediaGallery'
 import { RecommendationRail } from '@/components/shop/RecommendationRail'
 import { brandTokens } from '@/theme/theme'
 
@@ -69,7 +69,6 @@ export default async function ProductDetailPage({ params }: Props) {
     4
   )
   const featuredMedia = product.media.find((m) => m.is_featured) ?? product.media[0] ?? null
-  const hasImage = featuredMedia?.url && featuredMedia.url.length > 0
   const cardGradient =
     featuredMedia?.gradient ??
     product.category_gradient ??
@@ -99,72 +98,12 @@ export default async function ProductDetailPage({ params }: Props) {
           >
             {/* ── Left: Image / gallery ───────────────────────────────── */}
             <Box>
-              {/* Main image */}
-              <Box
-                sx={{
-                  aspectRatio: '4/3',
-                  background: cardGradient,
-                  borderRadius: 2,
-                  overflow: 'hidden',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  mb: 2,
-                  border: `1px solid ${alpha(brandTokens.parchment, 0.08)}`,
-                }}
-              >
-                {hasImage ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={featuredMedia!.url}
-                    alt={featuredMedia!.alt || product.title}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                ) : (
-                  <Typography
-                    aria-hidden="true"
-                    sx={{ fontSize: '6rem', opacity: 0.5, userSelect: 'none' }}
-                  >
-                    {featuredMedia?.emoji ?? category?.emoji ?? '✨'}
-                  </Typography>
-                )}
-              </Box>
-
-              {/* Additional media thumbnails */}
-              {product.media.length > 1 && (
-                <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-                  {product.media.map((m) => (
-                    <Box
-                      key={m.id}
-                      sx={{
-                        width: 72,
-                        height: 72,
-                        borderRadius: 1,
-                        background: m.gradient ?? cardGradient,
-                        overflow: 'hidden',
-                        border: `1px solid ${alpha(brandTokens.parchment, 0.1)}`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {m.url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={m.url}
-                          alt={m.alt}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        />
-                      ) : (
-                        <Typography aria-hidden="true" sx={{ fontSize: '1.5rem' }}>
-                          {m.emoji ?? '✨'}
-                        </Typography>
-                      )}
-                    </Box>
-                  ))}
-                </Box>
-              )}
+              <ProductMediaGallery
+                productTitle={product.title}
+                media={product.media}
+                fallbackGradient={cardGradient}
+                fallbackEmoji={category?.emoji ?? '✨'}
+              />
 
               {/* Production + trust messaging (desktop: below image) */}
               <Box
@@ -179,7 +118,6 @@ export default async function ProductDetailPage({ params }: Props) {
               >
                 <ProductTrustBlock
                   estimateBand={product.production_estimate_band}
-                  howItWorksAnchor={product.how_it_works_anchor ?? category?.how_it_works_anchor ?? null}
                 />
               </Box>
             </Box>
@@ -265,7 +203,6 @@ export default async function ProductDetailPage({ params }: Props) {
               >
                 <ProductTrustBlock
                   estimateBand={product.production_estimate_band}
-                  howItWorksAnchor={product.how_it_works_anchor ?? category?.how_it_works_anchor ?? null}
                 />
               </Box>
             </Box>
@@ -315,10 +252,9 @@ export default async function ProductDetailPage({ params }: Props) {
 
 interface TrustBlockProps {
   estimateBand: string
-  howItWorksAnchor: string | null
 }
 
-function ProductTrustBlock({ estimateBand, howItWorksAnchor }: TrustBlockProps) {
+function ProductTrustBlock({ estimateBand }: TrustBlockProps) {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.75 }}>
       <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
@@ -357,25 +293,6 @@ function ProductTrustBlock({ estimateBand, howItWorksAnchor }: TrustBlockProps) 
         </Box>
       </Box>
 
-      {howItWorksAnchor && (
-        <Box
-          component="a"
-          href={`/how-it-works${howItWorksAnchor}`}
-          sx={{
-            mt: 0.5,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 0.5,
-            color: alpha(brandTokens.parchment, 0.4),
-            fontSize: '0.75rem',
-            textDecoration: 'none',
-            '&:hover': { color: brandTokens.forgeGold },
-          }}
-        >
-          Learn about the process
-          <ArrowForwardIcon sx={{ fontSize: 12 }} />
-        </Box>
-      )}
     </Box>
   )
 }

@@ -163,20 +163,19 @@ export function MaterialsTeaser({ materials }: MaterialsTeaserProps = {}) {
           ))}
         </Box>
 
-        {/* Lead-in to How It Works */}
+        {/* Lead-in to materials resource */}
         <Box sx={{ textAlign: 'center' }}>
           <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
             Want to understand how these materials come to life in the forge?
           </Typography>
           <Button
             component={Link}
-            href="/how-it-works#materials"
+            href="/resources/materials"
             variant="outlined"
             color="primary"
             endIcon={<ArrowForwardIcon />}
-            onClick={() => Analytics.howItWorksAnchorClicked('materials')}
           >
-            Explore the Full Materials Guide
+            Open Materials Guide
           </Button>
         </Box>
       </Container>

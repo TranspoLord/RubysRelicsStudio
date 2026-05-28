@@ -71,7 +71,7 @@ export async function GET(request: Request) {
       created_by,
       created_at,
       updated_at,
-      exp_orders ( id, status, customer_email ),
+      exp_orders ( id, status ),
       exp_custom_requests ( id, status, customer_email )
     `)
     .order('start_at', { ascending: true })

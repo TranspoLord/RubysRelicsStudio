@@ -156,7 +156,7 @@ export async function GET(request: Request) {
 
         supabase
           .from('exp_order_items')
-          .select('id, product_id, product_title, variant_label, selected_options, unit_price, quantity, line_subtotal, line_discount, line_total, created_at')
+          .select('id, product_id, product_title, variant_label, selected_options, option_snapshot, unit_price, quantity, line_subtotal, line_discount, line_total, created_at')
           .eq('order_id', orderId)
           .order('created_at', { ascending: true }),
 

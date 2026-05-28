@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { use, useEffect, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -87,7 +87,8 @@ function normalizeOptionKey(input: string): string {
     .slice(0, 80)
 }
 
-export default function ProductPageEditorPage({ params }: { params: { id: string } }) {
+export default function ProductPageEditorPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id: productId } = use(params)
   const [product, setProduct] = useState<ProductDetail | null>(null)
   const [categories, setCategories] = useState<CategoryOption[]>([])
   const [loading, setLoading] = useState(true)
@@ -125,9 +126,9 @@ export default function ProductPageEditorPage({ params }: { params: { id: string
 
     try {
       const [productRes, mediaRes, optionsRes] = await Promise.all([
-        fetch(`/api/admin/catalog/products/${params.id}`, { cache: 'no-store' }),
-        fetch(`/api/admin/catalog/media?productId=${encodeURIComponent(params.id)}`, { cache: 'no-store' }),
-        fetch(`/api/admin/catalog/options?productId=${encodeURIComponent(params.id)}`, { cache: 'no-store' }),
+        fetch(`/api/admin/catalog/products/${productId}`, { cache: 'no-store' }),
+        fetch(`/api/admin/catalog/media?productId=${encodeURIComponent(productId)}`, { cache: 'no-store' }),
+        fetch(`/api/admin/catalog/options?productId=${encodeURIComponent(productId)}`, { cache: 'no-store' }),
       ])
 
       const payload = await productRes.json().catch(() => ({}))
@@ -169,7 +170,7 @@ export default function ProductPageEditorPage({ params }: { params: { id: string
 
   useEffect(() => {
     void loadData()
-  }, [params.id])
+  }, [productId])
 
   function updateProduct<K extends keyof ProductDetail>(key: K, value: ProductDetail[K]) {
     setProduct((prev) => (prev ? { ...prev, [key]: value } : prev))
@@ -183,7 +184,7 @@ export default function ProductPageEditorPage({ params }: { params: { id: string
     setSuccess(null)
 
     try {
-      const response = await fetch(`/api/admin/catalog/products/${params.id}`, {
+      const response = await fetch(`/api/admin/catalog/products/${productId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(product),
@@ -212,7 +213,7 @@ export default function ProductPageEditorPage({ params }: { params: { id: string
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          productId: params.id,
+          productId,
           url: mediaUrl,
           alt: mediaAlt,
           emoji: mediaEmoji,
@@ -282,7 +283,7 @@ export default function ProductPageEditorPage({ params }: { params: { id: string
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          productId: params.id,
+          productId,
           option_key: normalizeOptionKey(optionKey || optionLabel),
           label: optionLabel,
           option_type: optionType,
@@ -430,7 +431,7 @@ export default function ProductPageEditorPage({ params }: { params: { id: string
   }
 
   return (
-    <Box sx={{ display: 'grid', gap: 1.2 }}>
+    <Box sx={{ display: 'grid', gap: 1.2, overflowX: 'hidden' }}>
       {error && <Alert severity="error">{error}</Alert>}
       {success && <Alert severity="success">{success}</Alert>}
 
@@ -541,7 +542,7 @@ export default function ProductPageEditorPage({ params }: { params: { id: string
           />
         </Stack>
 
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
           <TextField
             size="small"
             label="Emoji"
@@ -615,7 +616,7 @@ export default function ProductPageEditorPage({ params }: { params: { id: string
       <Box sx={{ borderTop: `1px solid ${alpha(brandTokens.parchment, 0.16)}`, pt: 1.2, display: 'grid', gap: 1 }}>
         <Typography variant="h6">Options</Typography>
 
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
           <TextField
             size="small"
             label="Option label"
@@ -674,7 +675,7 @@ export default function ProductPageEditorPage({ params }: { params: { id: string
           </Button>
         </Stack>
 
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
           <Select
             size="small"
             value={selectedOptionIdForValue}

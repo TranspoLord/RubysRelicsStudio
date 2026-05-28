@@ -51,14 +51,14 @@ export function FreshFromTheForge({ items }: FreshFromTheForgeProps = {}) {
           </Box>
           <Button
             component={Link}
-            href="/gallery"
+            href="/shop"
             variant="outlined"
             color="primary"
             size="small"
             endIcon={<ArrowForwardIcon />}
             sx={{ flexShrink: 0 }}
           >
-            Full Gallery
+            Browse Shop
           </Button>
         </Box>
 

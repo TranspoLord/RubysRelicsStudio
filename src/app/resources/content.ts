@@ -16,28 +16,77 @@ export function getResourcePages(supportEmail: string): Record<string, ResourceP
   terms: {
     slug: 'terms',
     title: 'Terms of Service',
-    summary: 'Core usage terms, order commitments, and customer responsibilities.',
-    lastUpdated: 'May 8, 2026',
+    summary: 'Age, content, IP protections, fulfillment, liability, and dispute terms for custom production orders.',
+    lastUpdated: 'May 12, 2026',
     sections: [
       {
-        heading: 'Orders and Acceptance',
+        heading: 'Age Requirement and Content Policy',
         body: [
-          "Placing an order means you confirm all provided details are accurate, including quantities, personalization text, and upload content.",
-          'Orders become production work once payment is confirmed and are fulfilled according to current queue and complexity.',
+          'By placing an order with Ruby\'s Relics Studio, you represent and warrant that you are at least 18 years old.',
+          'Mature or NSFW content may be accepted when lawful. We do not discriminate based on subject matter or artistic expression within legal boundaries.',
+          'We do not print unlawful material or artwork listed on the Public Restriction List. Orders canceled for policy violations are refunded minus non-recoverable processing fees.',
         ],
       },
       {
-        heading: 'Artwork and Content Rights',
+        heading: 'Intellectual Property and Artist Protections',
         body: [
-          'You are responsible for ensuring your uploaded artwork and requested text are legally usable and do not infringe third-party rights.',
-          'Ruby\'s Relics may reject, pause, or cancel requests that appear unsafe, unlawful, or rights-restricted.',
+          'By submitting artwork, you represent that you have all required permissions from the original artist for reproduction.',
+          'If your order is for resale or other commercial use, you warrant that the artist has consented to that commercial use and that any artist commercial fees are your responsibility.',
+          'Original artists may request that future production of their artwork stop through the Art Guard Request form.',
+          'Restricted artists or artwork may be listed publicly to prevent accidental infringement. For creators flagged as Contact for Approval, we may hold orders and verify directly with the artist.',
+          'If artist details are missing or inaccurate for required verification, the order may be canceled.',
+          'You agree to indemnify and hold Ruby\'s Relics Studio harmless against claims, losses, and legal costs arising from copyright disputes or unauthorized commercial use.',
+          'Ruby\'s Relics Studio reserves the right to refuse any order, including for suspected art theft, rights concerns, or unusable file quality.',
         ],
       },
       {
-        heading: 'Production and Fulfillment',
+        heading: 'Nature of Service, Quality, and Pricing',
         body: [
-          'All items are produced by a one-dragon studio and lead times may shift with queue depth, complexity, and material availability.',
-          'Quoted or displayed timelines are estimates rather than guaranteed delivery dates unless explicitly stated in writing.',
+          'Ruby\'s Relics Studio is a boutique one-dragon operation using prosumer equipment, not a mass-production factory.',
+          'Minor variation in color and cut alignment (including tolerances up to about 1mm) is inherent to handmade and small-batch production and is not considered a defect.',
+          'Ruby\'s Relics Studio provides custom printing and precision cutting services based on customer-supplied digital artwork.',
+          'Prices may change without notice. Custom quotes are valid for 30 days from issue unless otherwise stated.',
+          'Price updates do not affect orders already paid and formally accepted into production.',
+          'We are not responsible for pixelation, blur, or quality loss caused by low-resolution source files. 300 DPI artwork is strongly recommended.',
+        ],
+      },
+      {
+        heading: 'Shipping, Conventions, and Liability Transfer',
+        body: [
+          'Ruby\'s Relics Studio legal and financial liability ends at the earliest applicable point: delivery confirmation from you (email, DM, or text), in-person acceptance at pickup or convention handoff, or 72 hours after carrier tracking marks a package as Delivered.',
+          'We are not liable for carrier errors, delays, theft, or transit damage after shipment handoff, but we provide reasonable support such as tracking logs and shipping documentation for claims.',
+          'Use and application of stickers or other products on personal or third-party property is at your own risk. Ruby\'s Relics Studio is not liable for damage from application or removal.',
+        ],
+      },
+      {
+        heading: 'File Retention and Attribution',
+        body: [
+          'Customer artwork files are retained for up to 90 days from the most recent related order to support easier re-orders.',
+          'You may not claim credit for physical manufacturing. If you resell produced items, you agree to clearly credit Ruby\'s Relics Studio as manufacturer.',
+        ],
+      },
+      {
+        heading: 'Returns and Refunds',
+        body: [
+          'Because products are custom-made, all sales are final unless required otherwise by law.',
+          'If there is a confirmed manufacturing defect, contact support within 7 days of delivery and include clear photos for review.',
+        ],
+      },
+      {
+        heading: 'Production Timeline and Fulfillment',
+        body: [
+          'Turnaround depends on active queue volume, order complexity, and material readiness.',
+          'Orders are fulfilled in line with Ruby\'s Relics Studio production windows and posted reopening schedule.',
+          'Tracking details are provided after shipment when available. We are not responsible for carrier-side delays outside studio control.',
+        ],
+      },
+      {
+        heading: 'Chargebacks and Disputes',
+        body: [
+          'By placing an order, you confirm you are the authorized payment method holder and understand the custom, generally non-refundable nature of these products.',
+          'Ruby\'s Relics Studio may retain order records, payment confirmations, communication history, and shipment evidence to respond to payment disputes.',
+          `For billing or fulfillment issues, contact ${supportEmail} first so we can attempt direct resolution before formal disputes are filed.`,
+          'Fraudulent or abusive chargebacks on fulfilled custom orders may be formally contested with supporting records and reported to relevant payment and fraud review channels.',
         ],
       },
     ],

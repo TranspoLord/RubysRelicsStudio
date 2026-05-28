@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { use, useEffect, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -55,7 +55,8 @@ const DISCOUNT_TYPE_CHOICES: Array<BulkDiscountRow['discount_type']> = [
   'unit_price',
 ]
 
-export default function ProductPricingEditorPage({ params }: { params: { id: string } }) {
+export default function ProductPricingEditorPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id: productId } = use(params)
   const [product, setProduct] = useState<ProductPricing | null>(null)
   const [basePrice, setBasePrice] = useState('0')
   const [discounts, setDiscounts] = useState<BulkDiscountRow[]>([])
@@ -84,9 +85,9 @@ export default function ProductPricingEditorPage({ params }: { params: { id: str
     setError(null)
     try {
       const [productRes, discountsRes, variantsRes] = await Promise.all([
-        fetch(`/api/admin/catalog/products/${params.id}`, { cache: 'no-store' }),
-        fetch(`/api/admin/catalog/discounts?productId=${encodeURIComponent(params.id)}`, { cache: 'no-store' }),
-        fetch(`/api/admin/catalog/variants?productId=${encodeURIComponent(params.id)}`, { cache: 'no-store' }),
+        fetch(`/api/admin/catalog/products/${productId}`, { cache: 'no-store' }),
+        fetch(`/api/admin/catalog/discounts?productId=${encodeURIComponent(productId)}`, { cache: 'no-store' }),
+        fetch(`/api/admin/catalog/variants?productId=${encodeURIComponent(productId)}`, { cache: 'no-store' }),
       ])
 
       const productPayload = await productRes.json().catch(() => ({}))
@@ -120,7 +121,7 @@ export default function ProductPricingEditorPage({ params }: { params: { id: str
 
   useEffect(() => {
     void loadData()
-  }, [params.id])
+  }, [productId])
 
   async function saveBasePrice() {
     if (!product) return
@@ -129,7 +130,7 @@ export default function ProductPricingEditorPage({ params }: { params: { id: str
     setError(null)
     setSuccess(null)
     try {
-      const response = await fetch(`/api/admin/catalog/products/${params.id}`, {
+      const response = await fetch(`/api/admin/catalog/products/${productId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -171,7 +172,7 @@ export default function ProductPricingEditorPage({ params }: { params: { id: str
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          productId: params.id,
+          productId,
           min_qty: Number(minQty),
           max_qty: maxQty.trim().length > 0 ? Number(maxQty) : null,
           discount_type: discountType,
@@ -211,7 +212,7 @@ export default function ProductPricingEditorPage({ params }: { params: { id: str
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          productId: params.id,
+          productId,
           label: variantLabel,
           sku: variantSku,
           price_delta: Number(variantPriceDelta),

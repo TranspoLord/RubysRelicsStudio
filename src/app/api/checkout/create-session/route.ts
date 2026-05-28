@@ -107,6 +107,15 @@ interface ProductContext {
   }>
 }
 
+interface OptionSnapshotEntry {
+  label: string
+  option_type: string
+  selected_value: string
+  selected_label: string
+  price_delta: number
+  is_required: boolean
+}
+
 function createGuestTrackingToken(): string {
   return randomBytes(24).toString('base64url')
 }
@@ -261,6 +270,28 @@ async function getStripeCheckoutConfig() {
       guestOrderTrackingNotifyEmail: trackingConfig.notify_email,
     }
   }
+}
+
+function buildOptionSnapshot(
+  context: ProductContext | undefined,
+  selectedOptions: Record<string, string>
+): Record<string, OptionSnapshotEntry> {
+  const snapshot: Record<string, OptionSnapshotEntry> = {}
+
+  for (const [key, value] of Object.entries(selectedOptions)) {
+    const definition = context?.options.find((option) => option.option_key === key)
+    const matchedValue = definition?.values.find((entry) => entry.value === value)
+    snapshot[key] = {
+      label: definition?.label ?? key,
+      option_type: definition?.option_type ?? 'unknown',
+      selected_value: value,
+      selected_label: matchedValue?.label ?? value,
+      price_delta: Number(matchedValue?.price_delta ?? 0),
+      is_required: definition?.is_required ?? false,
+    }
+  }
+
+  return snapshot
 }
 
 async function callInventoryFunction(
@@ -476,18 +507,24 @@ export async function POST(request: Request) {
 
     createdOrderId = orderRow.id
 
-    const orderItemsPayload = canonicalLines.map((line, index) => ({
-      order_id: orderRow.id,
-      product_id: line.productId,
-      product_title: line.name,
-      selected_options: line.selectedOptions,
-      unit_price: line.quantity > 0 ? (finalLineTotals[index] ?? line.lineTotal) / line.quantity : 0,
-      quantity: line.quantity,
-      line_subtotal: line.lineSubtotal,
-      line_discount: line.lineDiscount + (promotionOutcome.lineDiscounts[index] ?? 0),
-      line_total: finalLineTotals[index] ?? line.lineTotal,
-      variant_label: line.variantLabel,
-    }))
+    const orderItemsPayload = canonicalLines.map((line, index) => {
+      const context = contextMap.get(line.productId)
+      const optionSnapshot = buildOptionSnapshot(context, line.selectedOptions)
+
+      return {
+        order_id: orderRow.id,
+        product_id: line.productId,
+        product_title: line.name,
+        selected_options: line.selectedOptions,
+        option_snapshot: optionSnapshot,
+        unit_price: line.quantity > 0 ? (finalLineTotals[index] ?? line.lineTotal) / line.quantity : 0,
+        quantity: line.quantity,
+        line_subtotal: line.lineSubtotal,
+        line_discount: line.lineDiscount + (promotionOutcome.lineDiscounts[index] ?? 0),
+        line_total: finalLineTotals[index] ?? line.lineTotal,
+        variant_label: line.variantLabel,
+      }
+    })
 
     const { error: itemInsertError } = await supabase
       .from('exp_order_items')

@@ -168,14 +168,14 @@ export function HeroSection() {
 
             <Button
               component={Link}
-              href="/how-it-works"
+              href="/shop"
               variant="outlined"
               color="primary"
               size="large"
               startIcon={<InfoOutlinedIcon />}
               sx={{ px: 3, py: 1.75, fontSize: '1rem' }}
             >
-              How It Works
+              Browse Shop
             </Button>
           </Box>
 

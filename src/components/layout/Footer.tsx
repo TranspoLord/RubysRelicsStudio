@@ -23,8 +23,6 @@ const SHOP_LINKS = [
 
 const COMPANY_LINKS = [
   { label: 'About', href: '/about' },
-  { label: 'Gallery', href: '/gallery' },
-  { label: 'How It Works', href: '/how-it-works' },
   { label: 'Custom Orders', href: '/custom-orders' },
 ]
 

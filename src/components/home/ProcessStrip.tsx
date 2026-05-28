@@ -163,12 +163,12 @@ export function ProcessStrip() {
         <Box sx={{ textAlign: 'center', mt: 6 }}>
           <Button
             component={Link}
-            href="/how-it-works"
+            href="/shop"
             variant="outlined"
             color="primary"
             endIcon={<ArrowForwardIcon />}
           >
-            Full Process Walkthrough
+            Explore Products
           </Button>
         </Box>
       </Container>

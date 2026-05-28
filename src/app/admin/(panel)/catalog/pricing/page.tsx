@@ -10,6 +10,7 @@ import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
+import Link from 'next/link'
 
 import { brandTokens } from '@/theme/theme'
 
@@ -359,7 +360,15 @@ export default function StorePricingPage() {
   }
 
   return (
-    <Box sx={{ display: 'grid', gap: 1.5 }}>
+    <Box sx={{ display: 'grid', gap: 1.5, overflowX: 'hidden' }}>
+      <Box>
+        <Link href='/admin/catalog' style={{ textDecoration: 'none' }}>
+          <Button variant='text' sx={{ px: 0 }}>
+            {'<- Back'}
+          </Button>
+        </Link>
+      </Box>
+
       <Box>
         <Typography variant="h5" component="h1" sx={{ mb: 0.5 }}>
           Store Pricing & Promotions
@@ -393,7 +402,7 @@ export default function StorePricingPage() {
               <TextField size="small" label="Description" value={promoDescription} onChange={(event) => setPromoDescription(event.target.value)} fullWidth />
             </Stack>
 
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
               <Select size="small" value={promoDiscountType} onChange={(event) => setPromoDiscountType(event.target.value as PromoDiscountType)} sx={{ minWidth: 180 }}>
                 {DISCOUNT_TYPE_CHOICES.map((kind) => (
                   <MenuItem key={kind} value={kind}>{kind}</MenuItem>
@@ -461,7 +470,7 @@ export default function StorePricingPage() {
               <TextField size="small" label="Description" value={dealDescription} onChange={(event) => setDealDescription(event.target.value)} fullWidth />
             </Stack>
 
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
               <Select size="small" value={dealTriggerType} onChange={(event) => setDealTriggerType(event.target.value as TriggerType)} sx={{ minWidth: 160 }}>
                 {TRIGGER_TYPE_CHOICES.map((kind) => (
                   <MenuItem key={kind} value={kind}>{kind}</MenuItem>
@@ -480,7 +489,7 @@ export default function StorePricingPage() {
               <TextField size="small" type="datetime-local" label="Valid to" value={dealValidTo} onChange={(event) => setDealValidTo(event.target.value)} InputLabelProps={{ shrink: true }} sx={{ minWidth: 210 }} />
             </Stack>
 
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
               <TextField
                 multiline
                 minRows={3}

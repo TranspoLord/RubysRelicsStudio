@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
 import Box from '@mui/material/Box'
 import Container from '@mui/material/Container'
 import Typography from '@mui/material/Typography'
@@ -101,6 +102,8 @@ function normalizeAnchor(input?: string | null): string | null {
 }
 
 export default async function HowItWorksPage() {
+  notFound()
+
   const [categories, materials] = await Promise.all([getCategories(), getMaterials()])
 
   const categoriesByAnchor = categories.reduce<Record<string, typeof categories>>((acc, cat) => {

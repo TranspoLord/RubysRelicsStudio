@@ -126,23 +126,6 @@ export default async function CategoryPage({ params }: Props) {
                       }}
                     />
                   )}
-                  {category.how_it_works_anchor && (
-                    <Chip
-                      component="a"
-                      href={`/how-it-works${category.how_it_works_anchor}`}
-                      label="How It Works →"
-                      size="small"
-                      clickable
-                      sx={{
-                        backgroundColor: alpha(brandTokens.parchment, 0.06),
-                        color: alpha(brandTokens.parchment, 0.55),
-                        border: `1px solid ${alpha(brandTokens.parchment, 0.12)}`,
-                        '&:hover': {
-                          backgroundColor: alpha(brandTokens.parchment, 0.1),
-                        },
-                      }}
-                    />
-                  )}
                 </Box>
               </Box>
             </Box>

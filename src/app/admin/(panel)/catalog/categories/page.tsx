@@ -10,6 +10,7 @@ import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
+import Link from 'next/link'
 
 import { brandTokens } from '@/theme/theme'
 
@@ -203,6 +204,14 @@ export default function CategoriesAdminPage() {
 
   return (
     <Box sx={{ display: 'grid', gap: 1.4 }}>
+      <Box>
+        <Link href='/admin/catalog' style={{ textDecoration: 'none' }}>
+          <Button variant='text' sx={{ px: 0 }}>
+            {'<- Back'}
+          </Button>
+        </Link>
+      </Box>
+
       <Box>
         <Typography variant="h5" component="h1" sx={{ mb: 0.5 }}>
           Categories Management

@@ -29,9 +29,7 @@ import { SearchModal } from '@/components/search/SearchModal'
 const NAV_LINKS = [
   { label: 'Home', href: '/' },
   { label: 'Shop', href: '/shop' },
-  { label: 'How It Works', href: '/how-it-works' },
   { label: 'Custom Orders', href: '/custom-orders' },
-  { label: 'Gallery', href: '/gallery' },
   { label: 'About', href: '/about' },
 ]
 

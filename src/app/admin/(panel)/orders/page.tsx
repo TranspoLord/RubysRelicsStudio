@@ -50,6 +50,17 @@ interface OrderItemRow {
   product_title: string
   variant_label: string | null
   selected_options: Record<string, string>
+  option_snapshot?: Record<
+    string,
+    {
+      label?: string
+      option_type?: string
+      selected_value?: string
+      selected_label?: string
+      price_delta?: number
+      is_required?: boolean
+    }
+  >
   unit_price: number
   quantity: number
   line_subtotal: number
@@ -586,9 +597,24 @@ export default function AdminOrdersPage() {
                     <Typography sx={{ fontWeight: 600, fontSize: '0.82rem' }}>
                       {item.product_title} · Qty {item.quantity}
                     </Typography>
+                    {item.variant_label && (
+                      <Typography sx={{ fontSize: '0.74rem', color: alpha(brandTokens.parchment, 0.64) }}>
+                        Variant: {item.variant_label}
+                      </Typography>
+                    )}
                     <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.58) }}>
                       Unit {asMoney(item.unit_price)} · Subtotal {asMoney(item.line_subtotal)} · Discount {asMoney(item.line_discount)} · Total {asMoney(item.line_total)}
                     </Typography>
+                    {Object.entries(item.option_snapshot ?? {}).length > 0 && (
+                      <Box sx={{ mt: 0.6, display: 'grid', gap: 0.2 }}>
+                        {Object.entries(item.option_snapshot ?? {}).map(([key, snapshot]) => (
+                          <Typography key={`${item.id}-${key}`} sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.63) }}>
+                            {(snapshot.label ?? key)}: {snapshot.selected_label ?? snapshot.selected_value ?? item.selected_options?.[key] ?? 'n/a'}
+                            {' '}({snapshot.option_type ?? 'unknown'})
+                          </Typography>
+                        ))}
+                      </Box>
+                    )}
                   </Box>
                 ))}
               </Box>

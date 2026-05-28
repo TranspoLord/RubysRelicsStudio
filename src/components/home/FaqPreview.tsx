@@ -45,8 +45,8 @@ const STATIC_FAQS: DbFaqItem[] = [
     question: 'How long does production take?',
     answer:
       'Most orders are crafted within 3–7 business days depending on category and current queue depth. Production time is visible on every product page and is always driven by live queue data — never a static promise. Shipping time is additional. Rush availability is sometimes offered for a surcharge.',
-    link_label: 'How It Works',
-    link_href: '/how-it-works#production',
+    link_label: 'Shipping & Fulfillment',
+    link_href: '/resources/shipping',
     is_visible: true,
     sort_order: 3,
   },

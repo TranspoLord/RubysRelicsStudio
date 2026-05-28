@@ -30,7 +30,6 @@ const STAGES: Stage[] = ['design', 'setup', 'production', 'finishing', 'packing'
 interface OrderRef {
   id: string
   status: string
-  customer_email: string | null
 }
 
 interface CustomRequestRef {
@@ -476,7 +475,7 @@ export default function AdminSchedulePage() {
                   : reqRef
                     ? `Request ${block.custom_request_id!.slice(0, 8)}… (${reqRef.status})`
                     : '—'
-                const linkedEmail = orderRef?.customer_email ?? reqRef?.customer_email ?? null
+                const linkedEmail = reqRef?.customer_email ?? null
                 const actualHours = hoursBetween(block.start_at, block.end_at)
 
                 return (

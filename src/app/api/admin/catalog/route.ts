@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server'
 
 import { requireAdminApiSession } from '@/lib/admin/auth'
 import { writeAdminAuditLog } from '@/lib/admin/audit'
+import {
+  getCategoryOptionTemplate,
+  normalizeOptionKey,
+  type OptionBlueprint,
+  type ProductOptionType,
+} from '@/lib/catalog/option-templates'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 
 type CatalogAction = 'archive' | 'restore' | 'publish' | 'deactivate'
@@ -24,6 +30,27 @@ interface CatalogUpsertBody {
   description?: unknown
   is_ready_made?: unknown
   is_customizable?: unknown
+  apply_category_template?: unknown
+  option_blueprint?: unknown
+}
+
+interface OptionValueInsert {
+  label: string
+  value: string
+  price_delta: number
+  is_enabled: boolean
+  sort_order: number
+}
+
+interface OptionInsert {
+  option_key: string
+  label: string
+  option_type: ProductOptionType
+  placeholder: string | null
+  help_text: string | null
+  is_required: boolean
+  sort_order: number
+  values: OptionValueInsert[]
 }
 
 function asString(value: unknown, maxLen: number): string {
@@ -49,6 +76,79 @@ function asNumber(value: unknown): number | null {
   const n = Number(value)
   if (!Number.isFinite(n)) return null
   return n
+}
+
+function asOptionalString(value: unknown, maxLen: number): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim().slice(0, maxLen)
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function isOptionType(value: unknown): value is ProductOptionType {
+  return value === 'select' || value === 'text' || value === 'textarea' || value === 'file' || value === 'checkbox' || value === 'number'
+}
+
+function parseOptionBlueprint(input: unknown): OptionInsert[] {
+  if (!Array.isArray(input)) return []
+
+  const parsed: OptionInsert[] = []
+
+  for (const raw of input) {
+    if (!raw || typeof raw !== 'object') continue
+    const row = raw as OptionBlueprint
+    const optionType = isOptionType(row.option_type) ? row.option_type : null
+    const optionKey = normalizeOptionKey(asString(row.option_key, 80))
+    const label = asString(row.label, 120)
+    const sortOrder = asNumber(row.sort_order)
+
+    if (!optionType || optionKey.length < 2 || label.length < 2) continue
+
+    const values: OptionValueInsert[] = Array.isArray(row.values)
+      ? row.values
+          .map((value, index) => {
+            const valueLabel = asString(value?.label, 120)
+            const valueRaw = asString(value?.value, 120)
+            const valueSort = asNumber(value?.sort_order)
+            const valueDelta = asNumber(value?.price_delta)
+            if (!valueLabel || !valueRaw) return null
+            return {
+              label: valueLabel,
+              value: valueRaw,
+              sort_order: valueSort === null ? index + 1 : Math.trunc(valueSort),
+              price_delta: valueDelta === null ? 0 : Math.round(valueDelta * 100) / 100,
+              is_enabled: asBoolean(value?.is_enabled, true),
+            }
+          })
+          .filter((value): value is OptionValueInsert => value !== null)
+      : []
+
+    parsed.push({
+      option_key: optionKey,
+      label,
+      option_type: optionType,
+      placeholder: optionType === 'select' || optionType === 'checkbox' ? null : asOptionalString(row.placeholder, 180),
+      help_text: asOptionalString(row.help_text, 500),
+      is_required: asBoolean(row.is_required, false),
+      sort_order: sortOrder === null ? parsed.length + 1 : Math.trunc(sortOrder),
+      values,
+    })
+  }
+
+  return parsed
+}
+
+function mergeOptionBlueprints(template: OptionInsert[], custom: OptionInsert[]): OptionInsert[] {
+  const byKey = new Map<string, OptionInsert>()
+
+  for (const option of template) {
+    byKey.set(option.option_key, option)
+  }
+
+  for (const option of custom) {
+    byKey.set(option.option_key, option)
+  }
+
+  return Array.from(byKey.values()).sort((a, b) => a.sort_order - b.sort_order)
 }
 
 function isValidSlug(value: string): boolean {
@@ -441,6 +541,7 @@ export async function POST(request: Request) {
     const description = asString(body.description, 6000)
     const isReadyMade = asBoolean(body.is_ready_made, false)
     const isCustomizable = asBoolean(body.is_customizable, true)
+    const applyCategoryTemplate = asBoolean(body.apply_category_template, true)
 
     if (!title || title.length < 2) {
       return NextResponse.json({ error: 'Product title must be at least 2 characters.' }, { status: 400 })
@@ -527,6 +628,62 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Could not create product.' }, { status: 500 })
     }
 
+    const templateOptions = applyCategoryTemplate
+      ? parseOptionBlueprint(getCategoryOptionTemplate(categoryKey))
+      : []
+    const customOptions = parseOptionBlueprint(body.option_blueprint)
+    const optionRows = mergeOptionBlueprints(templateOptions, customOptions)
+
+    if (optionRows.length > 0) {
+      const optionPayload = optionRows.map((option) => ({
+        product_id: data.id,
+        option_key: option.option_key,
+        label: option.label,
+        option_type: option.option_type,
+        placeholder: option.placeholder,
+        help_text: option.help_text,
+        is_required: option.is_required,
+        sort_order: option.sort_order,
+      }))
+
+      const { data: insertedOptions, error: optionError } = await supabase
+        .from('exp_product_options')
+        .insert(optionPayload)
+        .select('id, option_key')
+
+      if (optionError || !insertedOptions) {
+        console.error('[admin:catalog:post:options]', optionError?.message)
+        await supabase.from('exp_products').delete().eq('id', data.id)
+        return NextResponse.json({ error: 'Product was created but add-ons failed. Please retry.' }, { status: 500 })
+      }
+
+      const optionIdByKey = new Map(insertedOptions.map((option) => [option.option_key, option.id]))
+      const valuePayload = optionRows.flatMap((option) => {
+        const optionId = optionIdByKey.get(option.option_key)
+        if (!optionId || option.values.length === 0) return []
+        return option.values.map((value) => ({
+          option_id: optionId,
+          label: value.label,
+          value: value.value,
+          price_delta: value.price_delta,
+          is_enabled: value.is_enabled,
+          sort_order: value.sort_order,
+        }))
+      })
+
+      if (valuePayload.length > 0) {
+        const { error: valueError } = await supabase
+          .from('exp_product_option_values')
+          .insert(valuePayload)
+
+        if (valueError) {
+          console.error('[admin:catalog:post:option-values]', valueError.message)
+          await supabase.from('exp_products').delete().eq('id', data.id)
+          return NextResponse.json({ error: 'Product add-on values failed to save. Please retry.' }, { status: 500 })
+        }
+      }
+    }
+
     await writeAdminAuditLog({
       action: 'catalog.create',
       entityType: 'product',
@@ -534,7 +691,12 @@ export async function POST(request: Request) {
       route: '/api/admin/catalog',
       request,
       status: 'success',
-      details: { slug: data.slug, is_active: data.is_active },
+      details: {
+        slug: data.slug,
+        is_active: data.is_active,
+        applied_category_template: applyCategoryTemplate,
+        option_count: optionRows.length,
+      },
     })
 
     return NextResponse.json({ product: data }, { status: 201 })
