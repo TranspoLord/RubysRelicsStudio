@@ -27,6 +27,7 @@ interface SearchResult {
   thumbnail?: string
   category: string
   categoryKey?: string
+  categorySlug?: string
 }
 
 interface SearchModalProps {
@@ -67,7 +68,17 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
     onClose()
     setQuery('')
     setResults([])
-    router.push(`/shop/categories/${result.categoryKey}/${result.slug}`)
+    if (result.categorySlug) {
+      router.push(`/shop/categories/${result.categorySlug}/${result.slug}`)
+      return
+    }
+
+    if (result.categoryKey) {
+      router.push(`/shop/categories/${result.categoryKey}/${result.slug}`)
+      return
+    }
+
+    router.push('/shop')
   }
 
   return (

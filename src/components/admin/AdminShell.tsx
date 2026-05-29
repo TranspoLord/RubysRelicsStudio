@@ -46,6 +46,10 @@ interface AdminSearchResult {
   href: string
 }
 
+function panelSurface(tint: string, surfaceAlpha = 0.98, tintAlpha = 0.06) {
+  return `linear-gradient(135deg, ${alpha(brandTokens.bgCard, surfaceAlpha)} 0%, ${alpha(tint, tintAlpha)} 100%)`
+}
+
 export function AdminShell({ children, notificationCount, moduleLinks }: AdminShellProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -115,10 +119,15 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
         setNotifications([])
+        setNotificationsOpen(false)
         return
       }
-      setNotifications(Array.isArray(payload?.notifications) ? payload.notifications : [])
+      const nextNotifications = Array.isArray(payload?.notifications) ? payload.notifications : []
+      setNotifications(nextNotifications)
       setUnreadCount(typeof payload?.unreadCount === 'number' ? payload.unreadCount : 0)
+      if (nextNotifications.length === 0) {
+        setNotificationsOpen(false)
+      }
     } finally {
       setNotificationsLoading(false)
     }
@@ -161,7 +170,7 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
           backdropFilter: 'blur(10px)',
         }}
       >
-        <Box sx={{ maxWidth: 1240, mx: 'auto', px: { xs: 2, md: 3 }, py: 1.4, display: 'grid', gap: 1.2 }}>
+        <Box sx={{ maxWidth: 1520, mx: 'auto', px: { xs: 2, md: 3 }, py: 1.4, display: 'grid', gap: 1.2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.2, flexWrap: 'wrap' }}>
             <Typography sx={{ fontFamily: 'var(--font-cinzel, serif)', fontWeight: 700, color: brandTokens.forgeGold, fontSize: '1.02rem' }}>
               Admin Dashboard
@@ -193,9 +202,9 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
           {notificationsOpen && (
             <Box
               sx={{
-                border: `1px solid ${alpha(brandTokens.parchment, 0.12)}`,
+                border: `1px solid ${alpha(brandTokens.forgeGold, 0.16)}`,
                 borderRadius: 1.2,
-                backgroundColor: alpha(brandTokens.bgSurface, 0.97),
+                background: panelSurface(brandTokens.parchment, 0.985, 0.065),
                 overflow: 'hidden',
               }}
             >
@@ -273,9 +282,9 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
               <Box
                 sx={{
                   mt: 0.6,
-                  border: `1px solid ${alpha(brandTokens.parchment, 0.12)}`,
+                  border: `1px solid ${alpha(brandTokens.copper, 0.16)}`,
                   borderRadius: 1.2,
-                  backgroundColor: alpha(brandTokens.bgSurface, 0.97),
+                  background: panelSurface(brandTokens.forgeGold, 0.985, 0.055),
                   overflow: 'hidden',
                 }}
               >
@@ -314,13 +323,13 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
         </Box>
       </Box>
 
-      <Box sx={{ maxWidth: 1240, mx: 'auto', px: { xs: 2, md: 3 }, py: { xs: 2.4, md: 3 }, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '250px minmax(0, 1fr)' }, gap: 2.2 }}>
+      <Box sx={{ maxWidth: 1520, mx: 'auto', px: { xs: 2, md: 3 }, py: { xs: 2.4, md: 3 }, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '280px minmax(0, 1fr)' }, gap: 2.2, overflow: 'visible' }}>
         <Box
           component="aside"
           sx={{
-            border: `1px solid ${alpha(brandTokens.parchment, 0.1)}`,
+            border: `1px solid ${alpha(brandTokens.rubyRed, 0.14)}`,
             borderRadius: 1.8,
-            backgroundColor: alpha(brandTokens.bgSurface, 0.62),
+            background: panelSurface(brandTokens.copper, 0.72, 0.055),
             p: 1,
             height: 'fit-content',
           }}
@@ -358,10 +367,11 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
         <Box
           component="section"
           sx={{
-            border: `1px solid ${alpha(brandTokens.parchment, 0.1)}`,
+            border: `1px solid ${alpha(brandTokens.forgeGold, 0.12)}`,
             borderRadius: 1.8,
-            backgroundColor: alpha(brandTokens.bgSurface, 0.58),
+            background: panelSurface(brandTokens.parchment, 0.7, 0.055),
             p: { xs: 1.6, md: 2 },
+            overflow: 'visible',
           }}
         >
           {children}

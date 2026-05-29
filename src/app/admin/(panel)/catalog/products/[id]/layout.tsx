@@ -16,31 +16,32 @@ export default function ProductDetailLayout({
   children: React.ReactNode
 }) {
   const params = useParams<{ id: string }>()
-  const productId = typeof params?.id === 'string' ? params.id : ''
   const pathname = usePathname()
-  const pageHref = `/admin/catalog/products/${productId}`
-  const pricingHref = `/admin/catalog/products/${productId}/pricing`
-  const isPricing = pathname?.endsWith('/pricing')
+  const productId = typeof params?.id === 'string' ? params.id : ''
+  const builderHref = `/admin/catalog/products/${productId}/builder`
+  const isBuilderRoute = pathname?.endsWith('/builder')
 
   return (
     <Box sx={{ display: 'grid', gap: 2 }}>
       <Box>
         <Typography variant="h5" component="h1" sx={{ mb: 1 }}>
-          Product Editor
+          Legacy Product Editor
         </Typography>
         <Typography sx={{ color: alpha(brandTokens.parchment, 0.65), fontSize: '0.875rem' }}>
-          Edit product page content and pricing separately
+          This screen is retained for compatibility. Use the unified Product Builder for day-to-day editing.
         </Typography>
       </Box>
 
       <Box sx={{ borderBottom: `1px solid ${alpha(brandTokens.parchment, 0.16)}` }}>
-        <Stack direction="row" spacing={1} sx={{ pb: 1 }}>
-          <Link href={pageHref} style={{ textDecoration: 'none' }}>
-            <Button variant={isPricing ? 'outlined' : 'contained'}>Page Content</Button>
+        <Stack direction="row" spacing={1} sx={{ pb: 1, flexWrap: 'wrap' }}>
+          <Link href={builderHref} style={{ textDecoration: 'none' }}>
+            <Button variant="contained">Open Product Builder</Button>
           </Link>
-          <Link href={pricingHref} style={{ textDecoration: 'none' }}>
-            <Button variant={isPricing ? 'contained' : 'outlined'}>Pricing</Button>
-          </Link>
+          {isBuilderRoute && (
+            <Button variant="outlined" form="product-builder-form" type="submit">
+              Save
+            </Button>
+          )}
         </Stack>
       </Box>
 

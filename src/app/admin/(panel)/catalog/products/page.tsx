@@ -395,7 +395,7 @@ export default function AdminProductsPage() {
       <Box sx={{ display: 'grid', gap: 0.5 }}>
         <Typography variant='h4' component='h1'>Products</Typography>
         <Typography sx={{ color: alpha(brandTokens.parchment, 0.65) }}>
-          Filter products, manage lifecycle, and jump directly to page content or pricing editors.
+          Filter products, manage lifecycle, and open the unified product builder.
         </Typography>
       </Box>
 
@@ -735,11 +735,8 @@ export default function AdminProductsPage() {
                 </Box>
 
                 <Stack direction='row' spacing={0.8} flexWrap='wrap'>
-                  <Link href={`/admin/catalog/products/${product.id}`} style={{ textDecoration: 'none' }}>
-                    <Button size='small' variant='outlined'>Page</Button>
-                  </Link>
-                  <Link href={`/admin/catalog/products/${product.id}/pricing`} style={{ textDecoration: 'none' }}>
-                    <Button size='small' variant='outlined'>Pricing</Button>
+                  <Link href={`/admin/catalog/products/${product.id}/builder`} style={{ textDecoration: 'none' }}>
+                    <Button size='small' variant='outlined'>Builder</Button>
                   </Link>
 
                   {!product.is_archived && !product.is_active && (
