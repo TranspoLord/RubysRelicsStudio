@@ -212,8 +212,13 @@ export function Header({ cartItemCount = 0, currentPath = '/' }: HeaderProps) {
 
           <IconButton
             aria-label={`Shopping cart, ${effectiveCartCount} item${effectiveCartCount !== 1 ? 's' : ''}`}
-            component={Link}
-            href="/cart"
+            onClick={() => {
+              if (cart.drawerOpen) {
+                cart.closeDrawer()
+                return
+              }
+              cart.openDrawer()
+            }}
             size="medium"
             sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main' } }}
           >
