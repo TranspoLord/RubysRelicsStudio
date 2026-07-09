@@ -53,6 +53,11 @@ const ADMIN_MODULES: AdminModuleLink[] = [
     href: '/admin/abandoned-carts',
     description: 'Cart captures and recovery email tracking.',
   },
+  {
+    label: 'Homepage',
+    href: '/admin/homepage',
+    description: 'Quick-pick and process-pick shortcut tiles on the storefront.',
+  },
 ]
 
 async function loadUnreadNotificationCount() {

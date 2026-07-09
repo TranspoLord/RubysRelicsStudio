@@ -5,6 +5,7 @@ import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Checkbox from '@mui/material/Checkbox'
+import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import MenuItem from '@mui/material/MenuItem'
@@ -39,6 +40,7 @@ interface CatalogProductRow {
   sort_order: number
   production_estimate_band: string
   updated_at: string
+  process_type_keys: string[]
 }
 
 interface CategoryOption {
@@ -732,6 +734,25 @@ export default function AdminProductsPage() {
                   <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.76rem' }}>
                     {statusText(product)} | {asMoney(product.base_price)} | Sort {product.sort_order} | {product.production_estimate_band}
                   </Typography>
+                  {product.process_type_keys.length > 0 && (
+                    <Stack direction='row' spacing={0.5} flexWrap='wrap' useFlexGap sx={{ mt: 0.25 }}>
+                      {product.process_type_keys.map((key) => (
+                        <Chip
+                          key={key}
+                          label={key.replace(/_/g, ' ')}
+                          size='small'
+                          sx={{
+                            fontSize: '0.68rem',
+                            height: 18,
+                            backgroundColor: alpha(brandTokens.forgeGold, 0.12),
+                            color: brandTokens.forgeGold,
+                            border: `1px solid ${alpha(brandTokens.forgeGold, 0.3)}`,
+                            '& .MuiChip-label': { px: 0.8 },
+                          }}
+                        />
+                      ))}
+                    </Stack>
+                  )}
                 </Box>
 
                 <Stack direction='row' spacing={0.8} flexWrap='wrap'>

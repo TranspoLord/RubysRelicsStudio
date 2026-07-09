@@ -178,25 +178,51 @@ export async function getProductsByCategory(
 
 /**
  * Fetch all active products across all categories.
- * Used by the shop landing page for featured/recent items.
+ * When `processKey` is supplied only products tagged to that process type are returned.
+ * Used by the shop/all page and the homepage process-pick tiles.
  */
-export async function getAllActiveProducts(): Promise<DbProduct[]> {
+export async function getAllActiveProducts(processKey?: string): Promise<DbProduct[]> {
+  // When a process filter is requested, resolve the matching product IDs first
+  let allowedProductIds: string[] | null = null
+  if (processKey) {
+    const { data: links, error: linkErr } = await supabase
+      .from('exp_product_process_types')
+      .select('product_id')
+      .eq('process_type_key', processKey)
+
+    if (linkErr) {
+      console.error('[getAllActiveProducts:processFilter]', linkErr.message)
+    }
+
+    allowedProductIds = (links ?? []).map((r) => r.product_id)
+    // Return early if no products are tagged yet — avoids an unfiltered fallback
+    if (allowedProductIds.length === 0) return []
+  }
+
   // Fetch products and categories separately for efficiency
   const [productsResult, categoriesResult] = await Promise.all([
-    supabase
-      .from('exp_products')
-      .select(`
-        id, title, slug, short_description, description,
-        category_key, base_price, is_ready_made, is_customizable,
-        is_active, sort_order, production_estimate_band,
-        how_it_works_anchor, seo_title, seo_description,
-        media:exp_product_media (
-          id, product_id, url, alt, emoji, gradient, is_featured, sort_order
-        )
-      `)
-      .eq('is_active', true)
-      .eq('is_archived', false)
-      .order('sort_order', { ascending: true }),
+    (() => {
+      let q = supabase
+        .from('exp_products')
+        .select(`
+          id, title, slug, short_description, description,
+          category_key, base_price, is_ready_made, is_customizable,
+          is_active, sort_order, production_estimate_band,
+          how_it_works_anchor, seo_title, seo_description,
+          media:exp_product_media (
+            id, product_id, url, alt, emoji, gradient, is_featured, sort_order
+          )
+        `)
+        .eq('is_active', true)
+        .eq('is_archived', false)
+        .order('sort_order', { ascending: true })
+
+      if (allowedProductIds !== null) {
+        q = q.in('id', allowedProductIds)
+      }
+
+      return q
+    })(),
 
     supabase
       .from('exp_taxonomy')

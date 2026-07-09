@@ -353,6 +353,23 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Could not load catalog products.' }, { status: 500 })
     }
 
+    const productIds = (data ?? []).map((row) => row.id)
+
+    // Fetch process type assignments for all returned products in one query
+    const { data: processLinks } = productIds.length > 0
+      ? await supabase
+          .from('exp_product_process_types')
+          .select('product_id, process_type_key')
+          .in('product_id', productIds)
+      : { data: [] }
+
+    const processKeysByProduct = new Map<string, string[]>()
+    for (const link of processLinks ?? []) {
+      const existing = processKeysByProduct.get(link.product_id) ?? []
+      existing.push(link.process_type_key)
+      processKeysByProduct.set(link.product_id, existing)
+    }
+
     const products = (data ?? []).map((row) => {
       const category = Array.isArray(row.exp_taxonomy) ? row.exp_taxonomy[0] : row.exp_taxonomy
       return {
@@ -371,6 +388,7 @@ export async function GET(request: Request) {
         sort_order: row.sort_order,
         production_estimate_band: row.production_estimate_band,
         updated_at: row.updated_at,
+        process_type_keys: processKeysByProduct.get(row.id) ?? [],
       }
     })
 

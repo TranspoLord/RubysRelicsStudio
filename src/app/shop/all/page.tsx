@@ -5,11 +5,13 @@ import Container from '@mui/material/Container'
 import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
+import CloseIcon from '@mui/icons-material/Close'
 
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { Breadcrumb } from '@/components/layout/Breadcrumb'
 import { getAllActiveProducts } from '@/lib/supabase/queries/products'
+import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { brandTokens } from '@/theme/theme'
 
 export const dynamic = 'force-dynamic'
@@ -19,8 +21,26 @@ export const metadata: Metadata = {
   description: 'Browse every active product currently available in the hoard.',
 }
 
-export default async function ShopAllPage() {
-  const products = await getAllActiveProducts()
+interface ShopAllPageProps {
+  searchParams: Promise<{ process?: string }>
+}
+
+export default async function ShopAllPage({ searchParams }: ShopAllPageProps) {
+  const { process: processKey } = await searchParams
+  const safeProcessKey = processKey?.replace(/[^a-z0-9_]/gi, '') || undefined
+
+  const [products, processLabel] = await Promise.all([
+    getAllActiveProducts(safeProcessKey),
+    safeProcessKey
+      ? getSupabaseAdmin()
+          .from('exp_taxonomy')
+          .select('display_name')
+          .eq('key', safeProcessKey)
+          .eq('type', 'process_type')
+          .maybeSingle()
+          .then((r) => r.data?.display_name ?? null)
+      : Promise.resolve(null),
+  ])
 
   return (
     <>
@@ -58,8 +78,44 @@ export default async function ShopAllPage() {
 
         <Box sx={{ py: { xs: 5, md: 7 }, backgroundColor: brandTokens.bgVoid }}>
           <Container maxWidth="lg">
+            {/* Active process filter banner */}
+            {processLabel && (
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1.5,
+                  mb: { xs: 2.5, md: 3 },
+                  p: 1.5,
+                  borderRadius: 1.5,
+                  backgroundColor: alpha(brandTokens.forgeGold, 0.08),
+                  border: `1px solid ${alpha(brandTokens.forgeGold, 0.2)}`,
+                }}
+              >
+                <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.8), flex: 1 }}>
+                  Showing products for: <strong>{processLabel}</strong>
+                </Typography>
+                <Chip
+                  label="Clear filter"
+                  size="small"
+                  deleteIcon={<CloseIcon />}
+                  onDelete={undefined}
+                  component="a"
+                  href="/shop/all"
+                  clickable
+                  sx={{
+                    backgroundColor: alpha(brandTokens.forgeGold, 0.15),
+                    color: brandTokens.forgeGold,
+                    border: `1px solid ${alpha(brandTokens.forgeGold, 0.3)}`,
+                    '& .MuiChip-label': { px: 1.2 },
+                  }}
+                />
+              </Box>
+            )}
+
             <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.5), mb: { xs: 2.5, md: 3 } }}>
               {products.length} product{products.length !== 1 ? 's' : ''} available
+              {safeProcessKey && products.length === 0 && ' — no products have been tagged with this process yet.'}
             </Typography>
 
             <Box

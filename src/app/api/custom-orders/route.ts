@@ -12,6 +12,7 @@ interface FileMeta {
   name?: unknown
   size?: unknown
   type?: unknown
+  path?: unknown
 }
 
 const MAX_SINGLE_FILE_BYTES = 15 * 1024 * 1024
@@ -54,10 +55,13 @@ function asBoolean(value: unknown): boolean {
   return value === true
 }
 
+// Path must be {uuid}/{sanitized-filename} as produced by /api/custom-orders/upload
+const UPLOAD_PATH_RE = /^[0-9a-f-]{36}\/[a-z0-9._-]{1,120}$/
+
 function parseFiles(
   value: unknown,
   maxFiles: number
-): { files: Array<{ name: string; size: number; type: string }>; error?: string } {
+): { files: Array<{ name: string; size: number; type: string; path?: string }>; error?: string } {
   if (!Array.isArray(value)) return { files: [] }
 
   if (value.length > maxFiles) {
@@ -73,7 +77,9 @@ function parseFiles(
       const name = asTrimmedString(file?.name, 180)
       const size = Number.isFinite(Number(file?.size)) ? Math.max(0, Number(file?.size)) : 0
       const type = asTrimmedString(file?.type, 120)
-      return { name, size, type }
+      const rawPath = asTrimmedString(file?.path, 160)
+      const path = UPLOAD_PATH_RE.test(rawPath) ? rawPath : undefined
+      return { name, size, type, ...(path ? { path } : {}) }
     })
     .filter((file) => file.name.length > 0)
 

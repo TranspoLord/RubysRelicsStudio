@@ -20,6 +20,8 @@ interface CustomRequestRow {
   customer_email: string
   item_type: string
   quantity: number
+  description: string
+  files: Array<{ name: string; size: number; type: string; path?: string }> | null
   quote_amount: number | null
   stripe_payment_link_url: string | null
   quote_sent_at: string | null
@@ -63,6 +65,9 @@ export default function AdminCustomRequestsPage() {
   const [status, setStatus] = useState<StatusFilter>('all')
   const [submittingId, setSubmittingId] = useState<string | null>(null)
   const [runningRecoveryBatch, setRunningRecoveryBatch] = useState(false)
+  const [artworkUrls, setArtworkUrls] = useState<
+    Record<string, Array<{ name: string; url: string }> | 'loading' | 'error'>
+  >({})
 
   async function loadRows(nextQuery = query, nextStatus = status) {
     setLoading(true)
@@ -267,6 +272,21 @@ export default function AdminCustomRequestsPage() {
     }
   }
 
+  async function fetchArtwork(id: string) {
+    setArtworkUrls((prev) => ({ ...prev, [id]: 'loading' }))
+    try {
+      const res = await fetch(`/api/admin/custom-requests/${id}/artwork`, { cache: 'no-store' })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error('Failed to load artwork URLs.')
+      setArtworkUrls((prev) => ({
+        ...prev,
+        [id]: Array.isArray(payload?.urls) ? (payload.urls as Array<{ name: string; url: string }>) : [],
+      }))
+    } catch {
+      setArtworkUrls((prev) => ({ ...prev, [id]: 'error' }))
+    }
+  }
+
   async function runRecoveryBatch() {
     setRunningRecoveryBatch(true)
     setError(null)
@@ -402,6 +422,55 @@ export default function AdminCustomRequestsPage() {
                 <Typography sx={{ color: alpha(brandTokens.parchment, 0.54), fontSize: '0.73rem' }}>
                   Recovery reminder sent: {new Date(row.recovery_reminder_sent_at).toLocaleString()}
                 </Typography>
+              )}
+
+              {row.description && (
+                <Typography sx={{ color: alpha(brandTokens.parchment, 0.72), fontSize: '0.77rem', mt: 0.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                  {row.description}
+                </Typography>
+              )}
+
+              {/* Artwork files */}
+              {Array.isArray(row.files) && row.files.some((f) => f.path) && (
+                <Box sx={{ mt: 0.7 }}>
+                  {artworkUrls[row.id] === undefined && (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => void fetchArtwork(row.id)}
+                    >
+                      View Artwork ({row.files!.filter((f) => f.path).length}{' '}
+                      {row.files!.filter((f) => f.path).length === 1 ? 'file' : 'files'})
+                    </Button>
+                  )}
+                  {artworkUrls[row.id] === 'loading' && (
+                    <Typography sx={{ fontSize: '0.77rem', color: alpha(brandTokens.parchment, 0.55) }}>
+                      Generating signed URLs…
+                    </Typography>
+                  )}
+                  {artworkUrls[row.id] === 'error' && (
+                    <Typography sx={{ fontSize: '0.77rem', color: '#F1B4B4' }}>
+                      Failed to load artwork links.
+                    </Typography>
+                  )}
+                  {Array.isArray(artworkUrls[row.id]) && (
+                    <Stack direction="row" spacing={0.8} flexWrap="wrap">
+                      {(artworkUrls[row.id] as Array<{ name: string; url: string }>).map((entry, i) => (
+                        <Button
+                          key={i}
+                          size="small"
+                          variant="outlined"
+                          component="a"
+                          href={entry.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {entry.name}
+                        </Button>
+                      ))}
+                    </Stack>
+                  )}
+                </Box>
               )}
 
               {row.stripe_payment_link_url && (

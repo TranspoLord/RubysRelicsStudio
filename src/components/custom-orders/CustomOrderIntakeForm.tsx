@@ -75,7 +75,7 @@ export function CustomOrderIntakeForm({ categories }: CustomOrderIntakeFormProps
   const [budgetRanges, setBudgetRanges] = useState<BudgetRangeOption[]>([])
   const [maxQuantity, setMaxQuantity] = useState(500)
   const [maxFiles, setMaxFiles] = useState(5)
-  const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
+  const [submitState, setSubmitState] = useState<'idle' | 'uploading' | 'submitting' | 'success' | 'error'>('idle')
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [result, setResult] = useState<SubmitResult | null>(null)
 
@@ -215,15 +215,39 @@ export function CustomOrderIntakeForm({ categories }: CustomOrderIntakeFormProps
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    if (!canSubmit || submitState === 'submitting') return
+    if (!canSubmit || submitState === 'uploading' || submitState === 'submitting') return
 
     const quantityNumber = Number.parseInt(form.quantity || '1', 10)
 
-    setSubmitState('submitting')
+    setSubmitState(files.length > 0 ? 'uploading' : 'submitting')
     setSubmitError(null)
 
     void (async () => {
       try {
+        // Step 1: Upload each file and collect storage paths
+        const uploadedFiles: Array<{ name: string; size: number; type: string; path: string }> = []
+        for (const file of files) {
+          const fd = new FormData()
+          fd.append('file', file)
+          const uploadRes = await fetch('/api/custom-orders/upload', { method: 'POST', body: fd })
+          const uploadPayload = await uploadRes.json().catch(() => ({}))
+          if (!uploadRes.ok) {
+            throw new Error(
+              typeof uploadPayload?.error === 'string'
+                ? uploadPayload.error
+                : `Failed to upload "${file.name}". Please try again.`
+            )
+          }
+          uploadedFiles.push({
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            path: uploadPayload.path as string,
+          })
+        }
+
+        // Step 2: Submit the request with file paths
+        setSubmitState('submitting')
         const response = await fetch('/api/custom-orders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -236,11 +260,7 @@ export function CustomOrderIntakeForm({ categories }: CustomOrderIntakeFormProps
             budgetRange: form.budgetRange || null,
             description: form.description,
             designHelpNeeded: form.designHelpNeeded,
-            files: files.map((file) => ({
-              name: file.name,
-              size: file.size,
-              type: file.type,
-            })),
+            files: uploadedFiles,
             ipRightsConfirmed: form.ipRightsConfirmed,
             ageConfirmed: form.ageConfirmed,
             tosAccepted: form.tosAccepted,
@@ -533,8 +553,13 @@ export function CustomOrderIntakeForm({ categories }: CustomOrderIntakeFormProps
           <Typography sx={{ color: alpha(brandTokens.parchment, 0.55), fontSize: '0.78rem' }}>
             You will review quote details before any payment is requested.
           </Typography>
-          <Button type="submit" variant="contained" disabled={!canSubmit || submitState === 'submitting'}>
-            {submitState === 'submitting' ? (
+          <Button type="submit" variant="contained" disabled={!canSubmit || submitState === 'uploading' || submitState === 'submitting'}>
+            {submitState === 'uploading' ? (
+              <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.8 }}>
+                <CircularProgress size={16} sx={{ color: brandTokens.bgVoid }} />
+                Uploading files...
+              </Box>
+            ) : submitState === 'submitting' ? (
               <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.8 }}>
                 <CircularProgress size={16} sx={{ color: brandTokens.bgVoid }} />
                 Submitting...

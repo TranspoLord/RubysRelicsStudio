@@ -58,13 +58,27 @@ export async function POST(request: Request) {
       )
     }
 
+    // SVG files must not contain embedded scripts (stored XSS via direct URL access)
+    let uploadBody: File | Blob = file
+    if (file.type === 'image/svg+xml') {
+      const text = await file.text()
+      if (/<script[\s>]/i.test(text) || /javascript\s*:/i.test(text)) {
+        return NextResponse.json(
+          { error: 'SVG file contains disallowed script content.' },
+          { status: 400 }
+        )
+      }
+      // Re-wrap the validated text so we control what is uploaded
+      uploadBody = new Blob([text], { type: 'image/svg+xml' })
+    }
+
     const originalName = sanitizeFileName(file.name || 'upload')
     const path = `products/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${originalName}`
 
     const supabase = getSupabaseAdmin()
     const { error: uploadError } = await supabase.storage
       .from(BUCKET_NAME)
-      .upload(path, file, {
+      .upload(path, uploadBody, {
         contentType: file.type,
         upsert: false,
         cacheControl: '3600',

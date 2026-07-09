@@ -4,6 +4,7 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { AnnouncementBanner } from '@/components/home/AnnouncementBanner'
 import { HeroSection } from '@/components/home/HeroSection'
+import { ShortcutSection } from '@/components/home/ShortcutSection'
 import { OrderPathsSection } from '@/components/home/OrderPathsSection'
 import { CategoryGrid } from '@/components/home/CategoryGrid'
 import { FeaturedCollections } from '@/components/home/FeaturedCollections'
@@ -61,23 +62,44 @@ export default async function HomePage() {
         sx={{ outline: 'none', flex: 1, display: 'flex', flexDirection: 'column' }}
       >
         {/* 1. Hero */}
-        {sections['hero_section']?.is_visible !== false && <HeroSection />}
+        {sections['hero']?.is_visible !== false && <HeroSection />}
 
-        {/* 2. Three order paths */}
+        {/* 2. Quick picks — "What are you here for?!" */}
+        {sections['quick_picks']?.is_visible !== false && (
+          <ShortcutSection
+            content={sections['quick_picks']?.content}
+            fallbackHeading="What are you here for?!"
+            fallbackSubheading="Jump straight to the good stuff."
+            ariaLabel="Popular Products"
+          />
+        )}
+
+        {/* 3. Process picks — "Start with the action!" */}
+        {sections['process_picks']?.is_visible !== false && (
+          <ShortcutSection
+            content={sections['process_picks']?.content}
+            fallbackHeading="Start with the action!"
+            fallbackSubheading="Shop by how it's made."
+            ariaLabel="Shop by Process"
+            accentColor={`#C4921A`}
+          />
+        )}
+
+        {/* 4. Three order paths */}
         {sections['order_paths']?.is_visible !== false && <OrderPathsSection />}
 
-        {/* 3. Category grid */}
+        {/* 5. Category grid */}
         {sections['category_grid']?.is_visible !== false && <CategoryGrid categories={categories} />}
 
-        {/* 4. Featured collections */}
+        {/* 6. Featured collections */}
         {sections['featured_collections']?.is_visible !== false && (
           <FeaturedCollections collections={collections} />
         )}
 
-        {/* 5. Fresh From the Forge — recent work */}
+        {/* 7. Fresh From the Forge — recent work */}
         {sections['fresh_from_forge']?.is_visible !== false && <FreshFromTheForge items={gallery} />}
 
-        {/* 6. Materials teaser */}
+        {/* 8. Materials teaser */}
         {sections['materials_teaser']?.is_visible !== false && (
           <MaterialsTeaser materials={materials.map((m) => ({
             key: m.key,

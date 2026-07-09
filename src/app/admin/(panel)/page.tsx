@@ -81,6 +81,11 @@ const MODULE_CARDS = [
     href: '/admin/settings',
     detail: 'Toggle storefront runtime behavior safely.',
   },
+  {
+    title: 'Homepage',
+    href: '/admin/homepage',
+    detail: 'Edit the quick-pick and process-pick shortcut tiles on the homepage.',
+  },
 ]
 
 export default async function AdminDashboardPage() {

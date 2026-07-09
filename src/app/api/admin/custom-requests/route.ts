@@ -21,7 +21,7 @@ export async function GET(request: Request) {
 
     let query = supabase
       .from('exp_custom_requests')
-      .select('id, status, customer_name, customer_email, item_type, quantity, quote_amount, stripe_payment_link_url, quote_sent_at, quote_expires_at, quote_last_resent_at, quote_resend_count, production_handoff_at, recovery_reminder_sent_at, created_at, updated_at')
+      .select('id, status, customer_name, customer_email, item_type, quantity, description, files, quote_amount, stripe_payment_link_url, quote_sent_at, quote_expires_at, quote_last_resent_at, quote_resend_count, production_handoff_at, recovery_reminder_sent_at, created_at, updated_at')
       .order('created_at', { ascending: false })
       .limit(60)
 

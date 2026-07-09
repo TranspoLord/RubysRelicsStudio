@@ -233,6 +233,12 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
   const [discountLabel, setDiscountLabel] = useState('')
   const [discountSortOrder, setDiscountSortOrder] = useState('0')
 
+  // ── Process types ────────────────────────────────────────────────────────────
+  interface ProcessTypeOption { key: string; display_name: string; emoji: string | null }
+  const [allProcessTypes, setAllProcessTypes] = useState<ProcessTypeOption[]>([])
+  const [assignedProcessKeys, setAssignedProcessKeys] = useState<string[]>([])
+  const [savingProcessTypes, setSavingProcessTypes] = useState(false)
+
   const categoryLabel = useMemo(() => {
     if (!product?.category_key) return ''
     return categories.find((category) => category.key === product.category_key)?.display_name ?? ''
@@ -302,12 +308,25 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
     setDiscounts(Array.isArray(discountsPayload.discounts) ? discountsPayload.discounts : [])
   }
 
+  async function loadProcessTypes() {
+    const response = await fetch(
+      `/api/admin/catalog/process-types?productId=${encodeURIComponent(productId)}`,
+      { cache: 'no-store' }
+    )
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to load process types.')
+    }
+    setAllProcessTypes(Array.isArray(payload.processTypes) ? payload.processTypes : [])
+    setAssignedProcessKeys(Array.isArray(payload.assigned) ? payload.assigned : [])
+  }
+
   async function loadAll() {
     setLoading(true)
     setError(null)
 
     try {
-      await Promise.all([loadCore(), loadMedia(), loadOptions(), loadPricing()])
+      await Promise.all([loadCore(), loadMedia(), loadOptions(), loadPricing(), loadProcessTypes()])
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load product builder.')
       setProduct(null)
@@ -318,6 +337,29 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
       setDiscounts([])
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function saveProcessTypes() {
+    setSavingProcessTypes(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      const response = await fetch('/api/admin/catalog/process-types', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId, processTypeKeys: assignedProcessKeys }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to save process types.')
+      }
+      setSuccess('Process type assignments saved.')
+    } catch (ptError) {
+      setError(ptError instanceof Error ? ptError.message : 'Failed to save process types.')
+    } finally {
+      setSavingProcessTypes(false)
     }
   }
 
@@ -1508,6 +1550,79 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
               </Box>
             ))}
           </Box>
+        )}
+      </Box>
+
+      <Divider />
+
+      {/* ── Process types ───────────────────────────────────────────────── */}
+      <Box
+        sx={{
+          display: 'grid',
+          gap: 1,
+          border: `1px solid ${alpha(brandTokens.forgeGold, 0.18)}`,
+          borderRadius: 1.2,
+          p: 1,
+          background: cardSurface(brandTokens.forgeGold, 0.99, 0.055),
+        }}
+      >
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent='space-between' alignItems={{ md: 'center' }}>
+          <Box>
+            <Typography variant='h6'>Process Types</Typography>
+            <Typography sx={{ color: alpha(brandTokens.parchment, 0.58), fontSize: '0.78rem' }}>
+              Tag this product with the processes used to make it. These drive the "Start with the action!" homepage tiles and the /shop/all?process= filter.
+            </Typography>
+          </Box>
+          <Button
+            variant='contained'
+            size='small'
+            disabled={savingProcessTypes}
+            onClick={() => void saveProcessTypes()}
+          >
+            {savingProcessTypes ? 'Saving...' : 'Save'}
+          </Button>
+        </Stack>
+
+        {allProcessTypes.length === 0 ? (
+          <Typography sx={{ color: alpha(brandTokens.parchment, 0.5), fontSize: '0.8rem' }}>
+            No process types found. Run migration 030 to seed them.
+          </Typography>
+        ) : (
+          <Stack direction='row' spacing={1} flexWrap='wrap' useFlexGap>
+            {allProcessTypes.map((pt) => {
+              const isAssigned = assignedProcessKeys.includes(pt.key)
+              return (
+                <Box
+                  key={pt.key}
+                  component='button'
+                  type='button'
+                  onClick={() =>
+                    setAssignedProcessKeys((prev) =>
+                      isAssigned ? prev.filter((k) => k !== pt.key) : [...prev, pt.key]
+                    )
+                  }
+                  sx={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 0.6,
+                    px: 1.4,
+                    py: 0.6,
+                    borderRadius: 1,
+                    border: `1px solid ${isAssigned ? alpha(brandTokens.forgeGold, 0.6) : alpha(brandTokens.parchment, 0.18)}`,
+                    background: isAssigned ? alpha(brandTokens.forgeGold, 0.14) : 'transparent',
+                    color: isAssigned ? brandTokens.forgeGold : alpha(brandTokens.parchment, 0.7),
+                    fontSize: '0.82rem',
+                    fontWeight: isAssigned ? 600 : 400,
+                    cursor: 'pointer',
+                    transition: 'background 0.15s, border-color 0.15s, color 0.15s',
+                  }}
+                >
+                  {pt.emoji && <span aria-hidden='true'>{pt.emoji}</span>}
+                  {pt.display_name}
+                </Box>
+              )
+            })}
+          </Stack>
         )}
       </Box>
     </Box>
