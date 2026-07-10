@@ -10,10 +10,15 @@ import Link from 'next/link'
 import { alpha } from '@mui/material/styles'
 import { brandTokens } from '@/theme/theme'
 import { Analytics } from '@/lib/analytics/events'
+import { HeroCollage, type HeroCollageConfig } from '@/components/home/HeroCollage'
 
 // TODO: Replace hero copy with admin-managed HomepageSection content from Supabase.
 
-export function HeroSection() {
+interface HeroSectionProps {
+  collageConfig?: HeroCollageConfig | null
+}
+
+export function HeroSection({ collageConfig }: HeroSectionProps) {
   return (
     <Box
       component="section"
@@ -214,6 +219,9 @@ export function HeroSection() {
           </Box>
         </Box>
       </Container>
+
+      {/* Product image collage (right side, desktop only) */}
+      <HeroCollage config={collageConfig} />
 
       {/* Scroll indicator */}
       <Box

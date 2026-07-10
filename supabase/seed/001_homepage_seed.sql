@@ -2,12 +2,17 @@
 -- Seed: Homepage CMS placeholder data
 -- Matches the static placeholder data previously hardcoded in components.
 -- Run after migration 001.
+--
+-- All inserts use ON CONFLICT DO NOTHING so existing data is never overwritten.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- ── Homepage section registry (all keys that page.tsx knows about) ────────────
+-- Only inserts rows that don't already exist — safe to re-run.
 insert into exp_homepage_sections (section_key, is_visible, sort_order, content) values
   ('announcement',        true,  0,  '{}'),
   ('hero',                true,  10, '{}'),
+  ('quick_picks',         true,  17, '{}'),
+  ('process_picks',       true,  18, '{}'),
   ('order_paths',         true,  20, '{}'),
   ('category_grid',       true,  30, '{}'),
   ('featured_collections',true,  40, '{}'),
@@ -20,6 +25,17 @@ insert into exp_homepage_sections (section_key, is_visible, sort_order, content)
   ('newsletter',          true, 110, '{}'),
   ('resources_teaser',    true, 120, '{}')
 on conflict (section_key) do nothing;
+
+-- ── Hero collage section (added separately so it can be safely backfilled) ────
+-- Uses a DO block to insert only if the row doesn't already exist.
+do $$
+begin
+  if not exists (select 1 from exp_homepage_sections where section_key = 'hero_collage') then
+    insert into exp_homepage_sections (section_key, is_visible, sort_order, content)
+    values ('hero_collage', true, 15, '{"is_enabled": true, "image_count": 4, "images": []}');
+  end if;
+end;
+$$;
 
 -- ── Announcement ─────────────────────────────────────────────────────────────
 insert into exp_announcement (message, cta_label, cta_href, is_active, dismiss_key) values

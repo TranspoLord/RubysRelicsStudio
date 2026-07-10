@@ -33,6 +33,7 @@ export interface CartItem {
   variantId?: string | null
   variantLabel?: string | null
   options: CartItemOption[]
+  selectedProcessKeys?: string[]
   unitPrice: number
   lineSubtotal: number
   lineDiscount: number
@@ -78,6 +79,10 @@ function normalizeCartItem(input: unknown): CartItem | null {
         }))
     : []
 
+  const selectedProcessKeys = Array.isArray(row.selectedProcessKeys)
+    ? row.selectedProcessKeys.filter((k) => typeof k === 'string')
+    : []
+
   const quantity = clampQty(row.quantity ?? 1)
   const lineSubtotal = asFiniteMoney(row.lineSubtotal)
   const lineDiscount = asFiniteMoney(row.lineDiscount)
@@ -94,6 +99,7 @@ function normalizeCartItem(input: unknown): CartItem | null {
     variantId: typeof row.variantId === 'string' ? row.variantId : null,
     variantLabel: typeof row.variantLabel === 'string' ? row.variantLabel : null,
     options,
+    selectedProcessKeys,
     unitPrice,
     lineSubtotal,
     lineDiscount,
@@ -231,6 +237,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           lineTotal: unitTotal * mergedQty,
           imageUrl: next.imageUrl ?? item.imageUrl,
           imageEmoji: next.imageEmoji ?? item.imageEmoji,
+          selectedProcessKeys: next.selectedProcessKeys ?? item.selectedProcessKeys,
         }
       })
     })
@@ -371,6 +378,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                     {item.options.length > 0 && (
                       <Typography sx={{ fontSize: '0.68rem', color: alpha(brandTokens.parchment, 0.48), mt: 0.1 }}>
                         {item.options.map((o) => o.valueLabel ?? o.value).join(' · ')}
+                      </Typography>
+                    )}
+                    {item.selectedProcessKeys && item.selectedProcessKeys.length > 0 && (
+                      <Typography sx={{ fontSize: '0.68rem', color: alpha(brandTokens.forgeGold, 0.7), mt: 0.1 }}>
+                        {item.selectedProcessKeys.map((k) => k.replace(/_/g, ' ')).join(' + ')}
                       </Typography>
                     )}
                   </Box>

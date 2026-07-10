@@ -13,6 +13,8 @@ import Switch from '@mui/material/Switch'
 import TextField from '@mui/material/TextField'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
+import ImageIcon from '@mui/icons-material/Image'
 import AddIcon from '@mui/icons-material/Add'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
@@ -27,6 +29,7 @@ import { brandTokens } from '@/theme/theme'
 
 const SECTION_ORDER = [
   'hero',
+  'hero_collage',
   'quick_picks',
   'process_picks',
   'order_paths',
@@ -48,6 +51,7 @@ const TILE_KEYS = new Set<string>(['quick_picks', 'process_picks'])
 
 const SECTION_META: Record<SectionKey, { title: string; description: string }> = {
   hero:                 { title: 'Hero Banner',             description: 'Full-width hero at the very top of the page.' },
+  hero_collage:         { title: 'Hero Collage',            description: 'Floating product image cards on the right side of the hero.' },
   quick_picks:          { title: 'Quick Picks',             description: '"What are you here for?!" — product shortcut tiles.' },
   process_picks:        { title: 'Process Picks',           description: '"How shall it be forged?" — shop-by-process tiles.' },
   order_paths:          { title: 'Order Paths',             description: 'Three-column cards: Browse, Custom Order, and Standard Shop.' },
@@ -83,6 +87,20 @@ interface TileSectionState {
   items: ShortcutItem[]
 }
 
+// ─── Hero Collage Types ───────────────────────────────────────────────────────
+
+interface HeroCollageImage {
+  url: string
+  alt: string
+}
+
+interface HeroCollageState {
+  is_enabled: boolean
+  is_visible: boolean
+  image_count: number
+  images: HeroCollageImage[]
+}
+
 const BLANK_ITEM = (): ShortcutItem => ({
   key: `item_${Date.now()}`,
   label: '',
@@ -105,6 +123,23 @@ export default function AdminHomepagePage() {
   const [visibilityMessage, setVisibilityMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [tileMessages, setTileMessages] = useState<Record<string, { type: 'success' | 'error'; text: string }>>({})
 
+  // ── Hero Collage State ─────────────────────────────────────────────────────
+  const [heroCollage, setHeroCollage] = useState<HeroCollageState>({
+    is_enabled: true,
+    is_visible: true,
+    image_count: 4,
+    images: [
+      { url: '', alt: '' },
+      { url: '', alt: '' },
+      { url: '', alt: '' },
+      { url: '', alt: '' },
+      { url: '', alt: '' },
+      { url: '', alt: '' },
+    ],
+  })
+  const [savingCollage, setSavingCollage] = useState(false)
+  const [collageMessage, setCollageMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
   useEffect(() => {
     void (async () => {
       try {
@@ -117,6 +152,25 @@ export default function AdminHomepagePage() {
         const vis: Record<string, boolean> = {}
         for (const key of SECTION_ORDER) vis[key] = raw[key]?.is_visible !== false
         setVisibility(vis)
+
+        // Load hero collage config — always pad images to 6 slots for the editor
+        const collageRaw = raw['hero_collage']
+        if (collageRaw?.content) {
+          const content = collageRaw.content as Record<string, unknown>
+          const loadedImages = Array.isArray(content.images) ? content.images as HeroCollageImage[] : []
+          // Pad to 6 slots so admin always sees all URL fields
+          const paddedImages = Array.from({ length: 6 }, (_, i) =>
+            i < loadedImages.length
+              ? loadedImages[i]
+              : { url: '', alt: '' }
+          )
+          setHeroCollage({
+            is_enabled: content.is_enabled !== false,
+            is_visible: collageRaw.is_visible !== false,
+            image_count: typeof content.image_count === 'number' ? content.image_count : 4,
+            images: paddedImages,
+          })
+        }
 
         const tiles = {} as Record<TileKey, TileSectionState>
         for (const key of ['quick_picks', 'process_picks'] as TileKey[]) {
@@ -179,6 +233,32 @@ export default function AdminHomepagePage() {
     },
     []
   )
+
+  async function handleSaveCollage() {
+    setSavingCollage(true)
+    setCollageMessage(null)
+    try {
+      const res = await fetch('/api/admin/homepage/sections/hero_collage', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          is_enabled: heroCollage.is_enabled,
+          is_visible: heroCollage.is_visible,
+          image_count: heroCollage.image_count,
+          images: heroCollage.images,
+        }),
+      })
+      const data = await res.json() as { error?: string }
+      if (!res.ok) throw new Error(data.error ?? 'Save failed.')
+      setCollageMessage({ type: 'success', text: 'Hero collage settings saved.' })
+      setVisibility((prev) => ({ ...prev, hero_collage: heroCollage.is_visible }))
+      setTimeout(() => setCollageMessage(null), 3500)
+    } catch (err) {
+      setCollageMessage({ type: 'error', text: err instanceof Error ? err.message : 'Save failed.' })
+    } finally {
+      setSavingCollage(false)
+    }
+  }
 
   async function handleSaveTile(key: TileKey) {
     if (!tileSections) return
@@ -332,6 +412,123 @@ export default function AdminHomepagePage() {
           disabled={savingVisibility}
         >
           Save Visibility
+        </Button>
+      </Box>
+
+      {/* ── Hero Collage Editor ───────────────────────────────────────────── */}
+      <Box
+        sx={{
+          border: `1px solid ${alpha(brandTokens.parchment, 0.1)}`,
+          borderRadius: 2,
+          p: { xs: 2.5, md: 3 },
+          background: alpha(brandTokens.bgSurface, 0.5),
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3, gap: 2, flexWrap: 'wrap' }}>
+          <Box>
+            <Typography variant="h6" sx={{ mb: 0.25, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <AutoFixHighIcon sx={{ fontSize: '1.2rem', color: 'primary.main' }} />
+              Hero Collage
+            </Typography>
+            <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.55) }}>
+              Floating product image cards on the right side of the hero section. Configure images, toggle visibility, and set how many to display.
+            </Typography>
+          </Box>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={heroCollage.is_enabled}
+                onChange={(e) => setHeroCollage((prev) => ({ ...prev, is_enabled: e.target.checked }))}
+                size="small"
+              />
+            }
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Typography variant="body2" sx={{ color: heroCollage.is_enabled ? 'primary.main' : alpha(brandTokens.parchment, 0.4) }}>
+                  {heroCollage.is_enabled ? 'Enabled' : 'Disabled'}
+                </Typography>
+              </Box>
+            }
+            labelPlacement="start"
+          />
+        </Box>
+
+        <Stack spacing={2} sx={{ mb: 3 }}>
+          <TextField
+            size="small"
+            type="number"
+            label="Number of images to display (1–6)"
+            value={heroCollage.image_count}
+            onChange={(e) => {
+              const val = Math.min(6, Math.max(1, Number(e.target.value) || 1))
+              setHeroCollage((prev) => ({ ...prev, image_count: val }))
+            }}
+            inputProps={{ min: 1, max: 6 }}
+            sx={{ width: 260 }}
+          />
+        </Stack>
+
+        <Divider sx={{ mb: 3, borderColor: alpha(brandTokens.parchment, 0.08) }} />
+
+        <Typography variant="overline" sx={{ color: 'primary.main', display: 'block', mb: 2 }}>
+          Image URLs ({heroCollage.images.length})
+        </Typography>
+
+        <Stack spacing={2} sx={{ mb: 2 }}>
+          {heroCollage.images.map((image, index) => (
+            <Box
+              key={index}
+              sx={{
+                border: `1px solid ${alpha(brandTokens.parchment, 0.08)}`,
+                borderRadius: 1.5,
+                p: 2,
+                background: alpha(brandTokens.bgVoid, 0.4),
+              }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 600, color: alpha(brandTokens.parchment, 0.6), mb: 1.5 }}>
+                Image {index + 1}
+              </Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
+                <TextField
+                  size="small"
+                  label="Image URL"
+                  value={image.url}
+                  onChange={(e) => {
+                    const newImages = [...heroCollage.images]
+                    newImages[index] = { ...newImages[index], url: e.target.value }
+                    setHeroCollage((prev) => ({ ...prev, images: newImages }))
+                  }}
+                  placeholder="https://example.com/image.jpg"
+                  inputProps={{ maxLength: 500 }}
+                />
+                <TextField
+                  size="small"
+                  label="Alt text"
+                  value={image.alt}
+                  onChange={(e) => {
+                    const newImages = [...heroCollage.images]
+                    newImages[index] = { ...newImages[index], alt: e.target.value }
+                    setHeroCollage((prev) => ({ ...prev, images: newImages }))
+                  }}
+                  placeholder="Engraved tumbler"
+                  inputProps={{ maxLength: 200 }}
+                />
+              </Box>
+            </Box>
+          ))}
+        </Stack>
+
+        <Divider sx={{ mb: 2.5, borderColor: alpha(brandTokens.parchment, 0.08) }} />
+
+        {collageMessage && <Alert severity={collageMessage.type} sx={{ mb: 2 }}>{collageMessage.text}</Alert>}
+
+        <Button
+          variant="contained"
+          startIcon={savingCollage ? <CircularProgress size={16} color="inherit" /> : <SaveOutlinedIcon />}
+          onClick={() => void handleSaveCollage()}
+          disabled={savingCollage}
+        >
+          Save Collage Settings
         </Button>
       </Box>
 

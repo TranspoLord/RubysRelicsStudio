@@ -116,6 +116,26 @@ export interface DbProductDetail extends DbProduct {
   media: DbProductMedia[]
   options: DbProductOption[]
   bulk_discounts: DbProductBulkDiscount[]
+  process_pricing: DbProductProcessPricing[]
+  combo_discounts: DbProductComboDiscount[]
+}
+
+export interface DbProductProcessPricing {
+  id: string
+  product_id: string
+  process_type_key: string
+  price_delta: number
+  is_enabled: boolean
+}
+
+export interface DbProductComboDiscount {
+  id: string
+  product_id: string
+  min_processes: number
+  discount_type: 'percent' | 'fixed_amount' | 'cheapest_free'
+  discount_value: number | null
+  label: string | null
+  is_enabled: boolean
 }
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
@@ -313,7 +333,7 @@ export async function getProductBySlug(
 
   const productId = product.id
 
-  const [categoryResult, variantsResult, mediaResult, optionsResult, bulkDiscountsResult, inventoryResult] = await Promise.all([
+  const [categoryResult, variantsResult, mediaResult, optionsResult, bulkDiscountsResult, inventoryResult, processPricingResult, comboDiscountsResult] = await Promise.all([
     supabase
       .from('exp_taxonomy')
       .select('key, display_name, slug, emoji, gradient, tagline, how_it_works_anchor')
@@ -357,6 +377,19 @@ export async function getProductBySlug(
       .select('available_qty, low_stock_threshold, availability_override, is_track_inventory')
       .eq('product_id', productId)
       .maybeSingle(),
+
+    supabase
+      .from('exp_product_process_pricing')
+      .select('id, product_id, process_type_key, price_delta, is_enabled')
+      .eq('product_id', productId)
+      .eq('is_enabled', true),
+
+    supabase
+      .from('exp_product_combo_discounts')
+      .select('id, product_id, min_processes, discount_type, discount_value, label, is_enabled')
+      .eq('product_id', productId)
+      .eq('is_enabled', true)
+      .order('min_processes', { ascending: true }),
   ])
 
   if (variantsResult.error) {
@@ -416,6 +449,8 @@ export async function getProductBySlug(
     media: (mediaResult.data ?? []) as DbProductMedia[],
     options,
     bulk_discounts: (bulkDiscountsResult.data ?? []) as DbProductBulkDiscount[],
+    process_pricing: (processPricingResult.data ?? []) as DbProductProcessPricing[],
+    combo_discounts: (comboDiscountsResult.data ?? []) as DbProductComboDiscount[],
   }
 }
 

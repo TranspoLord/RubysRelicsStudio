@@ -10,6 +10,7 @@ import type {
   FeaturedCollection,
   GalleryItem,
 } from '@/types'
+import type { HeroCollageConfig, HeroCollageImage } from '@/components/home/HeroCollage'
 
 // ─── Derived types for tables that extend the base types ─────────────────────
 
@@ -222,6 +223,26 @@ export async function getVisibleTestimonials(limit = 6): Promise<DbTestimonial[]
 }
 
 // ─── FAQ ──────────────────────────────────────────────────────────────────────
+// ─── Hero Collage Config ────────────────────────────────────────────────────
+export async function getHeroCollageConfig(): Promise<HeroCollageConfig | null> {
+  const { data, error } = await supabase
+    .from('exp_homepage_sections')
+    .select('content')
+    .eq('section_key', 'hero_collage')
+    .maybeSingle()
+
+  if (error || !data?.content) {
+    return null
+  }
+
+  const content = data.content as Record<string, unknown>
+  return {
+    is_enabled: content?.is_enabled !== false,
+    image_count: typeof content?.image_count === 'number' ? content.image_count : 4,
+    images: Array.isArray(content?.images) ? content.images as HeroCollageImage[] : [],
+  }
+}
+
 export async function getHomepageFaq(): Promise<DbFaqItem[]> {
   const { data, error } = await supabase
     .from('exp_faq')

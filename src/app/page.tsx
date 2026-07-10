@@ -25,7 +25,9 @@ import {
   getVisibleTestimonials,
   getHomepageFaq,
   getMaterials,
+  getHeroCollageConfig,
 } from '@/lib/supabase/queries/homepage'
+import type { HeroCollageConfig } from '@/components/home/HeroCollage'
 
 // Homepage-specific metadata override
 export const metadata: Metadata = {
@@ -36,7 +38,7 @@ export const metadata: Metadata = {
 
 export default async function HomePage() {
   // Fetch all CMS data in parallel
-  const [sections, announcement, categories, collections, gallery, testimonials, faq, materials] = await Promise.all([
+  const [sections, announcement, categories, collections, gallery, testimonials, faq, materials, collageConfig] = await Promise.all([
     getHomepageSections(),
     getActiveAnnouncement(),
     getCategories(),
@@ -45,6 +47,7 @@ export default async function HomePage() {
     getVisibleTestimonials(3),
     getHomepageFaq(),
     getMaterials(),
+    getHeroCollageConfig(),
   ])
   return (
     <>
@@ -62,7 +65,7 @@ export default async function HomePage() {
         sx={{ outline: 'none', flex: 1, display: 'flex', flexDirection: 'column' }}
       >
         {/* 1. Hero */}
-        {sections['hero']?.is_visible !== false && <HeroSection />}
+        {sections['hero']?.is_visible !== false && <HeroSection collageConfig={collageConfig} />}
 
         {/* 2. Quick picks — "What are you here for?!" */}
         {sections['quick_picks']?.is_visible !== false && (

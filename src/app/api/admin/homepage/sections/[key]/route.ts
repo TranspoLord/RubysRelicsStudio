@@ -6,9 +6,13 @@ import { getSupabaseAdmin } from '@/lib/supabase/client'
 // Sections that have tile content editors — require full validation
 const TILE_SECTION_KEYS = new Set(['quick_picks', 'process_picks'])
 
+// Sections that have content editors beyond simple visibility
+const CONTENT_SECTION_KEYS = new Set(['quick_picks', 'process_picks', 'hero_collage'])
+
 // All sections that may be PATCH-ed through this route
 const ALL_SECTION_KEYS = new Set([
   'hero',
+  'hero_collage',
   'quick_picks',
   'process_picks',
   'order_paths',
@@ -124,6 +128,42 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     body = await request.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 })
+  }
+
+  // ── Hero Collage — stores full content payload ─────────────────────────────
+  if (sectionKey === 'hero_collage') {
+    const content =
+      typeof body === 'object' && body !== null
+        ? (body as Record<string, unknown>)
+        : {}
+
+    const is_visible =
+      typeof body === 'object' && body !== null && 'is_visible' in body
+        ? (body as Record<string, unknown>).is_visible !== false
+        : true
+
+    const supabase = getSupabaseAdmin()
+    const { error } = await supabase
+      .from('exp_homepage_sections')
+      .update({ content, is_visible, updated_at: new Date().toISOString() })
+      .eq('section_key', sectionKey)
+
+    if (error) {
+      console.error(`[admin:homepage:sections:patch:${sectionKey}]`, error.message)
+      return NextResponse.json({ error: 'Could not save hero collage settings.' }, { status: 500 })
+    }
+
+    await writeAdminAuditLog({
+      action: 'homepage_section_update',
+      entityType: 'homepage_section',
+      entityId: sectionKey,
+      route: `/api/admin/homepage/sections/${sectionKey}`,
+      request,
+      status: 'success',
+      details: { sectionKey, is_visible },
+    })
+
+    return NextResponse.json({ ok: true })
   }
 
   // ── Simple sections — only is_visible accepted ─────────────────────────────

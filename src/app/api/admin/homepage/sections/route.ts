@@ -7,6 +7,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/client'
 // its visibility is controlled by exp_announcement.is_active, not this table)
 const ALL_SECTION_KEYS = [
   'hero',
+  'hero_collage',
   'quick_picks',
   'process_picks',
   'order_paths',

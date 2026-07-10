@@ -234,10 +234,31 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
   const [discountSortOrder, setDiscountSortOrder] = useState('0')
 
   // ── Process types ────────────────────────────────────────────────────────────
-  interface ProcessTypeOption { key: string; display_name: string; emoji: string | null }
+  interface ProcessTypeOption {
+    key: string
+    display_name: string
+    emoji: string | null
+    price_delta: number
+    is_enabled: boolean
+    pricing_id: string | null
+  }
+  interface ComboDiscountDraft {
+    localId: string
+    id: string | null
+    min_processes: number
+    discount_type: 'percent' | 'fixed_amount' | 'cheapest_free'
+    discount_value: number | null
+    label: string
+  }
   const [allProcessTypes, setAllProcessTypes] = useState<ProcessTypeOption[]>([])
   const [assignedProcessKeys, setAssignedProcessKeys] = useState<string[]>([])
+  const [processPricing, setProcessPricing] = useState<Record<string, number>>({})
+  const [comboDiscounts, setComboDiscounts] = useState<ComboDiscountDraft[]>([])
   const [savingProcessTypes, setSavingProcessTypes] = useState(false)
+  const [newComboMinProcesses, setNewComboMinProcesses] = useState('2')
+  const [newComboDiscountType, setNewComboDiscountType] = useState<'percent' | 'fixed_amount' | 'cheapest_free'>('percent')
+  const [newComboDiscountValue, setNewComboDiscountValue] = useState('10')
+  const [newComboDiscountLabel, setNewComboDiscountLabel] = useState('')
 
   const categoryLabel = useMemo(() => {
     if (!product?.category_key) return ''
@@ -317,8 +338,27 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
     if (!response.ok) {
       throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to load process types.')
     }
-    setAllProcessTypes(Array.isArray(payload.processTypes) ? payload.processTypes : [])
+    const pts = Array.isArray(payload.processTypes) ? payload.processTypes : []
+    setAllProcessTypes(pts)
     setAssignedProcessKeys(Array.isArray(payload.assigned) ? payload.assigned : [])
+    // Build pricing map from the process types response
+    const pricingMap: Record<string, number> = {}
+    for (const pt of pts) {
+      pricingMap[pt.key] = pt.price_delta ?? 0
+    }
+    setProcessPricing(pricingMap)
+    // Load combo discounts
+    const combos = Array.isArray(payload.comboDiscounts) ? payload.comboDiscounts : []
+    setComboDiscounts(
+      combos.map((c: { id?: string; min_processes: number; discount_type: string; discount_value: number | null; label: string | null }) => ({
+        localId: makeLocalId(),
+        id: c.id ?? null,
+        min_processes: c.min_processes,
+        discount_type: c.discount_type as 'percent' | 'fixed_amount' | 'cheapest_free',
+        discount_value: c.discount_value ?? null,
+        label: c.label ?? '',
+      }))
+    )
   }
 
   async function loadAll() {
@@ -340,22 +380,73 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
     }
   }
 
+  function updateProcessPricing(key: string, delta: number) {
+    setProcessPricing((prev) => ({ ...prev, [key]: delta }))
+  }
+
+  function addComboDiscount() {
+    const minP = Number.parseInt(newComboMinProcesses, 10)
+    if (!Number.isFinite(minP) || minP < 2) {
+      setError('Min processes must be at least 2.')
+      return
+    }
+    setComboDiscounts((prev) => [
+      ...prev,
+      {
+        localId: makeLocalId(),
+        id: null,
+        min_processes: minP,
+        discount_type: newComboDiscountType,
+        discount_value: newComboDiscountType === 'cheapest_free' ? null : asNumber(newComboDiscountValue),
+        label: newComboDiscountLabel,
+      },
+    ])
+    setNewComboMinProcesses('2')
+    setNewComboDiscountType('percent')
+    setNewComboDiscountValue('10')
+    setNewComboDiscountLabel('')
+  }
+
+  function removeComboDiscount(localId: string) {
+    setComboDiscounts((prev) => prev.filter((c) => c.localId !== localId))
+  }
+
   async function saveProcessTypes() {
     setSavingProcessTypes(true)
     setError(null)
     setSuccess(null)
 
     try {
+      // Build process types array with pricing
+      const processTypesPayload = allProcessTypes.map((pt) => ({
+        key: pt.key,
+        price_delta: processPricing[pt.key] ?? 0,
+        is_enabled: assignedProcessKeys.includes(pt.key),
+      }))
+
+      // Build combo discounts payload
+      const comboDiscountsPayload = comboDiscounts.map((c) => ({
+        id: c.id,
+        min_processes: c.min_processes,
+        discount_type: c.discount_type,
+        discount_value: c.discount_value,
+        label: c.label || null,
+      }))
+
       const response = await fetch('/api/admin/catalog/process-types', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId, processTypeKeys: assignedProcessKeys }),
+        body: JSON.stringify({
+          productId,
+          processTypes: processTypesPayload,
+          comboDiscounts: comboDiscountsPayload,
+        }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
         throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to save process types.')
       }
-      setSuccess('Process type assignments saved.')
+      setSuccess('Process types, pricing, and combo discounts saved.')
     } catch (ptError) {
       setError(ptError instanceof Error ? ptError.message : 'Failed to save process types.')
     } finally {
@@ -1555,7 +1646,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
 
       <Divider />
 
-      {/* ── Process types ───────────────────────────────────────────────── */}
+      {/* ── Process types with pricing ──────────────────────────────────── */}
       <Box
         sx={{
           display: 'grid',
@@ -1568,9 +1659,9 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
       >
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent='space-between' alignItems={{ md: 'center' }}>
           <Box>
-            <Typography variant='h6'>Process Types</Typography>
+            <Typography variant='h6'>Process Types & Pricing</Typography>
             <Typography sx={{ color: alpha(brandTokens.parchment, 0.58), fontSize: '0.78rem' }}>
-              Tag this product with the processes used to make it. These drive the "Start with the action!" homepage tiles and the /shop/all?process= filter.
+              Tag this product with the processes used to make it. Set a price delta for each process. Customers can select one or more processes at checkout.
             </Typography>
           </Box>
           <Button
@@ -1588,42 +1679,171 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
             No process types found. Run migration 030 to seed them.
           </Typography>
         ) : (
-          <Stack direction='row' spacing={1} flexWrap='wrap' useFlexGap>
+          <Box sx={{ display: 'grid', gap: 0.8 }}>
             {allProcessTypes.map((pt) => {
               const isAssigned = assignedProcessKeys.includes(pt.key)
               return (
                 <Box
                   key={pt.key}
-                  component='button'
-                  type='button'
-                  onClick={() =>
-                    setAssignedProcessKeys((prev) =>
-                      isAssigned ? prev.filter((k) => k !== pt.key) : [...prev, pt.key]
-                    )
-                  }
                   sx={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
+                    display: 'grid',
                     gap: 0.6,
-                    px: 1.4,
-                    py: 0.6,
+                    border: `1px solid ${isAssigned ? alpha(brandTokens.forgeGold, 0.3) : alpha(brandTokens.parchment, 0.1)}`,
                     borderRadius: 1,
-                    border: `1px solid ${isAssigned ? alpha(brandTokens.forgeGold, 0.6) : alpha(brandTokens.parchment, 0.18)}`,
-                    background: isAssigned ? alpha(brandTokens.forgeGold, 0.14) : 'transparent',
-                    color: isAssigned ? brandTokens.forgeGold : alpha(brandTokens.parchment, 0.7),
-                    fontSize: '0.82rem',
-                    fontWeight: isAssigned ? 600 : 400,
-                    cursor: 'pointer',
-                    transition: 'background 0.15s, border-color 0.15s, color 0.15s',
+                    p: 0.8,
+                    background: isAssigned ? alpha(brandTokens.forgeGold, 0.06) : 'transparent',
                   }}
                 >
-                  {pt.emoji && <span aria-hidden='true'>{pt.emoji}</span>}
-                  {pt.display_name}
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }}>
+                    <Box
+                      component='button'
+                      type='button'
+                      onClick={() =>
+                        setAssignedProcessKeys((prev) =>
+                          isAssigned ? prev.filter((k) => k !== pt.key) : [...prev, pt.key]
+                        )
+                      }
+                      sx={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 0.6,
+                        px: 1.2,
+                        py: 0.5,
+                        borderRadius: 1,
+                        border: `1px solid ${isAssigned ? alpha(brandTokens.forgeGold, 0.6) : alpha(brandTokens.parchment, 0.18)}`,
+                        background: isAssigned ? alpha(brandTokens.forgeGold, 0.14) : 'transparent',
+                        color: isAssigned ? brandTokens.forgeGold : alpha(brandTokens.parchment, 0.7),
+                        fontSize: '0.82rem',
+                        fontWeight: isAssigned ? 600 : 400,
+                        cursor: 'pointer',
+                        minWidth: 180,
+                        textAlign: 'left',
+                        transition: 'background 0.15s, border-color 0.15s, color 0.15s',
+                      }}
+                    >
+                      {pt.emoji && <span aria-hidden='true'>{pt.emoji}</span>}
+                      {pt.display_name}
+                      <Typography component='span' sx={{ ml: 'auto', fontSize: '0.7rem', opacity: 0.6 }}>
+                        {isAssigned ? 'ON' : 'OFF'}
+                      </Typography>
+                    </Box>
+
+                    {isAssigned && (
+                      <TextField
+                        size='small'
+                        type='number'
+                        label='Price delta ($)'
+                        value={String(processPricing[pt.key] ?? 0)}
+                        onChange={(event) => updateProcessPricing(pt.key, asNumber(event.target.value))}
+                        sx={{ width: 160 }}
+                        slotProps={{ htmlInput: { step: '0.50', min: '0' } }}
+                      />
+                    )}
+
+                    {!isAssigned && (
+                      <Typography sx={{ color: alpha(brandTokens.parchment, 0.4), fontSize: '0.75rem', fontStyle: 'italic' }}>
+                        Toggle on to set pricing
+                      </Typography>
+                    )}
+                  </Stack>
                 </Box>
               )
             })}
-          </Stack>
+          </Box>
         )}
+
+        <Divider sx={{ borderColor: alpha(brandTokens.parchment, 0.1) }} />
+
+        {/* ── Combo discounts ──────────────────────────────────────────── */}
+        <Box sx={{ display: 'grid', gap: 0.8 }}>
+          <Typography variant='subtitle2' sx={{ fontWeight: 700, fontSize: '0.85rem' }}>
+            Combo Discounts
+          </Typography>
+          <Typography sx={{ color: alpha(brandTokens.parchment, 0.55), fontSize: '0.75rem' }}>
+            When a customer selects multiple processes, apply a discount. Tiers are evaluated from highest min_processes to lowest — the best matching tier is used.
+          </Typography>
+
+          {comboDiscounts.length === 0 ? (
+            <Typography sx={{ color: alpha(brandTokens.parchment, 0.5), fontSize: '0.78rem' }}>
+              No combo discounts yet. Add one below.
+            </Typography>
+          ) : (
+            <Box sx={{ display: 'grid', gap: 0.6 }}>
+              {comboDiscounts.map((cd) => (
+                <Box
+                  key={cd.localId}
+                  sx={{
+                    display: 'grid',
+                    gap: 0.5,
+                    border: `1px solid ${alpha(brandTokens.parchment, 0.14)}`,
+                    borderRadius: 1,
+                    p: 0.7,
+                    background: alpha(brandTokens.bgSurface, 0.4),
+                  }}
+                >
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'center' }}>
+                    <Typography sx={{ fontSize: '0.8rem', minWidth: 100 }}>
+                      {cd.min_processes}+ processes
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.8rem', color: alpha(brandTokens.parchment, 0.7), minWidth: 120 }}>
+                      {cd.discount_type === 'percent' ? `${cd.discount_value}% off` : cd.discount_type === 'fixed_amount' ? `-$${cd.discount_value?.toFixed(2)}` : 'Cheapest free'}
+                    </Typography>
+                    {cd.label && (
+                      <Typography sx={{ fontSize: '0.78rem', color: alpha(brandTokens.parchment, 0.55), flex: 1 }}>
+                        "{cd.label}"
+                      </Typography>
+                    )}
+                    <Button size='small' variant='text' color='error' onClick={() => removeComboDiscount(cd.localId)}>
+                      Remove
+                    </Button>
+                  </Stack>
+                </Box>
+              ))}
+            </Box>
+          )}
+
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ mt: 0.5 }}>
+            <TextField
+              size='small'
+              type='number'
+              label='Min processes'
+              value={newComboMinProcesses}
+              onChange={(event) => setNewComboMinProcesses(event.target.value)}
+              sx={{ width: 130 }}
+              slotProps={{ htmlInput: { min: '2' } }}
+            />
+            <Select
+              size='small'
+              value={newComboDiscountType}
+              onChange={(event) => setNewComboDiscountType(event.target.value as 'percent' | 'fixed_amount' | 'cheapest_free')}
+              sx={{ minWidth: 160 }}
+            >
+              <MenuItem value='percent'>Percent off</MenuItem>
+              <MenuItem value='fixed_amount'>Fixed amount off</MenuItem>
+              <MenuItem value='cheapest_free'>Cheapest free</MenuItem>
+            </Select>
+            {newComboDiscountType !== 'cheapest_free' && (
+              <TextField
+                size='small'
+                type='number'
+                label='Value'
+                value={newComboDiscountValue}
+                onChange={(event) => setNewComboDiscountValue(event.target.value)}
+                sx={{ width: 130 }}
+              />
+            )}
+            <TextField
+              size='small'
+              label='Label (optional)'
+              value={newComboDiscountLabel}
+              onChange={(event) => setNewComboDiscountLabel(event.target.value)}
+              sx={{ minWidth: 180 }}
+            />
+            <Button variant='outlined' size='small' onClick={addComboDiscount}>
+              Add Combo Discount
+            </Button>
+          </Stack>
+        </Box>
       </Box>
     </Box>
   )

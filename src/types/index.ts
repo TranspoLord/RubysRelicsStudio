@@ -233,6 +233,32 @@ export interface GalleryItem {
   moderation_status: 'pending_review' | 'approved' | 'scheduled' | 'published' | 'archived'
 }
 
+// ─── Product Process Pricing ─────────────────────────────────────────────────
+
+export type ComboDiscountType = 'percent' | 'fixed_amount' | 'cheapest_free'
+
+export interface ProductProcessPricing {
+  id: string
+  product_id: string
+  process_type_key: string
+  price_delta: number
+  is_enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ProductComboDiscount {
+  id: string
+  product_id: string
+  min_processes: number
+  discount_type: ComboDiscountType
+  discount_value: number | null
+  label: string | null
+  is_enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
 // ─── Analytics ────────────────────────────────────────────────────────────────
 
 export type OrderPathAnalytic = 'shop' | 'ready_made' | 'custom_order'

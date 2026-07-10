@@ -23,6 +23,8 @@ import type {
   DbProductVariant,
   DbProductOption,
   DbProductBulkDiscount,
+  DbProductProcessPricing,
+  DbProductComboDiscount,
 } from '@/lib/supabase/queries/products'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -30,6 +32,7 @@ import type {
 interface ConfiguratorState {
   variantId: string | null
   optionValues: Record<string, string>
+  selectedProcessKeys: string[]
   quantity: number
 }
 
@@ -40,12 +43,13 @@ interface ProductConfiguratorProps {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ProductConfigurator({ product }: ProductConfiguratorProps) {
-  const { variants, options } = product
+  const { variants, options, process_pricing, combo_discounts } = product
   const { addItem } = useCart()
 
   const [state, setState] = useState<ConfiguratorState>({
     variantId: variants[0]?.id ?? null,
     optionValues: {},
+    selectedProcessKeys: [],
     quantity: 1,
   })
   const [addedToCart, setAddedToCart] = useState(false)
@@ -73,17 +77,49 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
       if (matchingValue) unitPrice += matchingValue.price_delta
     }
 
+    // Add process price deltas
+    for (const processKey of state.selectedProcessKeys) {
+      const process = process_pricing.find((p) => p.process_type_key === processKey)
+      if (process) unitPrice += process.price_delta
+    }
+
+    // Apply combo discount if applicable
+    let processDiscount = 0
+    const activeComboDiscount = findMatchingComboDiscount(
+      combo_discounts,
+      state.selectedProcessKeys.length
+    )
+    if (activeComboDiscount) {
+      const processTotal = state.selectedProcessKeys.reduce((sum, key) => {
+        const p = process_pricing.find((pp) => pp.process_type_key === key)
+        return sum + (p?.price_delta ?? 0)
+      }, 0)
+
+      if (activeComboDiscount.discount_type === 'percent') {
+        processDiscount = processTotal * (activeComboDiscount.discount_value! / 100)
+      } else if (activeComboDiscount.discount_type === 'fixed_amount') {
+        processDiscount = activeComboDiscount.discount_value!
+      } else if (activeComboDiscount.discount_type === 'cheapest_free') {
+        const cheapestProcess = state.selectedProcessKeys.reduce((min, key) => {
+          const p = process_pricing.find((pp) => pp.process_type_key === key)
+          const delta = p?.price_delta ?? 0
+          return delta < min ? delta : min
+        }, Number.POSITIVE_INFINITY)
+        processDiscount = cheapestProcess
+      }
+    }
+
     const subtotal = unitPrice * state.quantity
     const activeBulkTier = findMatchingBulkTier(product.bulk_discounts ?? [], state.quantity)
 
-    let discount = 0
+    let discount = processDiscount * state.quantity
     if (activeBulkTier) {
       if (activeBulkTier.discount_type === 'percent') {
-        discount = subtotal * (activeBulkTier.discount_value / 100)
+        discount += subtotal * (activeBulkTier.discount_value / 100)
       } else if (activeBulkTier.discount_type === 'fixed_amount') {
-        discount = activeBulkTier.discount_value * state.quantity
+        discount += activeBulkTier.discount_value * state.quantity
       } else if (activeBulkTier.discount_type === 'unit_price') {
-        discount = Math.max(0, (unitPrice - activeBulkTier.discount_value) * state.quantity)
+        discount += Math.max(0, (unitPrice - activeBulkTier.discount_value) * state.quantity)
       }
     }
 
@@ -93,10 +129,12 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
       unitPrice,
       subtotal,
       discount,
+      processDiscount,
       total,
       activeBulkTier,
+      activeComboDiscount,
     }
-  }, [product.base_price, product.bulk_discounts, variants, options, state])
+  }, [product.base_price, product.bulk_discounts, process_pricing, combo_discounts, variants, options, state])
 
   // ── Validation ──────────────────────────────────────────────────────────────
   const requiredOptions = options.filter((o) => o.is_required)
@@ -117,6 +155,18 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
       ...prev,
       optionValues: { ...prev.optionValues, [key]: value },
     }))
+
+  const handleProcessToggle = (processKey: string) => {
+    setState((prev) => {
+      const isSelected = prev.selectedProcessKeys.includes(processKey)
+      return {
+        ...prev,
+        selectedProcessKeys: isSelected
+          ? prev.selectedProcessKeys.filter((k) => k !== processKey)
+          : [...prev.selectedProcessKeys, processKey],
+      }
+    })
+  }
 
   const handleQuantityChange = (delta: number) =>
     setState((prev) => {
@@ -143,7 +193,7 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
       })
       .filter((entry): entry is { key: string; label: string; value: string; valueLabel: string } => entry !== null)
 
-    const cartKey = buildCartKey(product.id, state.variantId, selectedOptions)
+    const cartKey = buildCartKey(product.id, state.variantId, selectedOptions, state.selectedProcessKeys)
 
     addItem({
       key: cartKey,
@@ -155,6 +205,7 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
       variantId: state.variantId,
       variantLabel: selectedVariant?.label ?? null,
       options: selectedOptions,
+      selectedProcessKeys: state.selectedProcessKeys,
       unitPrice: pricing.unitPrice,
       lineSubtotal: pricing.subtotal,
       lineDiscount: pricing.discount,
@@ -354,6 +405,62 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
         </Box>
       )}
 
+      {/* ── Process selector ─────────────────────────────────────────── */}
+      {process_pricing.length > 0 && (
+        <Box>
+          <FormLabel
+            sx={{
+              display: 'block',
+              mb: 1.25,
+              fontWeight: 600,
+              fontSize: '0.875rem',
+              color: brandTokens.parchment,
+            }}
+          >
+            Choose Your Process
+            {combo_discounts.length > 0 && (
+              <Typography component="span" sx={{ color: alpha(brandTokens.parchment, 0.5), fontSize: '0.75rem', ml: 1 }}>
+                (Select one or more)
+              </Typography>
+            )}
+          </FormLabel>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            {process_pricing.map((process) => {
+              const isSelected = state.selectedProcessKeys.includes(process.process_type_key)
+              return (
+                <ProcessPill
+                  key={process.process_type_key}
+                  processTypeKey={process.process_type_key}
+                  label={process.process_type_key.replace(/_/g, ' ')}
+                  priceDelta={process.price_delta}
+                  selected={isSelected}
+                  onClick={() => handleProcessToggle(process.process_type_key)}
+                />
+              )
+            })}
+          </Box>
+
+          {pricing.activeComboDiscount && (
+            <Box
+              sx={{
+                mt: 1.5,
+                p: 1.25,
+                borderRadius: 1,
+                border: `1px solid ${alpha(brandTokens.forgeGold, 0.32)}`,
+                backgroundColor: alpha(brandTokens.forgeGold, 0.1),
+              }}
+            >
+              <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: brandTokens.forgeGold, mb: 0.35 }}>
+                Process Combo Discount Applied
+              </Typography>
+              <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.72) }}>
+                {formatComboDiscountLabel(pricing.activeComboDiscount)} — You save ${pricing.processDiscount.toFixed(2)}.
+              </Typography>
+            </Box>
+          )}
+        </Box>
+      )}
+
       {/* ── Add to cart ───────────────────────────────────────────────── */}
       <Button
         variant="contained"
@@ -427,10 +534,83 @@ function formatBulkTierLabel(tier: DbProductBulkDiscount): string {
 function buildCartKey(
   productId: string,
   variantId: string | null,
-  options: Array<{ key: string; value: string }>
+  options: Array<{ key: string; value: string }>,
+  processKeys: string[]
 ): string {
   const sorted = [...options].sort((a, b) => a.key.localeCompare(b.key))
-  return `${productId}::${variantId ?? 'no_variant'}::${JSON.stringify(sorted)}`
+  const sortedProcesses = [...processKeys].sort()
+  return `${productId}::${variantId ?? 'no_variant'}::${JSON.stringify(sorted)}::processes:${JSON.stringify(sortedProcesses)}`
+}
+
+function findMatchingComboDiscount(
+  tiers: DbProductComboDiscount[],
+  selectedCount: number
+): DbProductComboDiscount | null {
+  if (selectedCount < 2) return null
+  // Sort descending by min_processes, pick the first one that matches
+  const sorted = [...tiers].sort((a, b) => b.min_processes - a.min_processes)
+  return sorted.find((tier) => selectedCount >= tier.min_processes) ?? null
+}
+
+function formatComboDiscountLabel(tier: DbProductComboDiscount): string {
+  if (tier.label) return tier.label
+  if (tier.discount_type === 'percent') return `${tier.discount_value}% off multi-process orders`
+  if (tier.discount_type === 'fixed_amount') return `$${tier.discount_value?.toFixed(2)} off multi-process orders`
+  return 'Cheapest process free on multi-process orders'
+}
+
+// ─── Process pill ──────────────────────────────────────────────────────────────
+
+interface ProcessPillProps {
+  processTypeKey: string
+  label: string
+  priceDelta: number
+  selected: boolean
+  onClick: () => void
+}
+
+function ProcessPill({ processTypeKey, label, priceDelta, selected, onClick }: ProcessPillProps) {
+  const emojiMap: Record<string, string> = {
+    engraving_cutting: '🔥',
+    printing: '🖨️',
+    sublimation: '🌈',
+  }
+  const emoji = emojiMap[processTypeKey] ?? '⚙️'
+  const deltaLabel = priceDelta > 0 ? ` (+$${priceDelta.toFixed(2)})` : ''
+
+  return (
+    <Box
+      component="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      sx={{
+        px: 1.5,
+        py: 0.75,
+        borderRadius: 1,
+        border: `1px solid ${selected ? brandTokens.forgeGold : alpha(brandTokens.parchment, 0.18)}`,
+        background: selected ? alpha(brandTokens.forgeGold, 0.12) : 'none',
+        color: selected ? brandTokens.forgeGold : brandTokens.parchment,
+        cursor: 'pointer',
+        fontWeight: selected ? 600 : 400,
+        fontSize: '0.8rem',
+        transition: 'background 0.15s, border-color 0.15s, color 0.15s',
+        '&:hover': {
+          borderColor: alpha(brandTokens.forgeGold, 0.5),
+          background: alpha(brandTokens.forgeGold, 0.08),
+        },
+      }}
+    >
+      <Box component="span" aria-hidden="true" sx={{ mr: 0.5 }}>
+        {emoji}
+      </Box>
+      {label}
+      {deltaLabel && (
+        <Typography component="span" sx={{ fontSize: '0.7rem', opacity: 0.7, ml: 0.25 }}>
+          {deltaLabel}
+        </Typography>
+      )}
+    </Box>
+  )
 }
 
 // ─── Variant pill ─────────────────────────────────────────────────────────────
