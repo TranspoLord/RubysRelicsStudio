@@ -31,8 +31,9 @@ const ALL_SECTION_KEYS = new Set([
 interface ShortcutItem {
   key?: unknown
   label: unknown
-  emoji: unknown
+  emoji?: unknown
   href: unknown
+  image_url?: unknown
   gradient?: unknown
   glow_color?: unknown
   is_visible?: unknown
@@ -78,7 +79,11 @@ function validatePayload(body: unknown): {
     if (typeof item.label !== 'string' || item.label.trim() === '') {
       return { valid: false, message: `items[${i}].label must be a non-empty string.` }
     }
-    if (typeof item.emoji !== 'string' || item.emoji.trim() === '') {
+    // emoji is required unless image_url is provided
+    if (typeof item.emoji !== 'string' && typeof item.image_url !== 'string') {
+      return { valid: false, message: `items[${i}].emoji is required when image_url is not set.` }
+    }
+    if (typeof item.emoji === 'string' && item.emoji.trim() === '') {
       return { valid: false, message: `items[${i}].emoji must be a non-empty string.` }
     }
     if (typeof item.href !== 'string' || item.href.trim() === '') {
@@ -209,7 +214,8 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   const sanitisedItems = items.map((item, i) => ({
     key: typeof item.key === 'string' ? item.key : String(i),
     label: (item.label as string).trim(),
-    emoji: (item.emoji as string).trim(),
+    emoji: typeof item.emoji === 'string' ? item.emoji.trim() : '',
+    image_url: typeof item.image_url === 'string' ? item.image_url : undefined,
     href: (item.href as string).trim(),
     gradient: typeof item.gradient === 'string' ? item.gradient : undefined,
     glow_color: typeof item.glow_color === 'string' ? item.glow_color : undefined,
