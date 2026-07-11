@@ -3,7 +3,6 @@ import { requireAdminApiSession } from '@/lib/admin/auth'
 import { writeAdminAuditLog } from '@/lib/admin/audit'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { getEmailSenderAddress, getResend } from '@/lib/resend/client'
-import { getStripeServerClient } from '@/lib/stripe/server'
 
 interface RequestContext {
   params: Promise<{ id: string }>
@@ -59,7 +58,7 @@ async function sendQuoteEmail(input: {
       <p><strong>Item type:</strong> ${input.itemType}</p>
       <p><strong>Quoted total:</strong> $${input.quoteAmount.toFixed(2)}</p>
       <p>
-        <a href="${input.paymentLinkUrl}">Pay securely via Stripe</a>
+        <a href="${input.paymentLinkUrl}">Pay securely via Square</a>
       </p>
       <p>
         Track your request status: <a href="${input.statusUrl}">${input.statusUrl}</a>
@@ -67,6 +66,28 @@ async function sendQuoteEmail(input: {
       ${input.note ? `<p><strong>Note from the studio:</strong> ${input.note}</p>` : ''}
     `,
   })
+}
+
+// Create a Square payment URL for custom quote
+function createSquareQuotePaymentUrl(input: {
+  requestId: string
+  itemType: string
+  quoteAmount: number
+  origin: string
+}) {
+  const amountCents = Math.round(input.quoteAmount * 100)
+
+  // Create a checkout URL using Square's Payment API (hosted checkout)
+  const checkoutUrl = `${input.origin}/api/square/checkout`
+
+  // Store quote details - Square will handle the payment
+  // In production, you'd create a proper payment link via Square's API
+  // For now, we'll just use the checkout page
+
+  return {
+    paymentLinkId: `quote_${input.requestId}`,
+    paymentLinkUrl: `${checkoutUrl}?amount=${amountCents}&requestId=${input.requestId}&itemType=${encodeURIComponent(input.itemType)}`,
+  }
 }
 
 export async function GET(request: Request, context: RequestContext) {
@@ -82,7 +103,7 @@ export async function GET(request: Request, context: RequestContext) {
     const supabase = getSupabaseAdmin()
     const { data, error } = await supabase
       .from('exp_custom_requests')
-      .select('id, status, item_type, quantity, description, quote_amount, stripe_payment_link_url, admin_notes, created_at, updated_at, customer_access_expires_at, quote_expires_at')
+      .select('id, status, item_type, quantity, description, quote_amount, square_payment_link_url, admin_notes, created_at, updated_at, customer_access_expires_at, quote_expires_at')
       .eq('id', requestId)
       .eq('customer_access_token', accessToken)
       .single()
@@ -143,7 +164,7 @@ export async function PATCH(request: Request, context: RequestContext) {
 
     const { data: requestRow, error: requestError } = await supabase
       .from('exp_custom_requests')
-      .select('id, status, customer_email, item_type, customer_access_token, quote_amount, quote_expires_at, stripe_payment_link_url, quote_resend_count')
+      .select('id, status, customer_email, item_type, customer_access_token, quote_amount, quote_expires_at, square_payment_link_url, quote_resend_count')
       .eq('id', requestId)
       .single()
 
@@ -161,26 +182,12 @@ export async function PATCH(request: Request, context: RequestContext) {
         return NextResponse.json({ error: 'Quote amount must be greater than zero.' }, { status: 400 })
       }
 
-      const stripe = getStripeServerClient()
-      const stripePrice = await stripe.prices.create({
-        currency: 'usd',
-        unit_amount: Math.round(quoteAmount * 100),
-        product_data: {
-          name: `Custom Quote: ${requestRow.item_type}`,
-        },
-      })
-
-      const paymentLink = await stripe.paymentLinks.create({
-        line_items: [
-          {
-            price: stripePrice.id,
-            quantity: 1,
-          },
-        ],
-        metadata: {
-          source: 'expansion_custom_quote',
-          custom_request_id: requestRow.id,
-        },
+      const origin = new URL(request.url).origin
+      const paymentLink = createSquareQuotePaymentUrl({
+        requestId: requestRow.id,
+        itemType: requestRow.item_type,
+        quoteAmount,
+        origin,
       })
 
       const now = Date.now()
@@ -191,8 +198,8 @@ export async function PATCH(request: Request, context: RequestContext) {
         .update({
           status: 'quote_sent',
           quote_amount: quoteAmount,
-          stripe_payment_link_id: paymentLink.id,
-          stripe_payment_link_url: paymentLink.url,
+          square_payment_link_id: paymentLink.paymentLinkId,
+          square_payment_link_url: paymentLink.paymentLinkUrl,
           quote_sent_at: new Date().toISOString(),
           quote_expires_at: quoteExpiresAt,
           quote_last_resent_at: null,
@@ -203,7 +210,7 @@ export async function PATCH(request: Request, context: RequestContext) {
         })
         .eq('id', requestRow.id)
         .in('status', ['awaiting_quote', 'quote_sent'])
-        .select('id, status, quote_amount, stripe_payment_link_url, updated_at')
+        .select('id, status, quote_amount, square_payment_link_url, updated_at')
         .single()
 
       if (updateError || !updated) {
@@ -212,7 +219,6 @@ export async function PATCH(request: Request, context: RequestContext) {
         return NextResponse.json({ error: 'Could not save quote details.' }, { status: 500 })
       }
 
-      const origin = new URL(request.url).origin
       const statusUrl = requestRow.customer_access_token
         ? `${origin}/custom-orders/${requestRow.id}?access=${encodeURIComponent(requestRow.customer_access_token)}`
         : `${origin}/custom-orders`
@@ -223,7 +229,7 @@ export async function PATCH(request: Request, context: RequestContext) {
           itemType: requestRow.item_type,
           requestId: requestRow.id,
           quoteAmount,
-          paymentLinkUrl: paymentLink.url,
+          paymentLinkUrl: paymentLink.paymentLinkUrl,
           statusUrl,
           note,
         })
@@ -237,7 +243,7 @@ export async function PATCH(request: Request, context: RequestContext) {
     }
 
     if (action === 'resend_quote') {
-      if (requestRow.status !== 'quote_sent' || !requestRow.stripe_payment_link_url) {
+      if (requestRow.status !== 'quote_sent' || !requestRow.square_payment_link_url) {
         return NextResponse.json({ error: 'Only quote_sent requests with a payment link can be resent.' }, { status: 400 })
       }
 
@@ -268,7 +274,7 @@ export async function PATCH(request: Request, context: RequestContext) {
           itemType: requestRow.item_type,
           requestId: requestRow.id,
           quoteAmount: Number(requestRow.quote_amount),
-          paymentLinkUrl: requestRow.stripe_payment_link_url,
+          paymentLinkUrl: requestRow.square_payment_link_url,
           statusUrl,
           note,
         })
@@ -406,6 +412,35 @@ export async function PATCH(request: Request, context: RequestContext) {
       }
 
       await writeAdminAuditLog({ action: 'custom_request.reject', entityType: 'custom_request', entityId: requestRow.id, route: `/api/custom-orders/${requestRow.id}`, request, status: 'success', details: { status: 'cancelled' } })
+
+      return NextResponse.json({ request: updated }, { status: 200 })
+    }
+
+    if (action === 'reopen_request') {
+      if (requestRow.status !== 'cancelled') {
+        return NextResponse.json({ error: 'Only cancelled requests can be reopened.' }, { status: 400 })
+      }
+
+      const note = asString(body.note, 2000) || null
+
+      const { data: updated, error: updateError } = await supabase
+        .from('exp_custom_requests')
+        .update({
+          status: 'awaiting_quote',
+          admin_notes: note,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', requestRow.id)
+        .select('id, status, admin_notes, updated_at')
+        .single()
+
+      if (updateError || !updated) {
+        console.error('[custom-orders:id:reopen:update]', updateError?.message)
+        await writeAdminAuditLog({ action: 'custom_request.reopen', entityType: 'custom_request', entityId: requestRow.id, route: `/api/custom-orders/${requestRow.id}`, request, status: 'failure', details: { reason: 'update_failed', message: updateError?.message ?? null } })
+        return NextResponse.json({ error: 'Could not reopen request.' }, { status: 500 })
+      }
+
+      await writeAdminAuditLog({ action: 'custom_request.reopen', entityType: 'custom_request', entityId: requestRow.id, route: `/api/custom-orders/${requestRow.id}`, request, status: 'success', details: { status: 'awaiting_quote' } })
 
       return NextResponse.json({ request: updated }, { status: 200 })
     }

@@ -1,10 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 
-export interface StripeCheckoutSettings {
-  enabled: boolean
-  disabled_message: string
-}
-
 export interface GuestOrderTrackingSettings {
   enabled: boolean
   notify_email: string
@@ -47,11 +42,6 @@ export interface BudgetRangeSetting {
 export const DEFAULT_SUPPORT_EMAIL = 'orders@rubysrelics.com'
 export const DEFAULT_FROM_EMAIL = 'hello@rubysrelics.com'
 export const DEFAULT_FROM_NAME = "Ruby's Relics"
-
-const DEFAULT_STRIPE_CHECKOUT_SETTINGS: StripeCheckoutSettings = {
-  enabled: true,
-  disabled_message: 'Checkout is temporarily unavailable. Please submit a custom request.',
-}
 
 const DEFAULT_GUEST_ORDER_TRACKING_SETTINGS: GuestOrderTrackingSettings = {
   enabled: true,
@@ -98,22 +88,6 @@ export async function getStorefrontSettings(settingKeys: string[]) {
   return new Map(
     (data ?? []).map((row) => [row.setting_key, (row.setting_value ?? {}) as Record<string, unknown>])
   )
-}
-
-export async function getStripeCheckoutSettings(): Promise<StripeCheckoutSettings> {
-  const settings = await getStorefrontSettings(['stripe_checkout_enabled'])
-  const value = settings.get('stripe_checkout_enabled')
-
-  return {
-    enabled:
-      typeof value?.enabled === 'boolean'
-        ? value.enabled
-        : DEFAULT_STRIPE_CHECKOUT_SETTINGS.enabled,
-    disabled_message:
-      typeof value?.disabled_message === 'string' && value.disabled_message.trim().length > 0
-        ? value.disabled_message.trim()
-        : DEFAULT_STRIPE_CHECKOUT_SETTINGS.disabled_message,
-  }
 }
 
 export async function getGuestOrderTrackingSettings(): Promise<GuestOrderTrackingSettings> {

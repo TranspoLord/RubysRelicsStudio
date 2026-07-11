@@ -13,10 +13,6 @@ import CircularProgress from '@mui/material/CircularProgress'
 import { brandTokens } from '@/theme/theme'
 
 interface SettingsFormData {
-  stripe_checkout_enabled: {
-    enabled: boolean
-    disabled_message: string
-  }
   guest_order_tracking: {
     enabled: boolean
     notify_email: string
@@ -156,33 +152,6 @@ export default function AdminSettingsPage() {
           {message.text}
         </Alert>
       )}
-
-      {/* Stripe Checkout Section */}
-      <Box sx={{ display: 'grid', gap: 1.5, p: 1.5, border: `1px solid ${alpha(brandTokens.parchment, 0.2)}`, borderRadius: 1 }}>
-        <Typography variant="h6">Stripe Checkout</Typography>
-
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={settings.stripe_checkout_enabled.enabled}
-              onChange={(e) => handleChange('stripe_checkout_enabled', 'enabled', e.target.checked)}
-            />
-          }
-          label="Enable Stripe Checkout"
-        />
-
-        <TextField
-          label="Disabled Message"
-          multiline
-          rows={2}
-          fullWidth
-          value={settings.stripe_checkout_enabled.disabled_message}
-          onChange={(e) => handleChange('stripe_checkout_enabled', 'disabled_message', e.target.value)}
-          helperText="Message shown to customers when checkout is disabled"
-          disabled={settings.stripe_checkout_enabled.enabled}
-          variant="outlined"
-        />
-      </Box>
 
       {/* Guest Order Tracking Section */}
       <Box sx={{ display: 'grid', gap: 1.5, p: 1.5, border: `1px solid ${alpha(brandTokens.parchment, 0.2)}`, borderRadius: 1 }}>

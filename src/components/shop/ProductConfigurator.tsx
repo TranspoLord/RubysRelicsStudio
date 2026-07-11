@@ -14,10 +14,12 @@ import FormControlLabel from '@mui/material/FormControlLabel'
 import Checkbox from '@mui/material/Checkbox'
 import Divider from '@mui/material/Divider'
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart'
+import ShoppingCartCheckoutIcon from '@mui/icons-material/ShoppingCartCheckout'
 import { alpha } from '@mui/material/styles'
 
 import { brandTokens } from '@/theme/theme'
 import { useCart } from '@/components/cart/CartProvider'
+import { SquareCheckoutButton } from './SquareCheckoutButton'
 import type {
   DbProductDetail,
   DbProductVariant,
@@ -55,6 +57,7 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
   const [addedToCart, setAddedToCart] = useState(false)
 
   const isReadyMade = product.is_ready_made
+  const isSquareEnabled = product.is_square_enabled ?? false
   const maxPurchasable =
     isReadyMade && product.is_track_inventory
       ? Math.max(0, Number(product.inventory_qty ?? 0))
@@ -217,6 +220,17 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
     setAddedToCart(true)
     setTimeout(() => setAddedToCart(false), 2000)
   }
+
+  // Prepare Square checkout items
+  const squareItems = isValid && isSquareEnabled
+    ? [{
+        productId: product.id,
+        title: product.title,
+        quantity: state.quantity,
+        unitPrice: pricing.unitPrice,
+        selectedProcessKeys: state.selectedProcessKeys,
+      }]
+    : []
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -461,28 +475,34 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
         </Box>
       )}
 
-      {/* ── Add to cart ───────────────────────────────────────────────── */}
-      <Button
-        variant="contained"
-        size="large"
-        fullWidth
-        startIcon={<AddShoppingCartIcon />}
-        onClick={handleAddToCart}
-        disabled={!isValid}
-        sx={{
-          py: 1.75,
-          fontSize: '1rem',
-          fontWeight: 700,
-          letterSpacing: '0.06em',
-          backgroundColor: isValid ? brandTokens.forgeGold : undefined,
-          color: isValid ? brandTokens.bgVoid : undefined,
-          '&:hover': {
-            backgroundColor: isValid ? '#E8B84A' : undefined,
-          },
-        }}
-      >
-        {isOutOfStock ? 'Out of Stock' : addedToCart ? '✓ Added to Cart' : 'Add to Cart'}
-      </Button>
+      {/* ── Add to cart / Square checkout ───────────────────────────────── */}
+      <Box sx={{ display: 'flex', gap: 1.5, flexDirection: { xs: 'column', sm: 'row' } }}>
+        <Button
+          variant="contained"
+          size="large"
+          fullWidth
+          startIcon={<AddShoppingCartIcon />}
+          onClick={handleAddToCart}
+          disabled={!isValid}
+          sx={{
+            py: 1.75,
+            fontSize: '1rem',
+            fontWeight: 700,
+            letterSpacing: '0.06em',
+            backgroundColor: isValid ? brandTokens.forgeGold : undefined,
+            color: isValid ? brandTokens.bgVoid : undefined,
+            '&:hover': {
+              backgroundColor: isValid ? '#E8B84A' : undefined,
+            },
+          }}
+        >
+          {isOutOfStock ? 'Out of Stock' : addedToCart ? '✓ Added to Cart' : 'Add to Cart'}
+        </Button>
+
+        {isSquareEnabled && squareItems.length > 0 && (
+          <SquareCheckoutButton items={squareItems} disabled={!isValid} />
+        )}
+      </Box>
 
       {!isValid && requiredOptions.length > 0 && (
         <Typography

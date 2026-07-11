@@ -53,6 +53,9 @@ export interface DbProduct {
     | 'low_stock'
     | 'out_of_stock'
     | 'untracked'
+  // Square checkout integration
+  is_square_enabled?: boolean
+  square_variant_id?: string | null
 }
 
 export interface DbProductVariant {

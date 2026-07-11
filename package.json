@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:security:rls": "node ./scripts/test-rls-lockdown.mjs",
-    "test:security": "npm run test:security:rls"
+    "test:security": "npm run test:security:rls",
+    "test:square": "node ./scripts/test-square-checkout.mjs"
   },
   "dependencies": {
     "@emotion/cache": "^11.14.0",
@@ -25,12 +26,13 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "resend": "^4.5.0",
-    "stripe": "^17.0.0"
+    "square": "^44.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "dotenv": "^16.6.1",
     "eslint": "^9.0.0",
     "eslint-config-next": "16.2.4",
     "typescript": "^5.7.0",

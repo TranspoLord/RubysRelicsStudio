@@ -9,10 +9,6 @@ import {
 } from '@/lib/storefront-settings'
 
 interface SettingsFormData {
-  stripe_checkout_enabled: {
-    enabled: boolean
-    disabled_message: string
-  }
   guest_order_tracking: {
     enabled: boolean
     notify_email: string
@@ -46,7 +42,7 @@ export async function GET(request: Request) {
     const { data, error } = await supabase
       .from('exp_storefront_settings')
       .select('setting_key, setting_value')
-      .in('setting_key', ['stripe_checkout_enabled', 'guest_order_tracking', 'contact', 'operational_notifications', 'admin_session', 'recommendations'])
+      .in('setting_key', ['guest_order_tracking', 'contact', 'operational_notifications', 'admin_session', 'recommendations'])
 
     if (error) {
       console.error('[admin:settings:get]', error.message)
@@ -60,10 +56,6 @@ export async function GET(request: Request) {
     }
 
     const settings: SettingsFormData = {
-      stripe_checkout_enabled: (settingsByKey.get('stripe_checkout_enabled') ?? {
-        enabled: true,
-        disabled_message: 'Checkout is temporarily unavailable.',
-      }) as SettingsFormData['stripe_checkout_enabled'],
       guest_order_tracking: (settingsByKey.get('guest_order_tracking') ?? {
         enabled: true,
         notify_email: DEFAULT_SUPPORT_EMAIL,
@@ -114,13 +106,11 @@ export async function PATCH(request: Request) {
 
     // Validate structure
     if (
-      !settings.stripe_checkout_enabled ||
       !settings.guest_order_tracking ||
       !settings.contact ||
       !settings.operational_notifications ||
       !settings.admin_session ||
       !settings.recommendations ||
-      typeof settings.stripe_checkout_enabled.enabled !== 'boolean' ||
       typeof settings.guest_order_tracking.enabled !== 'boolean' ||
       typeof settings.operational_notifications.custom_request_notify_email !== 'string' ||
       typeof settings.admin_session.ttl_hours !== 'number' ||
@@ -133,21 +123,6 @@ export async function PATCH(request: Request) {
     }
 
     const supabase = getSupabaseAdmin()
-
-    // Update stripe_checkout_enabled
-    const stripeResult = await supabase
-      .from('exp_storefront_settings')
-      .update({
-        setting_value: settings.stripe_checkout_enabled,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('setting_key', 'stripe_checkout_enabled')
-
-    if (stripeResult.error) {
-      console.error('[admin:settings:patch]', stripeResult.error.message)
-      await writeAdminAuditLog({ action: 'settings.update', entityType: 'storefront_settings', route: '/api/admin/settings', request, status: 'failure', details: { reason: 'stripe_update_failed', message: stripeResult.error.message } })
-      return NextResponse.json({ error: 'Could not update stripe settings.' }, { status: 500 })
-    }
 
     // Update guest_order_tracking
     const trackingResult = await supabase
@@ -220,7 +195,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Could not update recommendation settings.' }, { status: 500 })
     }
 
-    await writeAdminAuditLog({ action: 'settings.update', entityType: 'storefront_settings', route: '/api/admin/settings', request, status: 'success', details: { keys: ['stripe_checkout_enabled', 'guest_order_tracking', 'contact', 'operational_notifications', 'admin_session', 'recommendations'] } })
+    await writeAdminAuditLog({ action: 'settings.update', entityType: 'storefront_settings', route: '/api/admin/settings', request, status: 'success', details: { keys: ['guest_order_tracking', 'contact', 'operational_notifications', 'admin_session', 'recommendations'] } })
 
     return NextResponse.json({ settings, message: 'Settings updated successfully.' }, { status: 200 })
   } catch (error) {

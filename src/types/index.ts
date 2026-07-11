@@ -43,6 +43,8 @@ export interface Product {
   created_by: string
   updated_by: string
   archived_at?: string
+  square_variant_id?: string | null
+  is_square_enabled?: boolean
 }
 
 export interface ProductVariant {

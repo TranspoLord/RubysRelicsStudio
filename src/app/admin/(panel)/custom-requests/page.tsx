@@ -4,6 +4,10 @@ import { useEffect, useMemo, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
 import MenuItem from '@mui/material/MenuItem'
 import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
@@ -68,6 +72,9 @@ export default function AdminCustomRequestsPage() {
   const [artworkUrls, setArtworkUrls] = useState<
     Record<string, Array<{ name: string; url: string }> | 'loading' | 'error'>
   >({})
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
+  const [rejectingRowId, setRejectingRowId] = useState<string | null>(null)
+  const [rejectionReason, setRejectionReason] = useState('')
 
   async function loadRows(nextQuery = query, nextStatus = status) {
     setLoading(true)
@@ -107,14 +114,12 @@ export default function AdminCustomRequestsPage() {
 
     setSubmittingId(row.id)
     setError(null)
-  setSuccessMessage(null)
+    setSuccessMessage(null)
 
     try {
       const response = await fetch(`/api/custom-orders/${row.id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'send_quote',
           quoteAmount,
@@ -144,9 +149,7 @@ export default function AdminCustomRequestsPage() {
     try {
       const response = await fetch(`/api/custom-orders/${row.id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'resend_quote',
           note: noteDrafts[row.id] ?? '',
@@ -181,9 +184,7 @@ export default function AdminCustomRequestsPage() {
     try {
       const response = await fetch(`/api/custom-orders/${row.id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'extend_quote_expiry',
           extendDays,
@@ -212,9 +213,7 @@ export default function AdminCustomRequestsPage() {
     try {
       const response = await fetch(`/api/custom-orders/${row.id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'handoff_to_production',
           note: noteDrafts[row.id] ?? '',
@@ -235,26 +234,28 @@ export default function AdminCustomRequestsPage() {
     }
   }
 
-  async function rejectRequest(row: CustomRequestRow) {
-    const proceed = window.confirm(
-      `Reject request ${row.id.slice(0, 8)}? This is a destructive status change.`
-    )
-    if (!proceed) return
+  async function openRejectDialog(row: CustomRequestRow) {
+    setRejectingRowId(row.id)
+    setRejectionReason('')
+    setRejectDialogOpen(true)
+  }
 
-    setSubmittingId(row.id)
+  async function confirmReject() {
+    if (!rejectingRowId) return
+
+    setRejectDialogOpen(false)
+    setSubmittingId(rejectingRowId)
     setError(null)
     setSuccessMessage(null)
 
     try {
-      const response = await fetch(`/api/custom-orders/${row.id}`, {
+      const response = await fetch(`/api/custom-orders/${rejectingRowId}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'mark_rejected',
           confirmAction: 'mark_rejected',
-          note: 'Rejected by admin review.',
+          note: rejectionReason.trim() || 'Rejected by admin review.',
         }),
       })
 
@@ -264,9 +265,40 @@ export default function AdminCustomRequestsPage() {
       }
 
       setSuccessMessage('Request rejected.')
+      setRejectingRowId(null)
       await loadRows()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not reject request.')
+      setRejectingRowId(null)
+    } finally {
+      setSubmittingId(null)
+    }
+  }
+
+  async function reopenRequest(row: CustomRequestRow) {
+    setSubmittingId(row.id)
+    setError(null)
+    setSuccessMessage(null)
+
+    try {
+      const response = await fetch(`/api/custom-orders/${row.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'reopen_request',
+          note: noteDrafts[row.id] ?? '',
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Could not reopen request.')
+      }
+
+      setSuccessMessage('Request reopened.')
+      await loadRows()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not reopen request.')
     } finally {
       setSubmittingId(null)
     }
@@ -319,6 +351,8 @@ export default function AdminCustomRequestsPage() {
       setRunningRecoveryBatch(false)
     }
   }
+
+  const isRowCancelled = (row: CustomRequestRow) => row.status === 'cancelled'
 
   return (
     <Box sx={{ display: 'grid', gap: 1.4 }}>
@@ -395,8 +429,11 @@ export default function AdminCustomRequestsPage() {
               sx={{
                 borderRadius: 1.2,
                 border: `1px solid ${alpha(brandTokens.parchment, 0.1)}`,
-                backgroundColor: alpha(brandTokens.bgSurface, 0.48),
+                backgroundColor: isRowCancelled(row)
+                  ? alpha(brandTokens.parchment, 0.08)
+                  : alpha(brandTokens.bgSurface, 0.48),
                 p: 1.1,
+                opacity: isRowCancelled(row) ? 0.6 : 1,
               }}
             >
               <Typography sx={{ fontWeight: 700, fontSize: '0.86rem' }}>
@@ -407,6 +444,11 @@ export default function AdminCustomRequestsPage() {
               </Typography>
               <Typography sx={{ color: alpha(brandTokens.parchment, 0.58), fontSize: '0.75rem', mt: 0.2 }}>
                 Status: {prettyStatus(row.status)}
+                {isRowCancelled(row) && (
+                  <Typography component="span" sx={{ ml: 1, color: '#F1B4B4', fontSize: '0.7rem' }}>
+                    (Rejected)
+                  </Typography>
+                )}
               </Typography>
               {row.quote_expires_at && (
                 <Typography sx={{ color: alpha(brandTokens.parchment, 0.54), fontSize: '0.73rem' }}>
@@ -486,91 +528,132 @@ export default function AdminCustomRequestsPage() {
                 </Button>
               )}
 
-              <Box sx={{ display: 'flex', gap: 0.7, alignItems: 'center', flexWrap: 'wrap', mt: 0.8 }}>
-                <TextField
-                  size="small"
-                  label="Quote $"
-                  type="number"
-                  value={quoteDrafts[row.id] ?? ''}
-                  onChange={(e) =>
-                    setQuoteDrafts((prev) => ({
-                      ...prev,
-                      [row.id]: e.target.value,
-                    }))
-                  }
-                  sx={{ width: 140 }}
-                />
-                <TextField
-                  size="small"
-                  label="Extend days"
-                  type="number"
-                  value={extendDrafts[row.id] ?? '3'}
-                  onChange={(e) =>
-                    setExtendDrafts((prev) => ({
-                      ...prev,
-                      [row.id]: e.target.value,
-                    }))
-                  }
-                  sx={{ width: 130 }}
-                />
-                <TextField
-                  size="small"
-                  label="Admin note"
-                  value={noteDrafts[row.id] ?? ''}
-                  onChange={(e) =>
-                    setNoteDrafts((prev) => ({
-                      ...prev,
-                      [row.id]: e.target.value,
-                    }))
-                  }
-                  sx={{ minWidth: 220 }}
-                />
-                <Button
-                  size="small"
-                  variant="contained"
-                  disabled={submittingId === row.id}
-                  onClick={() => void sendQuote(row)}
-                >
-                  Send Quote
-                </Button>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  disabled={submittingId === row.id || row.status !== 'quote_sent'}
-                  onClick={() => void resendQuote(row)}
-                >
-                  Resend Quote
-                </Button>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  disabled={submittingId === row.id || row.status !== 'quote_sent'}
-                  onClick={() => void extendQuoteExpiry(row)}
-                >
-                  Extend Expiry
-                </Button>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  disabled={submittingId === row.id || row.status !== 'paid'}
-                  onClick={() => void handoffToProduction(row)}
-                >
-                  Handoff to Production
-                </Button>
-                <Button
-                  size="small"
-                  color="error"
-                  variant="outlined"
-                  disabled={submittingId === row.id}
-                  onClick={() => void rejectRequest(row)}
-                >
-                  Reject
-                </Button>
-              </Box>
+              {!isRowCancelled(row) && (
+                <Box sx={{ display: 'flex', gap: 0.7, alignItems: 'center', flexWrap: 'wrap', mt: 0.8 }}>
+                  <TextField
+                    size="small"
+                    label="Quote $"
+                    type="number"
+                    value={quoteDrafts[row.id] ?? ''}
+                    onChange={(e) =>
+                      setQuoteDrafts((prev) => ({
+                        ...prev,
+                        [row.id]: e.target.value,
+                      }))
+                    }
+                    sx={{ width: 140 }}
+                  />
+                  <TextField
+                    size="small"
+                    label="Extend days"
+                    type="number"
+                    value={extendDrafts[row.id] ?? '3'}
+                    onChange={(e) =>
+                      setExtendDrafts((prev) => ({
+                        ...prev,
+                        [row.id]: e.target.value,
+                      }))
+                    }
+                    sx={{ width: 130 }}
+                  />
+                  <TextField
+                    size="small"
+                    label="Admin note"
+                    value={noteDrafts[row.id] ?? ''}
+                    onChange={(e) =>
+                      setNoteDrafts((prev) => ({
+                        ...prev,
+                        [row.id]: e.target.value,
+                      }))
+                    }
+                    sx={{ minWidth: 220 }}
+                  />
+                  <Button
+                    size="small"
+                    variant="contained"
+                    disabled={submittingId === row.id}
+                    onClick={() => void sendQuote(row)}
+                  >
+                    Send Quote
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={submittingId === row.id || row.status !== 'quote_sent'}
+                    onClick={() => void resendQuote(row)}
+                  >
+                    Resend Quote
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={submittingId === row.id || row.status !== 'quote_sent'}
+                    onClick={() => void extendQuoteExpiry(row)}
+                  >
+                    Extend Expiry
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={submittingId === row.id || row.status !== 'paid'}
+                    onClick={() => void handoffToProduction(row)}
+                  >
+                    Handoff to Production
+                  </Button>
+                  <Button
+                    size="small"
+                    color="error"
+                    variant="outlined"
+                    disabled={submittingId === row.id}
+                    onClick={() => void openRejectDialog(row)}
+                  >
+                    Reject
+                  </Button>
+                </Box>
+              )}
+
+              {isRowCancelled(row) && (
+                <Box sx={{ mt: 0.8 }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={submittingId === row.id}
+                    onClick={() => void reopenRequest(row)}
+                  >
+                    Reopen
+                  </Button>
+                </Box>
+              )}
             </Box>
           ))}
         </Box>
       )}
+
+      {/* Reject Confirmation Dialog */}
+      <Dialog open={rejectDialogOpen} onClose={() => setRejectDialogOpen(false)}>
+        <DialogTitle>Reject Request</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ mb: 2 }}>
+            This request will be marked as rejected and moved to the cancelled status.
+          </Typography>
+          <TextField
+            autoFocus
+            label="Rejection reason (optional)"
+            placeholder="Why is this request being rejected?"
+            value={rejectionReason}
+            onChange={(e) => setRejectionReason(e.target.value)}
+            multiline
+            rows={3}
+            fullWidth
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRejectDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => void confirmReject()} color="error">
+            Confirm Reject
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }
