@@ -16,6 +16,7 @@ export interface ShortcutItem {
   label: string
   emoji: string
   href: string
+  image_url?: string
   gradient?: string
   glow_color?: string
   is_visible?: boolean
@@ -161,10 +162,25 @@ function ShortcutCard({ item }: { item: ShortcutItem }) {
         },
       }}
     >
-      {/* Emoji */}
-      <Typography aria-hidden="true" sx={{ fontSize: '2.4rem', lineHeight: 1 }}>
-        {item.emoji}
-      </Typography>
+      {/* Image or Emoji */}
+      {item.image_url ? (
+        <Box
+          component="img"
+          src={item.image_url}
+          alt=""
+          aria-hidden="true"
+          sx={{
+            width: '100%',
+            aspectRatio: '16 / 9',
+            objectFit: 'cover',
+            borderRadius: 1,
+          }}
+        />
+      ) : (
+        <Typography aria-hidden="true" sx={{ fontSize: '2.4rem', lineHeight: 1 }}>
+          {item.emoji}
+        </Typography>
+      )}
 
       {/* Label */}
       <Typography

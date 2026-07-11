@@ -29,6 +29,10 @@ import {
 } from '@/lib/supabase/queries/homepage'
 import type { HeroCollageConfig } from '@/components/home/HeroCollage'
 
+// Force dynamic rendering so admin CMS changes (sections, announcements, etc.)
+// are reflected on every request rather than serving a statically built page.
+export const dynamic = 'force-dynamic'
+
 // Homepage-specific metadata override
 export const metadata: Metadata = {
   title: "Ruby's Relics Studio — Forged in Fire. Gathered for Your Hoard.",

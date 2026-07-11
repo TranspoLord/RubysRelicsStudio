@@ -74,6 +74,7 @@ interface ShortcutItem {
   label: string
   emoji: string
   href: string
+  image_url: string
   gradient: string
   glow_color: string
   is_visible: boolean
@@ -106,6 +107,7 @@ const BLANK_ITEM = (): ShortcutItem => ({
   label: '',
   emoji: '✨',
   href: '/',
+  image_url: '',
   gradient: `linear-gradient(135deg, ${brandTokens.bgSurface} 0%, ${brandTokens.bgVoid} 100%)`,
   glow_color: brandTokens.forgeGold,
   is_visible: true,
@@ -185,6 +187,7 @@ export default function AdminHomepagePage() {
                 label: item.label ?? '',
                 emoji: item.emoji ?? '✨',
                 href: item.href ?? '/',
+                image_url: typeof item.image_url === 'string' ? item.image_url : '',
                 gradient: item.gradient ?? `linear-gradient(135deg, ${brandTokens.bgSurface} 0%, ${brandTokens.bgVoid} 100%)`,
                 glow_color: item.glow_color ?? brandTokens.forgeGold,
                 is_visible: item.is_visible !== false,
@@ -789,6 +792,50 @@ function TileEditor({ item, index, total, onChange, onRemove, onMove }: TileEdit
           sx={{ gridColumn: { sm: 'span 2' } }}
           inputProps={{ maxLength: 300 }}
         />
+        <Box sx={{ gridColumn: { sm: 'span 2' }, display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+          <TextField
+            label="Image URL (optional — replaces emoji)"
+            value={item.image_url}
+            onChange={(e) => onChange('image_url', e.target.value)}
+            size="small"
+            fullWidth
+            placeholder="https://example.com/tile-image.jpg"
+            inputProps={{ maxLength: 500 }}
+          />
+          <Button
+            variant="outlined"
+            size="small"
+            component="label"
+            sx={{ flexShrink: 0, mt: 0.5 }}
+            startIcon={<ImageIcon />}
+          >
+            Upload
+            <input
+              type="file"
+              hidden
+              accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
+              onChange={async (e) => {
+                const file = e.target.files?.[0]
+                if (!file) return
+                const formData = new FormData()
+                formData.set('file', file)
+                try {
+                  const res = await fetch('/api/admin/homepage/upload', {
+                    method: 'POST',
+                    body: formData,
+                  })
+                  const data = await res.json() as { url?: string; error?: string }
+                  if (!res.ok) throw new Error(data.error ?? 'Upload failed.')
+                  onChange('image_url', data.url ?? '')
+                } catch (err) {
+                  console.error('Tile image upload failed:', err)
+                }
+                // Reset so the same file can be re-selected
+                e.target.value = ''
+              }}
+            />
+          </Button>
+        </Box>
       </Box>
     </Box>
   )
