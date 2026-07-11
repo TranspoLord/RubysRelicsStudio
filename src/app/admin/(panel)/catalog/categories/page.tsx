@@ -6,10 +6,12 @@ import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Checkbox from '@mui/material/Checkbox'
 import FormControlLabel from '@mui/material/FormControlLabel'
+import IconButton from '@mui/material/IconButton'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
+import ArrowBack from '@mui/icons-material/ArrowBack'
 import Link from 'next/link'
 
 import { brandTokens } from '@/theme/theme'
@@ -204,13 +206,9 @@ export default function CategoriesAdminPage() {
 
   return (
     <Box sx={{ display: 'grid', gap: 1.4 }}>
-      <Box>
-        <Link href='/admin/catalog' style={{ textDecoration: 'none' }}>
-          <Button variant='text' sx={{ px: 0 }}>
-            {'<- Back'}
-          </Button>
-        </Link>
-      </Box>
+      <IconButton component={Link} href="/admin/catalog" sx={{ p: 0.5, ml: -0.5 }}>
+        <ArrowBack />
+      </IconButton>
 
       <Box>
         <Typography variant="h5" component="h1" sx={{ mb: 0.5 }}>

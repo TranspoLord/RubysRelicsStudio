@@ -135,6 +135,9 @@ export default function CatalogDashboardPage() {
           <Link href="/admin/catalog/categories" style={{ textDecoration: 'none' }}>
             <Button variant="outlined">Manage Categories</Button>
           </Link>
+          <Link href="/admin/catalog/processes" style={{ textDecoration: 'none' }}>
+            <Button variant="outlined">Manage Processes</Button>
+          </Link>
           <Link href="/admin/catalog/pricing" style={{ textDecoration: 'none' }}>
             <Button variant="outlined">Manage Pricing & Deals</Button>
           </Link>
