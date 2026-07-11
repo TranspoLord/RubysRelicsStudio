@@ -175,6 +175,13 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
 
   // Option editing state
   const [optionBusyKey, setOptionBusyKey] = useState<string | null>(null)
+  const [newOptionKey, setNewOptionKey] = useState('')
+  const [newOptionLabel, setNewOptionLabel] = useState('')
+  const [newOptionType, setNewOptionType] = useState<OptionType>('select')
+  const [newOptionPlaceholder, setNewOptionPlaceholder] = useState('')
+  const [newOptionHelpText, setNewOptionHelp] = useState('')
+  const [newOptionRequired, setNewOptionRequired] = useState(false)
+  const [newOptionSortOrder, setNewOptionSortOrder] = useState('')
 
   useEffect(() => {
     const loadData = async () => {
@@ -369,42 +376,181 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
   }
 
   async function addVariant() {
-    // TODO: Implement API call
-    setSuccess('Variant added (placeholder).')
-    setVariantLabel('')
-    setVariantSku('')
-    setVariantPriceDelta('')
-    setVariantWeight('')
-    setVariantSortOrder('')
+    if (!variantLabel) {
+      setError('Variant label is required.')
+      return
+    }
+
+    try {
+      const response = await fetch('/api/admin/catalog/variants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId,
+          label: variantLabel,
+          sku: variantSku || null,
+          price_delta: asNumber(variantPriceDelta, 0),
+          capacity_weight: variantWeight ? asNumber(variantWeight, 0) : null,
+          is_enabled: variantEnabled,
+          sort_order: asNumber(variantSortOrder, 0),
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to add variant.')
+      }
+
+      setSuccess('Variant added.')
+      setVariantLabel('')
+      setVariantSku('')
+      setVariantPriceDelta('')
+      setVariantWeight('')
+      setVariantSortOrder('')
+
+      const variantsRes = await fetch(`/api/admin/catalog/variants?productId=${encodeURIComponent(productId)}`, { cache: 'no-store' })
+      const variantsPayload = await variantsRes.json().catch(() => ({}))
+      if (variantsRes.ok && Array.isArray(variantsPayload?.variants)) {
+        setVariants(variantsPayload.variants)
+      }
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Failed to add variant.')
+    }
   }
 
   async function deleteVariant(variantId: string) {
-    // TODO: Implement API call
-    setSuccess('Variant deleted (placeholder).')
-    setVariants((prev) => prev.filter((v) => v.id !== variantId))
+    const confirmed = window.confirm('Delete this variant?')
+    if (!confirmed) return
+
+    setVariantBusyId(variantId)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/admin/catalog/variants', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ variantId, confirmAction: 'delete_variant' }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to delete variant.')
+      }
+
+      setVariants((prev) => prev.filter((v) => v.id !== variantId))
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Failed to delete variant.')
+    } finally {
+      setVariantBusyId(null)
+    }
   }
 
   async function addDiscountTier() {
-    // TODO: Implement API call
-    setSuccess('Discount tier added (placeholder).')
-    setMinQty('')
-    setMaxQty('')
-    setDiscountValue('')
-    setDiscountLabel('')
-    setDiscountSortOrder('')
+    if (!minQty || !discountValue) {
+      setError('Min qty and discount value are required.')
+      return
+    }
+
+    try {
+      const response = await fetch('/api/admin/catalog/discounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId,
+          min_qty: asNumber(minQty, 0),
+          max_qty: maxQty ? asNumber(maxQty, 0) : null,
+          discount_type: discountType,
+          discount_value: asNumber(discountValue, 0),
+          label: discountLabel || null,
+          sort_order: asNumber(discountSortOrder, 0),
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to add discount tier.')
+      }
+
+      setSuccess('Discount tier added.')
+      setMinQty('')
+      setMaxQty('')
+      setDiscountValue('')
+      setDiscountLabel('')
+      setDiscountSortOrder('')
+
+      const discountsRes = await fetch(`/api/admin/catalog/discounts?productId=${encodeURIComponent(productId)}`, { cache: 'no-store' })
+      const discountsPayload = await discountsRes.json().catch(() => ({}))
+      if (discountsRes.ok && Array.isArray(discountsPayload?.discounts)) {
+        setDiscounts(discountsPayload.discounts)
+      }
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Failed to add discount tier.')
+    }
   }
 
   async function deleteDiscountTier(tierId: string) {
-    // TODO: Implement API call
-    setSuccess('Discount tier deleted (placeholder).')
-    setDiscounts((prev) => prev.filter((d) => d.id !== tierId))
+    const confirmed = window.confirm('Delete this discount tier?')
+    if (!confirmed) return
+
+    setDiscountBusyId(tierId)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/admin/catalog/discounts', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ discountId: tierId, confirmAction: 'delete_discount' }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to delete discount tier.')
+      }
+
+      setDiscounts((prev) => prev.filter((d) => d.id !== tierId))
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Failed to delete discount tier.')
+    } finally {
+      setDiscountBusyId(null)
+    }
   }
 
   async function saveProcessTypes() {
-    // TODO: Implement API call
     setSavingProcessTypes(true)
-    setSuccess('Process types saved (placeholder).')
-    setSavingProcessTypes(false)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      const response = await fetch('/api/admin/catalog/process-types', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId,
+          processTypes: assignedProcessKeys.map((key) => ({
+            key,
+            price_delta: processPricing[key] ?? 0,
+            is_enabled: true,
+          })),
+          comboDiscounts: comboDiscounts.map((cd) => ({
+            min_processes: cd.min_processes,
+            discount_type: cd.discount_type,
+            discount_value: cd.discount_value,
+            label: cd.label,
+          })),
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to save process types.')
+      }
+
+      setSuccess('Process types saved.')
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Failed to save process types.')
+    } finally {
+      setSavingProcessTypes(false)
+    }
   }
 
   async function updateProcessPricing(key: string, value: number) {
@@ -434,9 +580,180 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
     setComboDiscounts((prev) => prev.filter((cd) => cd.localId !== localId))
   }
 
+  // Option value editing state
+  const [newValueLabel, setNewValueLabel] = useState('')
+  const [newValueValue, setNewValueValue] = useState('')
+  const [newValuePriceDelta, setNewValuePriceDelta] = useState('')
+  const [newValueSort, setNewValueSort] = useState('')
+  const [addingValueForOption, setAddingValueForOption] = useState<string | null>(null)
+
   async function saveOption(optionId: string) {
-    // TODO: Implement API call
-    setSuccess(`Option ${optionId} saved (placeholder).`)
+    setOptionBusyKey(optionId)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/admin/catalog/options', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ optionId }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to save option.')
+      }
+
+      setSuccess(`Option saved.`)
+      const optionsRes = await fetch(`/api/admin/catalog/options?productId=${encodeURIComponent(productId)}`, { cache: 'no-store' })
+      const optionsPayload = await optionsRes.json().catch(() => ({}))
+      if (optionsRes.ok && Array.isArray(optionsPayload?.options)) {
+        setOptions(optionsPayload.options)
+      }
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Failed to save option.')
+    } finally {
+      setOptionBusyKey(null)
+    }
+  }
+
+  async function deleteOption(optionId: string) {
+    const confirmed = window.confirm('Delete this option and all its values?')
+    if (!confirmed) return
+
+    setOptionBusyKey(optionId)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/admin/catalog/options', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ optionId, confirmAction: 'delete_option' }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to delete option.')
+      }
+
+      setOptions((prev) => prev.filter((o) => o.id !== optionId))
+      setSuccess('Option deleted.')
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Failed to delete option.')
+    } finally {
+      setOptionBusyKey(null)
+    }
+  }
+
+  async function addOption() {
+    if (!newOptionLabel || !newOptionKey) {
+      setError('Option key and label are required.')
+      return
+    }
+
+    try {
+      const response = await fetch('/api/admin/catalog/options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId,
+          option_key: newOptionKey,
+          label: newOptionLabel,
+          option_type: newOptionType,
+          placeholder: newOptionPlaceholder || null,
+          help_text: newOptionHelpText || null,
+          is_required: newOptionRequired,
+          sort_order: asNumber(newOptionSortOrder, 0),
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to add option.')
+      }
+
+      setSuccess('Option added.')
+      setNewOptionKey('')
+      setNewOptionLabel('')
+      setNewOptionPlaceholder('')
+      setNewOptionHelp('')
+      setNewOptionRequired(false)
+      setNewOptionSortOrder('')
+
+      const optionsRes = await fetch(`/api/admin/catalog/options?productId=${encodeURIComponent(productId)}`, { cache: 'no-store' })
+      const optionsPayload = await optionsRes.json().catch(() => ({}))
+      if (optionsRes.ok && Array.isArray(optionsPayload?.options)) {
+        setOptions(optionsPayload.options)
+      }
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Failed to add option.')
+    }
+  }
+
+  async function addOptionValue(optionId: string) {
+    if (!newValueLabel || !newValueValue) {
+      setError('Value label and value are required.')
+      return
+    }
+
+    try {
+      const response = await fetch('/api/admin/catalog/options/values', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          optionId,
+          label: newValueLabel,
+          value: newValueValue,
+          price_delta: asNumber(newValuePriceDelta, 0),
+          sort_order: asNumber(newValueSort, 0),
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to add option value.')
+      }
+
+      setSuccess('Option value added.')
+      setNewValueLabel('')
+      setNewValueValue('')
+      setNewValuePriceDelta('')
+      setNewValueSort('')
+      setAddingValueForOption(null)
+
+      const optionsRes = await fetch(`/api/admin/catalog/options?productId=${encodeURIComponent(productId)}`, { cache: 'no-store' })
+      const optionsPayload = await optionsRes.json().catch(() => ({}))
+      if (optionsRes.ok && Array.isArray(optionsPayload?.options)) {
+        setOptions(optionsPayload.options)
+      }
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Failed to add option value.')
+    }
+  }
+
+  async function deleteOptionValue(valueId: string) {
+    const confirmed = window.confirm('Delete this option value?')
+    if (!confirmed) return
+
+    try {
+      const response = await fetch('/api/admin/catalog/options/values', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ valueId, confirmAction: 'delete_option_value' }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to delete option value.')
+      }
+
+      const optionsRes = await fetch(`/api/admin/catalog/options?productId=${encodeURIComponent(productId)}`, { cache: 'no-store' })
+      const optionsPayload = await optionsRes.json().catch(() => ({}))
+      if (optionsRes.ok && Array.isArray(optionsPayload?.options)) {
+        setOptions(optionsPayload.options)
+      }
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Failed to delete option value.')
+    }
   }
 
   if (loading) {
@@ -1155,9 +1472,77 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
           Product customization options. Process types may auto-generate options when enabled.
         </Typography>
 
+        <Divider />
+
+        <Typography variant="subtitle2" sx={{ fontSize: '0.85rem', mt: 0.5 }}>
+          Add New Option
+        </Typography>
+
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
+          <TextField
+            size="small"
+            label="Key"
+            value={newOptionKey}
+            onChange={(event) => setNewOptionKey(event.target.value)}
+            sx={{ width: 160 }}
+          />
+          <TextField
+            size="small"
+            label="Label"
+            value={newOptionLabel}
+            onChange={(event) => setNewOptionLabel(event.target.value)}
+            sx={{ width: 160 }}
+          />
+          <Select
+            size="small"
+            value={newOptionType}
+            onChange={(event) => setNewOptionType(event.target.value as OptionType)}
+            sx={{ minWidth: 150 }}
+          >
+            <MenuItem value="select">Single choice</MenuItem>
+            <MenuItem value="text">Text</MenuItem>
+            <MenuItem value="textarea">Long text</MenuItem>
+            <MenuItem value="file">File upload</MenuItem>
+            <MenuItem value="checkbox">Toggle</MenuItem>
+            <MenuItem value="number">Number</MenuItem>
+          </Select>
+          <TextField
+            size="small"
+            type="number"
+            label="Sort"
+            value={newOptionSortOrder}
+            onChange={(event) => setNewOptionSortOrder(event.target.value)}
+            sx={{ width: 100 }}
+          />
+          <FormControlLabel
+            control={<Checkbox checked={newOptionRequired} onChange={(event) => setNewOptionRequired(event.target.checked)} />}
+            label="Required"
+          />
+          <Button variant="contained" size="small" onClick={() => void addOption()}>
+            Add option
+          </Button>
+        </Stack>
+
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
+          <TextField
+            size="small"
+            label="Placeholder (text/file/textarea options)"
+            value={newOptionPlaceholder}
+            onChange={(event) => setNewOptionPlaceholder(event.target.value)}
+            sx={{ minWidth: 220 }}
+          />
+          <TextField
+            size="small"
+            label="Help text"
+            value={newOptionHelpText}
+            onChange={(event) => setNewOptionHelp(event.target.value)}
+            sx={{ minWidth: 220 }}
+          />
+        </Stack>
+
         {options.length === 0 ? (
           <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.8rem' }}>
-            No options yet.
+            No options yet. Add one above.
           </Typography>
         ) : (
           <Box sx={{ display: 'grid', gap: 1 }}>
@@ -1177,14 +1562,25 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
                   <Typography sx={{ fontWeight: 700, fontSize: '0.86rem' }}>
                     {option.label || 'Untitled option'} ({optionTypeLabel(option.option_type)})
                   </Typography>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    disabled={optionBusyKey === option.id}
-                    onClick={() => void saveOption(option.id)}
-                  >
-                    Save option
-                  </Button>
+                  <Stack direction="row" spacing={0.5}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      disabled={optionBusyKey === option.id}
+                      onClick={() => void saveOption(option.id)}
+                    >
+                      Save
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="error"
+                      disabled={optionBusyKey === option.id}
+                      onClick={() => void deleteOption(option.id)}
+                    >
+                      Delete
+                    </Button>
+                  </Stack>
                 </Stack>
 
                 <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.6), mt: 0.5 }}>
@@ -1200,11 +1596,80 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
                 {option.values.length > 0 && (
                   <Box sx={{ display: 'grid', gap: 0.4, pl: 1 }}>
                     {option.values.map((value) => (
-                      <Typography key={value.id} sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.6) }}>
-                        • {value.label} ({value.value}) | delta ${value.price_delta.toFixed(2)}
-                      </Typography>
+                      <Stack key={value.id} direction="row" spacing={1} alignItems="center">
+                        <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.6), flex: 1 }}>
+                          • {value.label} ({value.value}) | delta ${value.price_delta.toFixed(2)}
+                        </Typography>
+                        <Button
+                          size="small"
+                          variant="text"
+                          color="error"
+                          sx={{ fontSize: '0.7rem', minWidth: 'auto', p: 0.3 }}
+                          onClick={() => void deleteOptionValue(value.id)}
+                        >
+                          ✕
+                        </Button>
+                      </Stack>
                     ))}
                   </Box>
+                )}
+
+                <Divider sx={{ borderColor: alpha(brandTokens.parchment, 0.08) }} />
+
+                {addingValueForOption === option.id ? (
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
+                    <TextField
+                      size="small"
+                      label="Label"
+                      value={newValueLabel}
+                      onChange={(event) => setNewValueLabel(event.target.value)}
+                      sx={{ width: 150 }}
+                    />
+                    <TextField
+                      size="small"
+                      label="Value"
+                      value={newValueValue}
+                      onChange={(event) => setNewValueValue(event.target.value)}
+                      sx={{ width: 150 }}
+                    />
+                    <TextField
+                      size="small"
+                      type="number"
+                      label="Price delta"
+                      value={newValuePriceDelta}
+                      onChange={(event) => setNewValuePriceDelta(event.target.value)}
+                      sx={{ width: 120 }}
+                    />
+                    <TextField
+                      size="small"
+                      type="number"
+                      label="Sort"
+                      value={newValueSort}
+                      onChange={(event) => setNewValueSort(event.target.value)}
+                      sx={{ width: 80 }}
+                    />
+                    <Button size="small" variant="contained" onClick={() => void addOptionValue(option.id)}>
+                      Add
+                    </Button>
+                    <Button size="small" variant="text" onClick={() => setAddingValueForOption(null)}>
+                      Cancel
+                    </Button>
+                  </Stack>
+                ) : (
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => {
+                      setAddingValueForOption(option.id)
+                      setNewValueLabel('')
+                      setNewValueValue('')
+                      setNewValuePriceDelta('')
+                      setNewValueSort('')
+                    }}
+                    sx={{ alignSelf: 'flex-start' }}
+                  >
+                    + Add value
+                  </Button>
                 )}
               </Box>
             ))}

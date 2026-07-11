@@ -61,6 +61,7 @@ export default function ProcessesAdminPage() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional initial data load
     void loadProcessTypes()
   }, [])
 

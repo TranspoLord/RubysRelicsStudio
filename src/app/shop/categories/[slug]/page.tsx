@@ -467,7 +467,7 @@ function CustomOrderCTA({ categoryName }: { categoryName: string }) {
       <Container maxWidth="md" sx={{ textAlign: 'center' }}>
         <Typography sx={{ fontSize: '2.25rem', mb: 1.5 }}>🐉</Typography>
         <Typography variant="h3" gutterBottom>
-          Don't See What You're After?
+          Don&apos;t See What You&apos;re After?
         </Typography>
         <Typography
           variant="body1"

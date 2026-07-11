@@ -28,15 +28,35 @@ interface CatalogStats {
 export default function CatalogDashboardPage() {
   const [stats, setStats] = useState<CatalogStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
         const res = await fetch('/api/admin/catalog/stats', { cache: 'no-store' })
+        if (!res.ok) {
+          throw new Error(`Request failed with status ${res.status}`)
+        }
+
         const data = await res.json()
+        const isValidStats =
+          typeof data?.totalProducts === 'number' &&
+          typeof data?.activeProducts === 'number' &&
+          typeof data?.draftProducts === 'number' &&
+          typeof data?.archivedProducts === 'number' &&
+          typeof data?.totalCategories === 'number' &&
+          typeof data?.visibleCategories === 'number' &&
+          typeof data?.activeDeals === 'number' &&
+          typeof data?.activePromoCodes === 'number'
+
+        if (!isValidStats) {
+          throw new Error('Invalid catalog stats payload')
+        }
+
         setStats(data)
       } catch (error) {
         console.error('Failed to load catalog stats:', error)
+        setErrorMessage('Catalog metrics are temporarily unavailable. You can still use quick actions below.')
       } finally {
         setLoading(false)
       }
@@ -62,6 +82,11 @@ export default function CatalogDashboardPage() {
         <Typography sx={{ color: alpha(brandTokens.parchment, 0.65) }}>
           Manage products, categories, pricing, and promotions from this hub.
         </Typography>
+        {errorMessage && (
+          <Typography sx={{ color: alpha('#EF4444', 0.9), mt: 1.25, fontSize: '0.875rem' }}>
+            {errorMessage}
+          </Typography>
+        )}
       </Box>
 
       {stats && (
