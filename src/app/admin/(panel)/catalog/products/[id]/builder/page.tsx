@@ -38,6 +38,8 @@ interface ProductDetail {
   is_active: boolean
   is_archived: boolean
   updated_at: string
+  has_designer: boolean
+  designer_mockup_url: string | null
 }
 
 interface MediaItem {
@@ -283,6 +285,8 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
           description: product.description,
           is_ready_made: product.is_ready_made,
           is_customizable: product.is_customizable,
+          has_designer: product.has_designer,
+          designer_mockup_url: product.designer_mockup_url,
         }),
       })
 
@@ -877,7 +881,27 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
             }
             label="Customizable"
           />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={product.has_designer}
+                onChange={(event) => updateProduct('has_designer', event.target.checked)}
+              />
+            }
+            label="Has Embedded Designer"
+          />
         </Stack>
+
+        {product.has_designer && (
+          <TextField
+            size="small"
+            label="Designer Mockup URL"
+            value={product.designer_mockup_url ?? ''}
+            onChange={(event) => updateProduct('designer_mockup_url', event.target.value)}
+            helperText="URL to the product mockup image (e.g., t-shirt template)"
+            sx={{ mt: 1 }}
+          />
+        )}
 
         <Button variant="contained" disabled={saving} onClick={() => void saveProduct()}>
           {saving ? 'Saving...' : 'Save Product'}

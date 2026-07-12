@@ -20,6 +20,7 @@ import { alpha } from '@mui/material/styles'
 import { brandTokens } from '@/theme/theme'
 import { useCart } from '@/components/cart/CartProvider'
 import { SquareCheckoutButton } from './SquareCheckoutButton'
+import { ProductDesigner, type DesignerElement } from './ProductDesigner'
 import type {
   DbProductDetail,
   DbProductVariant,
@@ -55,6 +56,8 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
     quantity: 1,
   })
   const [addedToCart, setAddedToCart] = useState(false)
+  const [designerOpen, setDesignerOpen] = useState(false)
+  const [designElements, setDesignElements] = useState<DesignerElement[]>([])
 
   const isReadyMade = product.is_ready_made
   const isSquareEnabled = product.is_square_enabled ?? false
@@ -473,6 +476,36 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
             </Box>
           )}
         </Box>
+      )}
+
+      {/* ── Designer button ──────────────────────────────────────────────── */}
+      {product.has_designer && product.designer_mockup_url && (
+        <>
+          <Button
+            variant="outlined"
+            size="large"
+            fullWidth
+            onClick={() => setDesignerOpen(true)}
+            sx={{
+              py: 1.25,
+              fontSize: '0.9rem',
+              borderColor: alpha(brandTokens.forgeGold, 0.4),
+              color: brandTokens.forgeGold,
+            }}
+          >
+            Customize Design
+          </Button>
+          <ProductDesigner
+            open={designerOpen}
+            onClose={() => setDesignerOpen(false)}
+            mockupUrl={product.designer_mockup_url}
+            options={options}
+            onSave={(elements) => {
+              setDesignElements(elements)
+              setDesignerOpen(false)
+            }}
+          />
+        </>
       )}
 
       {/* ── Add to cart / Square checkout ───────────────────────────────── */}

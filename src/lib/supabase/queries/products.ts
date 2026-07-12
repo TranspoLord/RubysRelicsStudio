@@ -56,6 +56,9 @@ export interface DbProduct {
   // Square checkout integration
   is_square_enabled?: boolean
   square_variant_id?: string | null
+  // Embedded designer
+  has_designer?: boolean
+  designer_mockup_url?: string | null
 }
 
 export interface DbProductVariant {
@@ -90,6 +93,12 @@ export interface DbProductOption {
   is_required: boolean
   sort_order: number
   values?: DbProductOptionValue[]
+  // Designer constraints (in inches)
+  min_width?: number | null
+  max_width?: number | null
+  min_height?: number | null
+  max_height?: number | null
+  allowed_colors?: string[] | null
 }
 
 export interface DbProductOptionValue {

@@ -15,6 +15,8 @@ interface ProductUpdateBody {
   description?: unknown
   is_ready_made?: unknown
   is_customizable?: unknown
+  has_designer?: unknown
+  designer_mockup_url?: unknown
 }
 
 function asString(value: unknown, maxLen: number): string {
@@ -51,9 +53,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const [productResult, categoryResult] = await Promise.all([
       supabase
         .from('exp_products')
-        .select(
-          'id,title,slug,category_key,base_price,sort_order,production_estimate_band,short_description,description,is_ready_made,is_customizable,is_active,is_archived,updated_at'
-        )
+          .select(
+           'id,title,slug,category_key,base_price,sort_order,production_estimate_band,short_description,description,is_ready_made,is_customizable,is_active,is_archived,updated_at,has_designer,designer_mockup_url'
+         )
         .eq('id', productId)
         .single(),
       supabase
@@ -105,6 +107,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     const sortOrder = asNumber(body.sort_order)
     const isReadyMade = asBoolean(body.is_ready_made, false)
     const isCustomizable = asBoolean(body.is_customizable, true)
+    const hasDesigner = asBoolean(body.has_designer, false)
+    const designerMockupUrl = asString(body.designer_mockup_url, 2000) || null
 
     if (title.length < 2) {
       return NextResponse.json({ error: 'Title must be at least 2 characters.' }, { status: 400 })
@@ -139,10 +143,12 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         description,
         is_ready_made: isReadyMade,
         is_customizable: isCustomizable,
+        has_designer: hasDesigner,
+        designer_mockup_url: designerMockupUrl,
       })
       .eq('id', productId)
       .select(
-        'id,title,slug,category_key,base_price,sort_order,production_estimate_band,short_description,description,is_ready_made,is_customizable,is_active,is_archived,updated_at'
+        'id,title,slug,category_key,base_price,sort_order,production_estimate_band,short_description,description,is_ready_made,is_customizable,is_active,is_archived,updated_at,has_designer,designer_mockup_url'
       )
       .single()
 
