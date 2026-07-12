@@ -10,6 +10,7 @@ import { brandTokens } from '@/theme/theme'
 export interface HeroCollageImage {
   url: string
   alt: string
+  href?: string
 }
 
 export interface HeroCollageConfig {
@@ -119,6 +120,7 @@ export function HeroCollage({ config }: HeroCollageProps) {
       {images.slice(0, count).map((image, index) => {
         const layout = layouts[index]
         const isVisible = visibleIndices.includes(index)
+        const hasLink = Boolean(image.href)
 
         return (
           <Box
@@ -148,20 +150,45 @@ export function HeroCollage({ config }: HeroCollageProps) {
                 background: `linear-gradient(135deg, ${alpha(brandTokens.forgeGold, 0.05)} 0%, transparent 50%)`,
                 pointerEvents: 'none',
               },
+              ...(hasLink && { pointerEvents: 'auto' }),
             }}
           >
             {image.url ? (
-              <Box
-                component="img"
-                src={image.url}
-                alt={image.alt}
-                sx={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  display: 'block',
-                }}
-              />
+              image.href ? (
+                <Box
+                  component="a"
+                  href={image.href}
+                  sx={{
+                    width: '100%',
+                    height: '100%',
+                    display: 'block',
+                  }}
+                >
+                  <Box
+                    component="img"
+                    src={image.url}
+                    alt={image.alt}
+                    sx={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      display: 'block',
+                    }}
+                  />
+                </Box>
+              ) : (
+                <Box
+                  component="img"
+                  src={image.url}
+                  alt={image.alt}
+                  sx={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    display: 'block',
+                  }}
+                />
+              )
             ) : (
               <Box
                 sx={{

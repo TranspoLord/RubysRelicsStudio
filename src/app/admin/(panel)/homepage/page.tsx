@@ -93,6 +93,7 @@ interface TileSectionState {
 interface HeroCollageImage {
   url: string
   alt: string
+  href?: string
 }
 
 interface HeroCollageState {
@@ -504,7 +505,7 @@ export default function AdminHomepagePage() {
                   placeholder="https://example.com/image.jpg"
                   inputProps={{ maxLength: 500 }}
                 />
-                <TextField
+<TextField
                   size="small"
                   label="Alt text"
                   value={image.alt}
@@ -514,6 +515,18 @@ export default function AdminHomepagePage() {
                     setHeroCollage((prev) => ({ ...prev, images: newImages }))
                   }}
                   placeholder="Engraved tumbler"
+                  inputProps={{ maxLength: 200 }}
+                />
+                <TextField
+                  size="small"
+                  label="Link URL (optional)"
+                  value={image.href}
+                  onChange={(e) => {
+                    const newImages = [...heroCollage.images]
+                    newImages[index] = { ...newImages[index], href: e.target.value }
+                    setHeroCollage((prev) => ({ ...prev, images: newImages }))
+                  }}
+                  placeholder="/shop/all?process=sublimation"
                   inputProps={{ maxLength: 200 }}
                 />
               </Box>
