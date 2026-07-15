@@ -93,17 +93,24 @@ export async function requireAdminApiSession(
   }
 }
 
-export async function requireAdminPageSessionOrRedirect(nextPath = '/admin') {
+export async function requireAdminPageSessionOrRedirect(nextPath = '/admin', requireMFA = true) {
   const adminKey = getExpectedAdminKey()
   const cookieStore = await cookies()
   const token = cookieStore.get(ADMIN_COOKIE_NAME)?.value
+  const mfaVerified = cookieStore.get('admin_mfa_verified')?.value === 'true'
 
   if (!verifyAdminSessionToken(token, adminKey)) {
     redirect(`/admin/login?next=${encodeURIComponent(nextPath)}`)
   }
 
+  // Check MFA requirement
+  if (requireMFA && !mfaVerified) {
+    redirect(`/admin/mfa-challenge?next=${encodeURIComponent(nextPath)}`)
+  }
+
   return {
     adminKey,
     token,
+    mfa: mfaVerified,
   }
 }

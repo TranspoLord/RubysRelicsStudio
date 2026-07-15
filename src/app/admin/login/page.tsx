@@ -38,7 +38,10 @@ export default function AdminLoginPage() {
         throw new Error(typeof payload?.error === 'string' ? payload.error : 'Login failed.')
       }
 
-      router.replace(nextPath)
+      // Set session flag for MFA check
+      sessionStorage.setItem('admin_authenticated', 'true')
+
+      router.replace('/admin/mfa-challenge')
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not authenticate admin session.')
@@ -64,7 +67,7 @@ export default function AdminLoginPage() {
             Ruby's Relics Admin
           </Typography>
           <Typography sx={{ color: alpha(brandTokens.parchment, 0.68), mb: 2 }}>
-            Enter the admin key to continue.
+            Enter the admin key to continue. MFA will be required after login.
           </Typography>
 
           <Box component="form" onSubmit={handleSubmit} sx={{ display: 'grid', gap: 1.4 }}>

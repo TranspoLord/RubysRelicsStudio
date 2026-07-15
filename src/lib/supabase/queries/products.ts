@@ -53,12 +53,14 @@ export interface DbProduct {
     | 'low_stock'
     | 'out_of_stock'
     | 'untracked'
-  // Square checkout integration
+    // Square checkout integration
   is_square_enabled?: boolean
   square_variant_id?: string | null
-  // Embedded designer
+    // Embedded designer
   has_designer?: boolean
   designer_mockup_url?: string | null
+    // NFC configuration
+  nfc_price_delta?: number
 }
 
 export interface DbProductVariant {
@@ -329,7 +331,8 @@ export async function getProductBySlug(
       id, title, slug, short_description, description,
       category_key, base_price, is_ready_made, is_customizable,
       is_active, sort_order, production_estimate_band,
-      how_it_works_anchor, seo_title, seo_description
+      how_it_works_anchor, seo_title, seo_description,
+      nfc_price_delta
     `)
     .eq('slug', productSlug)
     .eq('is_active', true)
@@ -420,11 +423,6 @@ export async function getProductBySlug(
     console.error('[getProductBySlug:inventory]', inventoryResult.error.message)
   }
 
-  const base = normalizeProduct({
-    ...product,
-    category: categoryResult.data ?? null,
-  } as RawProductRow)
-
   const options: DbProductOption[] = (optionsResult.data ?? []).map((o) => ({
     id: o.id,
     product_id: o.product_id,
@@ -449,7 +447,27 @@ export async function getProductBySlug(
   })
 
   return {
-    ...base,
+    id: product.id,
+    title: product.title,
+    slug: product.slug,
+    short_description: product.short_description,
+    description: product.description,
+    category_key: product.category_key,
+    base_price: product.base_price,
+    is_ready_made: product.is_ready_made,
+    is_customizable: product.is_customizable,
+    is_active: product.is_active,
+    sort_order: product.sort_order,
+    production_estimate_band: product.production_estimate_band,
+    how_it_works_anchor: product.how_it_works_anchor,
+    seo_title: product.seo_title,
+    seo_description: product.seo_description,
+    nfc_price_delta: product.nfc_price_delta ?? 1,
+    category_display_name: categoryResult.data?.display_name,
+    category_slug: categoryResult.data?.slug,
+    category_emoji: categoryResult.data?.emoji,
+    category_gradient: categoryResult.data?.gradient,
+    featured_media: null,
     inventory_qty: inventoryRow?.available_qty ?? null,
     low_stock_threshold: inventoryRow?.low_stock_threshold ?? null,
     availability_override: (inventoryRow?.availability_override as InventoryAvailabilityOverride | null) ?? null,
