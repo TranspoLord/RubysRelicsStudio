@@ -52,8 +52,8 @@ export async function POST(request: Request) {
     })
 
     return NextResponse.json({
-      checkoutUrl: checkoutResponse.checkout.checkout_page_url,
-      checkoutId: checkoutResponse.checkout.id,
+      checkoutUrl: checkoutResponse.payment_link.url,
+      checkoutId: checkoutResponse.payment_link.id,
     })
   } catch (error) {
     console.error('[square:checkout]', error)

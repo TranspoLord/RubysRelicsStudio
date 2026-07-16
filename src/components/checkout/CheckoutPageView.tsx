@@ -5,6 +5,7 @@ import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
 import Divider from '@mui/material/Divider'
+import IconButton from '@mui/material/IconButton'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
@@ -23,7 +24,7 @@ interface CheckoutResponse {
 }
 
 export function CheckoutPageView() {
-  const { items, subtotal, discountTotal, total } = useCart()
+  const { items, subtotal, discountTotal, total, removeItem, updateQuantity } = useCart()
   const [config, setConfig] = useState<StorefrontConfig>({
     stripeCheckoutEnabled: true,
     stripeDisabledMessage: 'Checkout is temporarily unavailable. Please submit a custom request.',
@@ -32,8 +33,7 @@ export function CheckoutPageView() {
   const [creatingSession, setCreatingSession] = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [customerEmail, setCustomerEmail] = useState('')
-  const [promoCode, setPromoCode] = useState('')
-  const [dealCode, setDealCode] = useState('')
+  const [discountCode, setDiscountCode] = useState('')
 
   useEffect(() => {
     let active = true
@@ -75,7 +75,7 @@ export function CheckoutPageView() {
     [subtotal, discountTotal, total]
   )
 
-  async function handleStripeCheckout() {
+  async function handleCheckout() {
     if (!canCheckout) return
 
     setCheckoutError(null)
@@ -101,14 +101,19 @@ export function CheckoutPageView() {
         })
       }
 
-      const response = await fetch('/api/checkout/create-session', {
+      // Use Square checkout endpoint - format must match API expectations
+      const response = await fetch('/api/square/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items,
-          customerEmail: normalizedEmail || null,
-          promoCode,
-          dealCode,
+          items: items.map((item) => ({
+            productId: item.productId,
+            title: item.title,
+            quantity: item.quantity,
+            unitPrice: item.lineTotal / item.quantity,
+            selectedProcessKeys: item.selectedProcessKeys,
+          })),
+          buyerEmail: normalizedEmail || undefined,
         }),
       })
 
@@ -172,7 +177,17 @@ export function CheckoutPageView() {
                   backgroundColor: alpha(brandTokens.bgSurface, 0.45),
                 }}
               >
-                <Typography sx={{ fontWeight: 700, mb: 0.3 }}>{item.title}</Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <Typography sx={{ fontWeight: 700, mb: 0.3 }}>{item.title}</Typography>
+                  <IconButton
+                    size="small"
+                    onClick={() => removeItem(item.key)}
+                    sx={{ color: alpha(brandTokens.parchment, 0.42), p: 0.3 }}
+                    title="Remove item"
+                  >
+                    ×
+                  </IconButton>
+                </Box>
                 {item.variantLabel && (
                   <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.6), mb: 0.2 }}>
                     {item.variantLabel}
@@ -185,9 +200,36 @@ export function CheckoutPageView() {
                 )}
 
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography sx={{ color: alpha(brandTokens.parchment, 0.58), fontSize: '0.78rem' }}>
-                    Qty {item.quantity}
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <IconButton
+                      size="small"
+                      onClick={() => updateQuantity(item.key, item.quantity - 1)}
+                      disabled={item.quantity <= 1}
+                      sx={{
+                        color: alpha(brandTokens.parchment, 0.7),
+                        border: `1px solid ${alpha(brandTokens.parchment, 0.2)}`,
+                        p: 0.25,
+                        fontSize: '0.8rem',
+                      }}
+                    >
+                      −
+                    </IconButton>
+                    <Typography sx={{ color: alpha(brandTokens.parchment, 0.58), fontSize: '0.78rem', mx: 0.5 }}>
+                      Qty {item.quantity}
+                    </Typography>
+                    <IconButton
+                      size="small"
+                      onClick={() => updateQuantity(item.key, item.quantity + 1)}
+                      sx={{
+                        color: alpha(brandTokens.parchment, 0.7),
+                        border: `1px solid ${alpha(brandTokens.parchment, 0.2)}`,
+                        p: 0.25,
+                        fontSize: '0.8rem',
+                      }}
+                    >
+                      +
+                    </IconButton>
+                  </Box>
                   <Typography sx={{ fontWeight: 700, fontFamily: 'var(--font-cinzel, serif)' }}>
                     ${item.lineTotal.toFixed(2)}
                   </Typography>
@@ -249,23 +291,13 @@ export function CheckoutPageView() {
           />
           <TextField
             size="small"
-            label="Promo code"
-            value={promoCode}
-            onChange={(event) => setPromoCode(event.target.value)}
+            label="Promo / Bundle Code"
+            value={discountCode}
+            onChange={(event) => setDiscountCode(event.target.value)}
             inputProps={{ maxLength: 40 }}
             disabled={creatingSession}
+            placeholder="Enter promo or bundle code"
           />
-          <TextField
-            size="small"
-            label="Bundle deal code"
-            value={dealCode}
-            onChange={(event) => setDealCode(event.target.value)}
-            inputProps={{ maxLength: 40 }}
-            disabled={creatingSession}
-          />
-          <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.55) }}>
-            Codes are validated server-side and applied before Stripe checkout.
-          </Typography>
         </Box>
 
         {loadingConfig ? (
@@ -309,10 +341,10 @@ export function CheckoutPageView() {
             <Button
               fullWidth
               variant="contained"
-              onClick={handleStripeCheckout}
+              onClick={handleCheckout}
               disabled={!canCheckout}
             >
-              {creatingSession ? 'Starting Secure Checkout...' : 'Pay with Stripe'}
+              {creatingSession ? 'Starting Secure Checkout...' : 'Pay with Square'}
             </Button>
           </>
         )}

@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useCallback, useState } from 'react'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Divider from '@mui/material/Divider'
@@ -170,8 +170,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([])
   const [drawerOpen, setDrawerOpen] = useState(false)
 
-  function openDrawer() { setDrawerOpen(true) }
-  function closeDrawer() { setDrawerOpen(false) }
+  const openDrawer = useCallback(() => setDrawerOpen(true), [])
+  const closeDrawer = useCallback(() => setDrawerOpen(false), [])
 
   useEffect(() => {
     try {
@@ -266,9 +266,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     )
   }
 
-  function clearCart() {
+const clearCart = useCallback(() => {
     setItems([])
-  }
+  }, [])
 
   const value = useMemo<CartContextValue>(
     () => ({
@@ -285,8 +285,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       updateQuantity,
       clearCart,
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items, itemCount, subtotal, discountTotal, total, drawerOpen]
+    [items, itemCount, subtotal, discountTotal, total, drawerOpen, clearCart]
   )
 
   const HEADER_HEIGHT = { xs: 64, md: 72 }

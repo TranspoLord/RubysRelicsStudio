@@ -150,6 +150,13 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
   const [mediaSortOrder, setMediaSortOrder] = useState('')
   const [mediaFeatured, setMediaFeatured] = useState(false)
   const [mediaBusyId, setMediaBusyId] = useState<string | null>(null)
+  const [editingMediaId, setEditingMediaId] = useState<string | null>(null)
+  const [editMediaUrl, setEditMediaUrl] = useState('')
+  const [editMediaAlt, setEditMediaAlt] = useState('')
+  const [editMediaEmoji, setEditMediaEmoji] = useState('')
+  const [editMediaGradient, setEditMediaGradient] = useState('')
+  const [editMediaSortOrder, setEditMediaSortOrder] = useState('')
+  const [editMediaFeatured, setEditMediaFeatured] = useState(false)
 
   // Variant editing state
   const [variantLabel, setVariantLabel] = useState('')
@@ -177,6 +184,8 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
 
   // Option editing state
   const [optionBusyKey, setOptionBusyKey] = useState<string | null>(null)
+  const [optionError, setOptionError] = useState<string | null>(null)
+  const [optionSuccess, setOptionSuccess] = useState<string | null>(null)
   const [newOptionKey, setNewOptionKey] = useState('')
   const [newOptionLabel, setNewOptionLabel] = useState('')
   const [newOptionType, setNewOptionType] = useState<OptionType>('select')
@@ -374,6 +383,44 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
       setMediaItems((prev) => prev.filter((m) => m.id !== mediaId))
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : 'Failed to delete media.')
+    } finally {
+      setMediaBusyId(null)
+    }
+  }
+
+  async function updateMedia(mediaId: string) {
+    setMediaBusyId(mediaId)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/admin/catalog/media', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mediaId,
+          url: editMediaUrl,
+          alt: editMediaAlt,
+          emoji: editMediaEmoji,
+          gradient: editMediaGradient,
+          is_featured: editMediaFeatured,
+          sort_order: asNumber(editMediaSortOrder, 0),
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to update media.')
+      }
+
+      setSuccess('Media updated.')
+      setEditingMediaId(null)
+      const mediaRes = await fetch(`/api/admin/catalog/media?productId=${encodeURIComponent(productId)}`, { cache: 'no-store' })
+      const mediaPayload = await mediaRes.json().catch(() => ({}))
+      if (mediaRes.ok && Array.isArray(mediaPayload?.media)) {
+        setMediaItems(mediaPayload.media)
+      }
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : 'Failed to update media.')
     } finally {
       setMediaBusyId(null)
     }
@@ -593,7 +640,8 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
 
   async function saveOption(optionId: string) {
     setOptionBusyKey(optionId)
-    setError(null)
+    setOptionError(null)
+    setOptionSuccess(null)
 
     try {
       const response = await fetch('/api/admin/catalog/options', {
@@ -607,14 +655,14 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
         throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to save option.')
       }
 
-      setSuccess(`Option saved.`)
+      setOptionSuccess(`Option saved.`)
       const optionsRes = await fetch(`/api/admin/catalog/options?productId=${encodeURIComponent(productId)}`, { cache: 'no-store' })
       const optionsPayload = await optionsRes.json().catch(() => ({}))
       if (optionsRes.ok && Array.isArray(optionsPayload?.options)) {
         setOptions(optionsPayload.options)
       }
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Failed to save option.')
+      setOptionError(saveError instanceof Error ? saveError.message : 'Failed to save option.')
     } finally {
       setOptionBusyKey(null)
     }
@@ -625,7 +673,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
     if (!confirmed) return
 
     setOptionBusyKey(optionId)
-    setError(null)
+    setOptionError(null)
 
     try {
       const response = await fetch('/api/admin/catalog/options', {
@@ -640,9 +688,9 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
       }
 
       setOptions((prev) => prev.filter((o) => o.id !== optionId))
-      setSuccess('Option deleted.')
+      setOptionSuccess('Option deleted.')
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : 'Failed to delete option.')
+      setOptionError(deleteError instanceof Error ? deleteError.message : 'Failed to delete option.')
     } finally {
       setOptionBusyKey(null)
     }
@@ -650,7 +698,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
 
   async function addOption() {
     if (!newOptionLabel || !newOptionKey) {
-      setError('Option key and label are required.')
+      setOptionError('Option key and label are required.')
       return
     }
 
@@ -675,7 +723,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
         throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to add option.')
       }
 
-      setSuccess('Option added.')
+      setOptionSuccess('Option added.')
       setNewOptionKey('')
       setNewOptionLabel('')
       setNewOptionPlaceholder('')
@@ -689,13 +737,13 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
         setOptions(optionsPayload.options)
       }
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Failed to add option.')
+      setOptionError(saveError instanceof Error ? saveError.message : 'Failed to add option.')
     }
   }
 
   async function addOptionValue(optionId: string) {
     if (!newValueLabel || !newValueValue) {
-      setError('Value label and value are required.')
+      setOptionError('Value label and value are required.')
       return
     }
 
@@ -717,7 +765,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
         throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to add option value.')
       }
 
-      setSuccess('Option value added.')
+      setOptionSuccess('Option value added.')
       setNewValueLabel('')
       setNewValueValue('')
       setNewValuePriceDelta('')
@@ -730,7 +778,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
         setOptions(optionsPayload.options)
       }
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Failed to add option value.')
+      setOptionError(saveError instanceof Error ? saveError.message : 'Failed to add option value.')
     }
   }
 
@@ -750,13 +798,14 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
         throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to delete option value.')
       }
 
+      setOptionSuccess('Option value deleted.')
       const optionsRes = await fetch(`/api/admin/catalog/options?productId=${encodeURIComponent(productId)}`, { cache: 'no-store' })
       const optionsPayload = await optionsRes.json().catch(() => ({}))
       if (optionsRes.ok && Array.isArray(optionsPayload?.options)) {
         setOptions(optionsPayload.options)
       }
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : 'Failed to delete option value.')
+      setOptionError(deleteError instanceof Error ? deleteError.message : 'Failed to delete option value.')
     }
   }
 
@@ -774,6 +823,19 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
     <Box sx={{ display: 'grid', gap: 2, overflowX: 'hidden' }}>
       {error && <Alert severity="error">{error}</Alert>}
       {success && <Alert severity="success">{success}</Alert>}
+
+      <Stack direction="row" spacing={1} justifyContent="flex-end">
+        <Button
+          variant="outlined"
+          disabled={!product.category_key || !product.slug}
+          onClick={() => window.open(`/shop/categories/${product.category_key}/${product.slug}`, '_blank', 'noopener,noreferrer')}
+        >
+          Preview Product
+        </Button>
+        <Button variant="contained" disabled={saving} onClick={() => void saveProduct()}>
+          {saving ? 'Saving...' : 'Save Product'}
+        </Button>
+      </Stack>
 
       {/* ── Product Description ──────────────────────────────────────── */}
       <Box
@@ -902,10 +964,6 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
             sx={{ mt: 1 }}
           />
         )}
-
-        <Button variant="contained" disabled={saving} onClick={() => void saveProduct()}>
-          {saving ? 'Saving...' : 'Save Product'}
-        </Button>
       </Box>
 
       <Divider />
@@ -1023,41 +1081,116 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
                   background: cardSurface(brandTokens.parchment, 0.07),
                 }}
               >
-                <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1}>
-                  {media.url && (
-                    <Box
-                      component="img"
-                      src={media.url}
-                      alt={media.alt}
-                      sx={{
-                        width: 60,
-                        height: 60,
-                        objectFit: 'cover',
-                        borderRadius: 1,
-                        mr: 1,
-                        flexShrink: 0,
-                      }}
-                      onError={(event) => {
-                        event.currentTarget.style.display = 'none'
-                      }}
-                    />
-                  )}
-                  <Box sx={{ display: 'grid', gap: 0.25, flex: 1 }}>
-                    <Typography sx={{ fontWeight: 600, fontSize: '0.82rem' }}>{media.alt}</Typography>
-                    <Typography sx={{ color: alpha(brandTokens.parchment, 0.66), fontSize: '0.76rem' }}>
-                      {media.url} | sort {media.sort_order} | {media.is_featured ? 'Featured' : 'Standard'}
-                    </Typography>
+                {editingMediaId === media.id ? (
+                  <Box sx={{ display: 'grid', gap: 1 }}>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="URL"
+                        value={editMediaUrl}
+                        onChange={(event) => setEditMediaUrl(event.target.value)}
+                      />
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="Alt text"
+                        value={editMediaAlt}
+                        onChange={(event) => setEditMediaAlt(event.target.value)}
+                      />
+                    </Stack>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
+                      <TextField
+                        size="small"
+                        label="Emoji"
+                        value={editMediaEmoji}
+                        onChange={(event) => setEditMediaEmoji(event.target.value)}
+                        sx={{ width: 120 }}
+                      />
+                      <TextField
+                        size="small"
+                        label="Gradient"
+                        value={editMediaGradient}
+                        onChange={(event) => setEditMediaGradient(event.target.value)}
+                        sx={{ width: 150 }}
+                      />
+                      <TextField
+                        size="small"
+                        type="number"
+                        label="Sort"
+                        value={editMediaSortOrder}
+                        onChange={(event) => setEditMediaSortOrder(event.target.value)}
+                        sx={{ width: 100 }}
+                      />
+                      <FormControlLabel
+                        control={<Checkbox checked={editMediaFeatured} onChange={(event) => setEditMediaFeatured(event.target.checked)} />}
+                        label="Featured"
+                      />
+                    </Stack>
+                    <Stack direction="row" spacing={1}>
+                      <Button size="small" variant="contained" disabled={mediaBusyId === media.id} onClick={() => void updateMedia(media.id)}>
+                        {mediaBusyId === media.id ? 'Saving...' : 'Save'}
+                      </Button>
+                      <Button size="small" variant="text" onClick={() => setEditingMediaId(null)}>
+                        Cancel
+                      </Button>
+                    </Stack>
                   </Box>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    color="error"
-                    disabled={mediaBusyId === media.id}
-                    onClick={() => void deleteMedia(media.id)}
-                  >
-                    Delete
-                  </Button>
-                </Stack>
+                ) : (
+                  <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1}>
+                    {media.url && (
+                      <Box
+                        component="img"
+                        src={media.url}
+                        alt={media.alt}
+                        sx={{
+                          width: 60,
+                          height: 60,
+                          objectFit: 'cover',
+                          borderRadius: 1,
+                          mr: 1,
+                          flexShrink: 0,
+                        }}
+                        onError={(event) => {
+                          event.currentTarget.style.display = 'none'
+                        }}
+                      />
+                    )}
+                    <Box sx={{ display: 'grid', gap: 0.25, flex: 1 }}>
+                      <Typography sx={{ fontWeight: 600, fontSize: '0.82rem' }}>{media.alt}</Typography>
+                      <Typography sx={{ color: alpha(brandTokens.parchment, 0.66), fontSize: '0.76rem' }}>
+                        {media.url} | sort {media.sort_order} | {media.is_featured ? 'Featured' : 'Standard'}
+                      </Typography>
+                    </Box>
+                    <Stack direction="row" spacing={0.5}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        disabled={mediaBusyId === media.id}
+                        onClick={() => {
+                          setEditingMediaId(media.id)
+                          setEditMediaUrl(media.url)
+                          setEditMediaAlt(media.alt)
+                          setEditMediaEmoji(media.emoji ?? '')
+                          setEditMediaGradient(media.gradient ?? '')
+                          setEditMediaSortOrder(String(media.sort_order))
+                          setEditMediaFeatured(media.is_featured)
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="error"
+                        disabled={mediaBusyId === media.id}
+                        onClick={() => void deleteMedia(media.id)}
+                      >
+                        Delete
+                      </Button>
+                    </Stack>
+                  </Stack>
+                )}
               </Box>
             ))}
           </Box>
@@ -1479,6 +1612,21 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
 
       <Divider />
 
+      <Stack direction="row" spacing={1} justifyContent="flex-end">
+        <Button
+          variant="outlined"
+          disabled={!product.category_key || !product.slug}
+          onClick={() => window.open(`/shop/categories/${product.category_key}/${product.slug}`, '_blank', 'noopener,noreferrer')}
+        >
+          Preview Product
+        </Button>
+        <Button variant="contained" disabled={saving} onClick={() => void saveProduct()}>
+          {saving ? 'Saving...' : 'Save Product'}
+        </Button>
+      </Stack>
+
+      <Divider />
+
       {/* ── Options ──────────────────────────────────────────────────────── */}
       <Box
         sx={{
@@ -1491,6 +1639,8 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
         }}
       >
         <Typography variant="h6">Options</Typography>
+        {optionError && <Alert severity="error">{optionError}</Alert>}
+        {optionSuccess && <Alert severity="success">{optionSuccess}</Alert>}
 
         <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.55), fontSize: '0.75rem' }}>
           Product customization options. Process types may auto-generate options when enabled.

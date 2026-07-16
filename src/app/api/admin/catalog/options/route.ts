@@ -30,9 +30,9 @@ function asOptionalString(value: unknown, maxLen: number): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
-function asNumber(value: unknown): number | null {
+function asNumber(value: unknown, fallback = 0): number {
   const n = Number(value)
-  if (!Number.isFinite(n)) return null
+  if (!Number.isFinite(n)) return fallback
   return n
 }
 
@@ -130,7 +130,7 @@ export async function POST(request: Request) {
     const placeholder = asOptionalString(body.placeholder, 180)
     const helpText = asOptionalString(body.help_text, 500)
     const isRequired = asBoolean(body.is_required, false)
-    const sortOrderRaw = asNumber(body.sort_order)
+    const sortOrder = Math.trunc(asNumber(body.sort_order ?? 0, 0))
 
     if (!productId) {
       return NextResponse.json({ error: 'Product id is required.' }, { status: 400 })
@@ -148,7 +148,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Option type is invalid.' }, { status: 400 })
     }
 
-    if (sortOrderRaw === null || sortOrderRaw < -10000 || sortOrderRaw > 10000) {
+    if (sortOrder < -10000 || sortOrder > 10000) {
       return NextResponse.json({ error: 'Sort order must be between -10000 and 10000.' }, { status: 400 })
     }
 
@@ -179,7 +179,7 @@ export async function POST(request: Request) {
         placeholder: optionType === 'select' || optionType === 'checkbox' ? null : placeholder,
         help_text: helpText,
         is_required: isRequired,
-        sort_order: Math.trunc(sortOrderRaw),
+        sort_order: sortOrder,
       })
       .select('id, product_id, option_key, label, option_type, placeholder, help_text, is_required, sort_order')
       .single()
@@ -239,7 +239,7 @@ export async function PUT(request: Request) {
     const placeholder = asOptionalString(body.placeholder, 180)
     const helpText = asOptionalString(body.help_text, 500)
     const isRequired = asBoolean(body.is_required, false)
-    const sortOrderRaw = asNumber(body.sort_order)
+    const sortOrder = Math.trunc(asNumber(body.sort_order ?? 0, 0))
 
     if (!optionId) {
       return NextResponse.json({ error: 'Option id is required.' }, { status: 400 })
@@ -257,7 +257,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Option type is invalid.' }, { status: 400 })
     }
 
-    if (sortOrderRaw === null || sortOrderRaw < -10000 || sortOrderRaw > 10000) {
+    if (sortOrder < -10000 || sortOrder > 10000) {
       return NextResponse.json({ error: 'Sort order must be between -10000 and 10000.' }, { status: 400 })
     }
 
@@ -298,7 +298,7 @@ export async function PUT(request: Request) {
         placeholder: optionType === 'select' || optionType === 'checkbox' ? null : placeholder,
         help_text: helpText,
         is_required: isRequired,
-        sort_order: Math.trunc(sortOrderRaw),
+        sort_order: sortOrder,
       })
       .eq('id', optionId)
       .select('id, product_id, option_key, label, option_type, placeholder, help_text, is_required, sort_order')

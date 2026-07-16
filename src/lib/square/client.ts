@@ -15,9 +15,9 @@ interface SquareError {
 }
 
 interface SquareCheckoutResponse {
-  checkout: {
+  payment_link: {
     id: string
-    checkout_page_url: string
+    url: string
     order_id: string
     created_at: string
   }
@@ -43,26 +43,32 @@ export async function createSquareCheckout(params: CreateSquareCheckoutParams): 
     throw new Error('Square credentials not configured.')
   }
 
-  const response = await fetch(`${SQUARE_API_BASE}/v2/checkouts`, {
+  const response = await fetch(`${SQUARE_API_BASE}/v2/online-checkout/payment-links`, {
     method: 'POST',
     headers: {
-      'Square-Version': '2024-01-22',
+      'Square-Version': '2025-06-18',
       'Authorization': `Bearer ${SQUARE_ACCESS_TOKEN}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
       idempotency_key: params.idempotencyKey,
+      description: params.note,
       order: {
         location_id: SQUARE_LOCATION_ID,
-        line_items: params.lineItems,
-        note: params.note,
+        line_items: params.lineItems.map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          base_price_money: item.base_price_money,
+          item_type: 'ITEM',
+        })),
       },
-      redirect_url: `${process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'}/checkout/success`,
+      checkout_options: {
+        redirect_url: `${process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'}/checkout/success`,
+      },
       pre_populated_data: {
         buyer_email: params.metadata?.buyer_email,
         buyer_phone_number: params.metadata?.buyer_phone,
       },
-      additional_recipients: [],
     }),
   })
 
