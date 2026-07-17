@@ -4,9 +4,8 @@
 const SHIPPO_API_TOKEN = process.env.SHIPPO_API_TOKEN
 const SHIPPO_TEST_MODE = process.env.SHIPPO_TEST_MODE === 'true'
 
-const SHIPPO_API_BASE = SHIPPO_TEST_MODE
-  ? 'https://api.testscape.goshippo.com'
-  : 'https://api.goshippo.com'
+// Shippo uses the same endpoint - test tokens are prefixed with 'shippo_test_'
+const SHIPPO_API_BASE = 'https://api.goshippo.com'
 
 // Default package dimensions for all shipments (in inches)
 export const DEFAULT_PACKAGE_DIMENSIONS = {
