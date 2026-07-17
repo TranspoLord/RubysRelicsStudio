@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac } from 'crypto'
+import { verifyMFACode } from '@/lib/admin/mfa-store'
+import { requireAdminApiSession } from '@/lib/admin/auth'
 
-// Simple TOTP verification using HMAC-SHA1
+// ─── TOTP Functions (DISABLED - kept for future reference) ─────────────────────
+// These functions are disabled but preserved in case TOTP is re-enabled later.
+// To re-enable TOTP, uncomment the relevant code in the POST handler below.
+
 function verifyTOTP(secret: string, token: string, window: number = 1): boolean {
   const digits = 6
   const now = Math.floor(Date.now() / 1000)
@@ -17,7 +22,6 @@ function verifyTOTP(secret: string, token: string, window: number = 1): boolean 
 function computeTOTP(secret: string, counter: number, digits: number): string {
   const key = base32Decode(secret)
   const buffer = Buffer.alloc(8)
-  // Use writeUInt32BE instead of writeBigUInt32BE for compatibility
   const high = Math.floor(counter / 0x100000000)
   const low = counter & 0xffffffff
   buffer.writeUInt32BE(high, 0)
@@ -50,7 +54,39 @@ function base32Decode(encoded: string): Buffer {
 
 export async function POST(request: NextRequest) {
   try {
-    const { totp } = await request.json()
+    // Require admin session - must have logged in with admin key first
+    const sessionCheck = await requireAdminApiSession(request)
+    if (!sessionCheck.ok) {
+      return sessionCheck.response
+    }
+
+    const { code, totp } = await request.json()
+    const ip = sessionCheck.context.clientIp
+
+    // Email-based code verification (primary method)
+    if (code && code.length === 6) {
+      const isValid = verifyMFACode(ip, code)
+
+      if (!isValid) {
+        return NextResponse.json({ error: 'Invalid or expired verification code' }, { status: 401 })
+      }
+
+      // Set session cookie
+      const response = NextResponse.json({ success: true })
+      response.cookies.set('admin_mfa_verified', 'true', {
+        httpOnly: true,
+        secure: process.env.NEXT_PUBLIC_APP_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 60 * 60 * 8, // 8 hours
+        path: '/',
+      })
+
+      return response
+    }
+
+    // TOTP verification (disabled - kept for reference)
+    // To re-enable TOTP, uncomment the code below and set ADMIN_TOTP_SECRET:
+    /*
     const secret = process.env.ADMIN_TOTP_SECRET
 
     if (!secret) {
@@ -61,24 +97,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid code format' }, { status: 400 })
     }
 
-    // Verify TOTP
     const isValid = verifyTOTP(secret, totp)
 
     if (!isValid) {
       return NextResponse.json({ error: 'Invalid verification code' }, { status: 401 })
     }
 
-    // Set session cookie
     const response = NextResponse.json({ success: true })
     response.cookies.set('admin_mfa_verified', 'true', {
       httpOnly: true,
       secure: process.env.NEXT_PUBLIC_APP_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 60 * 60 * 8, // 8 hours
+      maxAge: 60 * 60 * 8,
       path: '/',
     })
 
     return response
+    */
+
+    // Neither code nor totp provided, or invalid format
+    return NextResponse.json({ error: 'Invalid verification code format' }, { status: 400 })
   } catch (error: any) {
     console.error('[MFA Verify] Error:', error)
     return NextResponse.json({ error: 'Verification failed' }, { status: 500 })

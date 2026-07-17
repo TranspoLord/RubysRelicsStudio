@@ -9,11 +9,13 @@ import { RubyMascot } from '@/components/mascot/RubyMascot'
 
 export default function MFAChallengePage() {
   const router = useRouter()
-  const [totp, setTotp] = useState('')
+  const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showQR, setShowQR] = useState(false)
   const [qrCodeUrl, setQrCodeUrl] = useState('')
+  const [codeSent, setCodeSent] = useState(false)
+  const [countdown, setCountdown] = useState(0)
 
   useEffect(() => {
     // Check if admin has completed password login
@@ -23,11 +25,53 @@ export default function MFAChallengePage() {
       return
     }
 
-    // Generate QR code URL for enrollment
+    // TOTP QR code URL - preserved but disabled (hidden until "Show QR Code" is clicked)
     const secret = process.env.NEXT_PUBLIC_ADMIN_TOTP_SECRET || 'JBSWY3DPEHPK3PXP'
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=otpauth://totp/RubysRelics?secret=${secret}&issuer=RubysRelics`
-    setQrCodeUrl(qrUrl)
+    const url = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=otpauth://totp/RubysRelics?secret=${secret}&issuer=RubysRelics`
+    setQrCodeUrl(url)
   }, [router])
+
+  // Countdown timer for code expiration
+  useEffect(() => {
+    if (countdown <= 0) return
+
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [countdown])
+
+  const handleSendCode = async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/admin/send-mfa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send code')
+      }
+
+      setCodeSent(true)
+      setCountdown(600) // 10 minutes
+    } catch (err: any) {
+      setError(err.message ?? 'Failed to send verification code')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleVerify = async () => {
     setLoading(true)
@@ -37,7 +81,7 @@ export default function MFAChallengePage() {
       const response = await fetch('/api/admin/verify-mfa', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ totp }),
+        body: JSON.stringify({ code }),
       })
 
       const data = await response.json()
@@ -45,6 +89,9 @@ export default function MFAChallengePage() {
       if (!response.ok) {
         throw new Error(data.error || 'Verification failed')
       }
+
+      // Mark MFA as verified in session
+      sessionStorage.setItem('admin_mfa_verified', 'true')
 
       // Redirect to the admin panel
       router.push('/admin')
@@ -57,6 +104,12 @@ export default function MFAChallengePage() {
 
   const handleShowQR = () => {
     setShowQR(true)
+  }
+
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
   return (
@@ -78,7 +131,7 @@ export default function MFAChallengePage() {
         </Box>
 
         <Typography sx={{ color: alpha(brandTokens.parchment, 0.7), mb: 2 }}>
-          Enter the 6-digit code from your authenticator app (Google Authenticator, Authy, etc.).
+          Enter the 6-digit code sent to your email to complete login.
         </Typography>
 
         {error && (
@@ -87,19 +140,26 @@ export default function MFAChallengePage() {
           </Alert>
         )}
 
+        {codeSent && (
+          <Alert severity="success" sx={{ mb: 2 }}>
+            Code sent! Check your email. Code expires in {formatTime(countdown)}
+          </Alert>
+        )}
+
+        {/* TOTP QR Code - preserved but disabled (hidden by default) */}
         {showQR && qrCodeUrl && (
           <Box sx={{ mb: 2, textAlign: 'center' }}>
             <img src={qrCodeUrl} alt="TOTP QR Code" style={{ maxWidth: '100%' }} />
             <Typography variant="caption" sx={{ color: alpha(brandTokens.parchment, 0.5), mt: 1, display: 'block' }}>
-              Scan this QR code with your authenticator app
+              TOTP authentication (currently disabled)
             </Typography>
           </Box>
         )}
 
         <TextField
-          label="Authentication Code"
-          value={totp}
-          onChange={(e) => setTotp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          label="Verification Code"
+          value={code}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
           fullWidth
           inputProps={{ maxLength: 6, placeholder: '000000' }}
           sx={{
@@ -114,7 +174,7 @@ export default function MFAChallengePage() {
           variant="contained"
           fullWidth
           onClick={handleVerify}
-          disabled={loading || !totp || totp.length < 6}
+          disabled={loading || !code || code.length < 6}
           sx={{
             mb: 1,
             backgroundColor: brandTokens.forgeGold,
@@ -122,6 +182,20 @@ export default function MFAChallengePage() {
           }}
         >
           Verify Code
+        </Button>
+
+        <Button
+          variant="contained"
+          fullWidth
+          onClick={handleSendCode}
+          disabled={loading || countdown > 0}
+          sx={{
+            mb: 1,
+            backgroundColor: alpha(brandTokens.forgeGold, 0.7),
+            color: brandTokens.bgVoid,
+          }}
+        >
+          {countdown > 0 ? `Resend in ${formatTime(countdown)}` : 'Send Code to Email'}
         </Button>
 
         <Button
@@ -134,7 +208,7 @@ export default function MFAChallengePage() {
             color: brandTokens.parchment,
           }}
         >
-          Show QR Code
+          Show TOTP QR Code (Disabled)
         </Button>
       </Paper>
     </Box>

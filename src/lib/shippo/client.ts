@@ -151,16 +151,16 @@ export async function calculateShippingRates(params: {
 
   // Filter to major carriers and sort by price
   const filteredRates = rates
-    .filter(rate => ['usps', 'ups', 'fedex'].includes(rate.provider.toLowerCase()))
+    .filter(rate => rate.provider && ['usps', 'ups', 'fedex'].includes(rate.provider.toLowerCase()))
     .map(rate => ({
       id: rate.object_id,
-      carrier: rate.servicelevel.carrier,
-      service: rate.servicelevel.token,
-      name: rate.servicelevel.name,
+      carrier: rate.servicelevel?.carrier || rate.provider,
+      service: rate.servicelevel?.token || '',
+      name: rate.servicelevel?.name || rate.provider,
       estimatedDays: rate.estimated_days,
       amount: parseFloat(rate.amount),
       currency: rate.currency,
-      providerImage: rate.provider_image_75,
+      providerImage: rate.provider_image_75 || '',
       rateToken: rate.object_id,
     }))
     .sort((a, b) => a.amount - b.amount)

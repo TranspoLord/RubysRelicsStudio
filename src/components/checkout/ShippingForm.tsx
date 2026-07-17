@@ -9,21 +9,9 @@ import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
 import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
-import Autocomplete from '@mui/material/Autocomplete'
 import { alpha } from '@mui/material/styles'
 
 import { brandTokens } from '@/theme/theme'
-
-function debounce(fn: (value: string) => Promise<void>, delay: number): (value: string) => void {
-  let timeout: NodeJS.Timeout
-  return (value: string) => {
-    clearTimeout(timeout)
-    timeout = setTimeout(() => {
-      void fn(value)
-    }, delay)
-  }
-}
-
 import { ShippingRate } from '@/lib/shippo/client'
 
 interface ShippingAddress {
@@ -40,21 +28,10 @@ interface ShippingFormProps {
   onAddressChange: (address: ShippingAddress | null) => void
   onRateSelect: (rate: ShippingRate | null) => void
   packageWeight: number
-  autoCalculate?: boolean // New prop to trigger auto-calculation
+  autoCalculate?: boolean
 }
 
 const COUNTRY_OPTIONS = ['US', 'CA', 'MX']
-
-// Address suggestion from Shippo
-interface AddressSuggestion {
-  street1: string
-  street2?: string
-  city: string
-  state: string
-  zip: string
-  country: string
-  name?: string
-}
 
 export function ShippingForm({ onAddressChange, onRateSelect, packageWeight, autoCalculate = false }: ShippingFormProps) {
   const [address, setAddress] = useState<ShippingAddress>({
@@ -69,8 +46,6 @@ export function ShippingForm({ onAddressChange, onRateSelect, packageWeight, aut
   const [loadingRates, setLoadingRates] = useState(false)
   const [selectedRateId, setSelectedRateId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([])
-  const [loadingSuggestions, setLoadingSuggestions] = useState(false)
 
   const hasValidatedRef = useRef(false)
 
@@ -102,41 +77,6 @@ export function ShippingForm({ onAddressChange, onRateSelect, packageWeight, aut
       onAddressChange(null)
     }
   }
-
-  // Fetch address suggestions when user types (debounced)
-  const fetchSuggestions = async (value: string) => {
-    if (!value || value.length < 3) {
-      setAddressSuggestions([])
-      return
-    }
-
-    setLoadingSuggestions(true)
-    try {
-      const response = await fetch('/api/shippo/validate-address', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: { ...address, street1: value } }),
-      })
-
-      if (response.ok) {
-        // Shippo doesn't have a suggestions API in the same way, but we can use
-        // the validation response to suggest corrections
-        const data = await response.json()
-        if (!data.isValid && data.address) {
-          setAddressSuggestions([data.address])
-        } else {
-          setAddressSuggestions([])
-        }
-      }
-    } catch {
-      // Ignore suggestion errors
-      setAddressSuggestions([])
-    } finally {
-      setLoadingSuggestions(false)
-    }
-  }
-
-  const debouncedFetchSuggestions = debounce(fetchSuggestions, 500)
 
   const validateAndGetRates = async () => {
     setValidating(true)
@@ -211,33 +151,12 @@ export function ShippingForm({ onAddressChange, onRateSelect, packageWeight, aut
 
       {error && <Alert severity="error">{error}</Alert>}
 
-      <Autocomplete
-        freeSolo
-        options={addressSuggestions}
-        loading={loadingSuggestions}
-        onInputChange={(_, value) => {
-          handleInputChange('street1', value)
-          debouncedFetchSuggestions(value)
-        }}
-        onChange={(_, value) => {
-          if (typeof value === 'string') {
-            handleInputChange('street1', value)
-          } else if (value) {
-            setAddress(value)
-            onAddressChange(value)
-            setAddressSuggestions([])
-          }
-        }}
+      <TextField
+        label="Street Address"
         value={address.street1}
-        renderInput={(params) => (
-          <TextField
-            {...params}
-            label="Street Address"
-            required
-            size="small"
-            onChange={(e) => handleInputChange('street1', e.target.value)}
-          />
-        )}
+        onChange={(e) => handleInputChange('street1', e.target.value)}
+        required
+        size="small"
       />
 
       <TextField
