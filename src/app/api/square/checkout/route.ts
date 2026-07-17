@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createSquareCheckout } from '@/lib/square/client'
+import { ShippingRate } from '@/lib/shippo/client'
 
 interface CartItemForSquare {
   productId: string
@@ -13,6 +14,16 @@ interface SquareCheckoutRequest {
   items: CartItemForSquare[]
   buyerEmail?: string
   buyerPhone?: string
+  shippingAddress?: {
+    name?: string
+    street1: string
+    street2?: string
+    city: string
+    state: string
+    zip: string
+    country: string
+  }
+  shippingRate?: ShippingRate
 }
 
 export async function POST(request: Request) {
@@ -40,14 +51,40 @@ export async function POST(request: Request) {
       },
     }))
 
+    // Add shipping line item if rate is selected
+    if (body.shippingRate) {
+      lineItems.push({
+        name: `Shipping: ${body.shippingRate.name}`,
+        quantity: '1',
+        base_price_money: {
+          amount: Math.round(body.shippingRate.amount * 100),  // Convert to cents
+          currency: 'USD',
+        },
+      })
+    }
+
+    // Build shipping address note for reference
+    const shippingNote = body.shippingAddress
+      ? `Ship to: ${body.shippingAddress.street1}${body.shippingAddress.street2 ? ', ' + body.shippingAddress.street2 : ''}, ${body.shippingAddress.city}, ${body.shippingAddress.state} ${body.shippingAddress.zip}, ${body.shippingAddress.country}`
+      : ''
+
     // Create checkout with Square
     const checkoutResponse = await createSquareCheckout({
       lineItems,
       idempotencyKey: `${body.items.map(i => i.productId).join('-')}-${Date.now()}`,
-      note: 'Order from Ruby\'s Relics Studio',
+      note: shippingNote || 'Order from Ruby\'s Relics Studio',
       metadata: {
         ...(body.buyerEmail && { buyer_email: body.buyerEmail }),
         ...(body.buyerPhone && { buyer_phone: body.buyerPhone }),
+        ...(body.shippingRate && {
+          shipping_carrier: body.shippingRate.carrier,
+          shipping_service: body.shippingRate.service,
+          shipping_amount: String(body.shippingRate.amount),
+        }),
+        ...(body.shippingAddress && {
+          shipping_country: body.shippingAddress.country,
+          shipping_zip: body.shippingAddress.zip,
+        }),
       },
     })
 

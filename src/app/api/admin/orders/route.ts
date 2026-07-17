@@ -28,6 +28,8 @@ interface OrdersPatchBody {
   estimatedHours?: unknown
   assignee?: unknown
   hookId?: unknown
+  trackingNumber?: unknown
+  shippingCarrier?: unknown
 }
 
 function asString(value: unknown, maxLen: number): string {
@@ -105,7 +107,7 @@ async function insertOrderEvent(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   input: {
     orderId: string
-    actionType: 'status_transition' | 'cancel' | 'refund_marked' | 'note' | 'schedule_hook' | 'hook_completed'
+    actionType: 'status_transition' | 'cancel' | 'refund_marked' | 'note' | 'schedule_hook' | 'hook_completed' | 'tracking_update'
     previousStatus?: string | null
     nextStatus?: string | null
     previousPaymentStatus?: string | null
@@ -599,6 +601,55 @@ export async function PATCH(request: Request) {
       })
 
       return NextResponse.json({ hook }, { status: 200 })
+    }
+
+    if (action === 'update_tracking') {
+      const trackingNumber = asString(body.trackingNumber, 64)
+      const shippingCarrier = asString(body.shippingCarrier, 40)
+
+      if (!trackingNumber) {
+        return NextResponse.json({ error: 'Tracking number is required.' }, { status: 400 })
+      }
+
+      if (!shippingCarrier) {
+        return NextResponse.json({ error: 'Shipping carrier is required.' }, { status: 400 })
+      }
+
+      const { error } = await supabase
+        .from('exp_orders')
+        .update({
+          tracking_number: trackingNumber,
+          shipping_carrier: shippingCarrier,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId)
+
+      if (error) {
+        console.error('[admin:orders:update-tracking]', error.message)
+        return NextResponse.json({ error: 'Could not update tracking info.' }, { status: 500 })
+      }
+
+      await insertOrderEvent(supabase, {
+        orderId,
+        actionType: 'tracking_update',
+        previousStatus: order.status,
+        nextStatus: order.status,
+        previousPaymentStatus: order.payment_status,
+        nextPaymentStatus: order.payment_status,
+        metadata: { tracking_number: trackingNumber, shipping_carrier: shippingCarrier },
+      })
+
+      await writeAdminAuditLog({
+        action: 'orders.tracking.update',
+        entityType: 'order',
+        entityId: orderId,
+        route: '/api/admin/orders',
+        request,
+        status: 'success',
+        details: { tracking_number: trackingNumber, shipping_carrier: shippingCarrier },
+      })
+
+      return NextResponse.json({ ok: true }, { status: 200 })
     }
 
     return NextResponse.json({ error: 'Unsupported action.' }, { status: 400 })

@@ -10,7 +10,9 @@ import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
 
-import { useCart } from '@/components/cart/CartProvider'
+import { useCart, CartItem } from '@/components/cart/CartProvider'
+import { ShippingForm } from '@/components/checkout/ShippingForm'
+import { ShippingRate } from '@/lib/shippo/client'
 import { brandTokens } from '@/theme/theme'
 
 interface StorefrontConfig {
@@ -18,9 +20,25 @@ interface StorefrontConfig {
   stripeDisabledMessage: string
 }
 
+interface SummaryRow {
+  label: string
+  value: number
+  emph: boolean
+}
+
 interface CheckoutResponse {
   checkoutUrl?: string
   error?: string
+}
+
+interface ShippingAddress {
+  name?: string
+  street1: string
+  street2?: string
+  city: string
+  state: string
+  zip: string
+  country: string
 }
 
 export function CheckoutPageView() {
@@ -34,6 +52,8 @@ export function CheckoutPageView() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [customerEmail, setCustomerEmail] = useState('')
   const [discountCode, setDiscountCode] = useState('')
+  const [shippingAddress, setShippingAddress] = useState<ShippingAddress | null>(null)
+  const [selectedRate, setSelectedRate] = useState<ShippingRate | null>(null)
 
   useEffect(() => {
     let active = true
@@ -63,17 +83,32 @@ export function CheckoutPageView() {
     }
   }, [])
 
-  const hasItems = items.length > 0
-  const canCheckout = hasItems && config.stripeCheckoutEnabled && !creatingSession && !loadingConfig
+  // Calculate total weight from cart items (using weight if available, or default 1 lb)
+  const totalWeight = useMemo(() => {
+    return items.reduce((sum, item) => {
+      const itemWeight = item.weight ?? 1 // Default 1 lb if no weight set
+      return sum + itemWeight * item.quantity
+    }, 0)
+  }, [items])
 
-  const summaryRows = useMemo(
-    () => [
-      { label: 'Subtotal', value: subtotal },
-      { label: 'Discounts', value: -discountTotal },
-      { label: 'Total', value: total, emph: true },
-    ],
-    [subtotal, discountTotal, total]
-  )
+  const hasItems = items.length > 0
+  const hasShipping = Boolean(shippingAddress && selectedRate)
+  const canCheckout = hasItems && config.stripeCheckoutEnabled && !creatingSession && !loadingConfig && hasShipping
+
+  const summaryRows = useMemo<SummaryRow[]>(() => {
+    const rows: SummaryRow[] = [
+      { label: 'Subtotal', value: subtotal, emph: false },
+      { label: 'Discounts', value: -discountTotal, emph: false },
+    ]
+
+    if (selectedRate) {
+      rows.push({ label: 'Shipping', value: selectedRate.amount, emph: false })
+    }
+
+    rows.push({ label: 'Total', value: total + (selectedRate?.amount ?? 0), emph: true })
+
+    return rows
+  }, [subtotal, discountTotal, total, selectedRate])
 
   async function handleCheckout() {
     if (!canCheckout) return
@@ -114,6 +149,8 @@ export function CheckoutPageView() {
             selectedProcessKeys: item.selectedProcessKeys,
           })),
           buyerEmail: normalizedEmail || undefined,
+          shippingAddress: shippingAddress || undefined,
+          shippingRate: selectedRate || undefined,
         }),
       })
 
@@ -299,6 +336,12 @@ export function CheckoutPageView() {
             placeholder="Enter promo or bundle code"
           />
         </Box>
+
+        <ShippingForm
+          onAddressChange={setShippingAddress}
+          onRateSelect={setSelectedRate}
+          packageWeight={totalWeight}
+        />
 
         {loadingConfig ? (
           <Box sx={{ py: 1.2, display: 'flex', justifyContent: 'center' }}>

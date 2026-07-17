@@ -34,6 +34,11 @@ const ADMIN_MODULES: AdminModuleLink[] = [
     description: 'Ready-made stock and threshold tracking.',
   },
   {
+    label: 'Shipping',
+    href: '/admin/shipping',
+    description: 'Shippo integration, carriers, and webhook configuration.',
+  },
+  {
     label: 'Finance',
     href: '/admin/finance',
     description: 'Revenue, margin, labor, and export analytics.',

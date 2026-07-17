@@ -40,6 +40,7 @@ export interface CartItem {
   lineTotal: number
   imageUrl?: string | null
   imageEmoji?: string | null
+  weight?: number | null
 }
 
 function asFiniteMoney(value: unknown): number {
@@ -106,6 +107,7 @@ function normalizeCartItem(input: unknown): CartItem | null {
     lineTotal,
     imageUrl: typeof row.imageUrl === 'string' ? row.imageUrl : null,
     imageEmoji: typeof row.imageEmoji === 'string' ? row.imageEmoji : null,
+    weight: typeof row.weight === 'number' ? row.weight : null,
   }
 }
 
