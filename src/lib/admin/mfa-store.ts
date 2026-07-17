@@ -60,23 +60,9 @@ export function verifyMFACode(ip: string, code: string): boolean {
     return false
   }
 
-  // Constant-time comparison to prevent timing attacks
-  const isValid = entry.code === code
-  if (isValid) {
-    // Code is one-time use - delete after successful verification
-    mfaStore.delete(ip)
-  }
-  return isValid
-}
-
-/**
- * Get remaining time (in seconds) before the code expires.
- * Returns 0 if no code exists.
- */
-export function getMFACodeTimeRemaining(ip: string): number {
-  const entry = mfaStore.get(ip)
-  if (!entry) return 0
-
-  const remaining = Math.max(0, entry.expiresAt - Date.now())
-  return Math.floor(remaining / 1000)
+  // Delete the code for one-time use
+  mfaStore.delete(ip)
+  
+  // Compare codes
+  return entry.code === code
 }

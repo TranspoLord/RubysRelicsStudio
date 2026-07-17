@@ -12,8 +12,6 @@ export default function MFAChallengePage() {
   const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showQR, setShowQR] = useState(false)
-  const [qrCodeUrl, setQrCodeUrl] = useState('')
   const [codeSent, setCodeSent] = useState(false)
   const [countdown, setCountdown] = useState(0)
 
@@ -22,13 +20,7 @@ export default function MFAChallengePage() {
     const isLoggedIn = sessionStorage.getItem('admin_authenticated') === 'true'
     if (!isLoggedIn) {
       router.push('/admin/login')
-      return
     }
-
-    // TOTP QR code URL - preserved but disabled (hidden until "Show QR Code" is clicked)
-    const secret = process.env.NEXT_PUBLIC_ADMIN_TOTP_SECRET || 'JBSWY3DPEHPK3PXP'
-    const url = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=otpauth://totp/RubysRelics?secret=${secret}&issuer=RubysRelics`
-    setQrCodeUrl(url)
   }, [router])
 
   // Countdown timer for code expiration
@@ -102,10 +94,6 @@ export default function MFAChallengePage() {
     }
   }
 
-  const handleShowQR = () => {
-    setShowQR(true)
-  }
-
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
@@ -146,16 +134,6 @@ export default function MFAChallengePage() {
           </Alert>
         )}
 
-        {/* TOTP QR Code - preserved but disabled (hidden by default) */}
-        {showQR && qrCodeUrl && (
-          <Box sx={{ mb: 2, textAlign: 'center' }}>
-            <img src={qrCodeUrl} alt="TOTP QR Code" style={{ maxWidth: '100%' }} />
-            <Typography variant="caption" sx={{ color: alpha(brandTokens.parchment, 0.5), mt: 1, display: 'block' }}>
-              TOTP authentication (currently disabled)
-            </Typography>
-          </Box>
-        )}
-
         <TextField
           label="Verification Code"
           value={code}
@@ -190,25 +168,11 @@ export default function MFAChallengePage() {
           onClick={handleSendCode}
           disabled={loading || countdown > 0}
           sx={{
-            mb: 1,
             backgroundColor: alpha(brandTokens.forgeGold, 0.7),
             color: brandTokens.bgVoid,
           }}
         >
           {countdown > 0 ? `Resend in ${formatTime(countdown)}` : 'Send Code to Email'}
-        </Button>
-
-        <Button
-          variant="outlined"
-          fullWidth
-          onClick={handleShowQR}
-          disabled={loading}
-          sx={{
-            borderColor: alpha(brandTokens.parchment, 0.3),
-            color: brandTokens.parchment,
-          }}
-        >
-          Show TOTP QR Code (Disabled)
         </Button>
       </Paper>
     </Box>
