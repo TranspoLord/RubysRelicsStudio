@@ -9,6 +9,8 @@ import Checkbox from '@mui/material/Checkbox'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import Alert from '@mui/material/Alert'
+import Link from '@mui/material/Link'
+import NextLink from 'next/link'
 import { alpha } from '@mui/material/styles'
 
 import { brandTokens } from '@/theme/theme'
@@ -135,6 +137,18 @@ export default function AdminShippingPage() {
           {message.text}
         </Alert>
       )}
+
+      {/* Navigation Links */}
+      <Box sx={{ display: 'flex', gap: 2, mb: 1 }}>
+        <Button
+          variant="outlined"
+          size="small"
+          component={NextLink}
+          href="/admin/shipping/debug"
+        >
+          Debug Tool
+        </Button>
+      </Box>
 
       {/* Shippo Status Section */}
       <Box sx={{ display: 'grid', gap: 1.5, p: 1.5, border: `1px solid ${alpha(brandTokens.parchment, 0.2)}`, borderRadius: 1 }}>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
+import { rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 
 const supabase = getSupabaseAdmin()
 
@@ -38,6 +39,13 @@ export async function GET(request: NextRequest) {
 
 // POST endpoint for webhook events
 export async function POST(request: NextRequest) {
+  // Rate limit webhook: 20 requests per minute per IP
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+  const rl = rateLimit(`square-webhook:${ip}`, 20, 60 * 1000)
+  if (!rl.allowed) {
+    return rateLimitResponse(rl.retryAfter ?? 60)
+  }
+
   const signatureKey = process.env.SQUARE_WEBHOOK_SIGNATURE_KEY
   if (!signatureKey) {
     console.error('[Square Webhook] SQUARE_WEBHOOK_SIGNATURE_KEY not configured')

@@ -1,9 +1,14 @@
+import bcrypt from 'bcryptjs'
 import { createHmac, randomBytes } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
+import { getResend } from '@/lib/resend/client'
 
 const SESSION_DURATION_DAYS = 30
 const PASSWORD_RESET_TOKEN_DURATION_HOURS = 24
 const SESSION_TOKEN_LENGTH = 32
+
+// Cost factor for bcrypt — good balance of security and speed
+const BCRYPT_ROUNDS = 10
 
 /**
  * Generate a secure random token
@@ -13,20 +18,48 @@ export function generateSecureToken(length: number = SESSION_TOKEN_LENGTH): stri
 }
 
 /**
- * Hash a password using SHA256 with a salt
+ * Hash a password using bcrypt.
+ * bcrypt hashes are self-contained (salt + hash stored together like $2a$10$...),
+ * so they go directly in the password_hash column without a separate salt field.
  */
-export function hashPassword(password: string, salt?: string): { hash: string; salt: string } {
-  const passwordSalt = salt || randomBytes(16).toString('hex')
-  const hash = createHmac('sha256', passwordSalt).update(password).digest('hex')
-  return { hash, salt: passwordSalt }
+export async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, BCRYPT_ROUNDS)
 }
 
 /**
- * Verify a password against a stored hash
+ * Verify a password against a stored hash.
+ * Supports both legacy SHA256-HMAC format (salt:hash) and bcrypt ($2a$...).
+ *
+ * When a legacy hash is detected and the password is correct, the callback
+ * allows the caller to upgrade the stored hash to bcrypt on-the-fly.
  */
-export function verifyPassword(password: string, hash: string, salt: string): boolean {
-  const { hash: computedHash } = hashPassword(password, salt)
-  return computedHash === hash
+export async function verifyPassword(
+  password: string,
+  storedHash: string,
+  onUpgradeNeeded?: (newBcryptHash: string) => Promise<void>
+): Promise<boolean> {
+  // Detect legacy SHA256 format (salt:hash)
+  if (storedHash.includes(':')) {
+    const [salt, hash] = storedHash.split(':')
+    const computedHash = createHmac('sha256', salt).update(password).digest('hex')
+    const isValid = computedHash === hash
+
+    // Upgrade to bcrypt on successful verification
+    if (isValid && onUpgradeNeeded) {
+      try {
+        const newHash = await bcrypt.hash(password, BCRYPT_ROUNDS)
+        await onUpgradeNeeded(newHash)
+      } catch {
+        // Non-critical — log but don't fail the login
+        console.warn('[auth:password] Failed to upgrade legacy hash to bcrypt')
+      }
+    }
+
+    return isValid
+  }
+
+  // bcrypt format
+  return bcrypt.compare(password, storedHash)
 }
 
 /**
@@ -66,15 +99,15 @@ export async function signUpCustomer(
       return { customerId: '', error: 'Failed to check email availability.' }
     }
 
-    // Hash password
-    const { hash, salt } = hashPassword(password)
+    // Hash password with bcrypt
+    const passwordHash = await hashPassword(password)
 
     // Insert new customer
     const { data, error } = await supabase
       .from('exp_customers')
       .insert({
         email: email.toLowerCase(),
-        password_hash: `${salt}:${hash}`,
+        password_hash: passwordHash,
         first_name: firstName?.trim() || null,
         last_name: lastName?.trim() || null,
       })
@@ -121,14 +154,25 @@ export async function loginCustomer(
       return { error: 'Invalid email or password.' }
     }
 
-    // Verify password
+    // Verify password (supports both legacy SHA256 and bcrypt)
     if (!customer.password_hash) {
       // This customer uses magic-link only
       return { error: 'This account uses magic-link login. Check your email for a login link.' }
     }
 
-    const [salt, hash] = customer.password_hash.split(':')
-    if (!verifyPassword(password, hash, salt)) {
+    const isValid = await verifyPassword(
+      password,
+      customer.password_hash,
+      // Upgrade legacy SHA256 hash to bcrypt on successful login
+      async (newBcryptHash: string) => {
+        await supabase
+          .from('exp_customers')
+          .update({ password_hash: newBcryptHash, updated_at: new Date().toISOString() })
+          .eq('id', customer.id)
+      }
+    )
+
+    if (!isValid) {
       return { error: 'Invalid email or password.' }
     }
 
@@ -265,8 +309,42 @@ export async function requestPasswordReset(email: string): Promise<{ error?: str
       return { error: 'Failed to generate reset link. Please try again.' }
     }
 
-    // TODO: Send reset email via Resend
-    // await sendPasswordResetEmail(email, token)
+    // Send password reset email via Resend
+    try {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000'
+      const resetLink = `${appUrl.replace(/\/$/, '')}/api/customer/reset-password?token=${token}`
+      const resend = getResend()
+      const fromEmail = process.env.RESEND_FROM_EMAIL || 'noreply@rubysrelicsstudio.com'
+
+      await resend.emails.send({
+        from: fromEmail,
+        to: [email],
+        subject: "Reset your Ruby's Relics Studio password",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #333;">Password Reset Request</h2>
+            <p>You requested a password reset for your Ruby's Relics Studio account.</p>
+            <p>Click the button below to reset your password. This link expires in 24 hours.</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${resetLink}" 
+                 style="background: #c9a96e; color: #fff; padding: 14px 32px; border-radius: 6px; 
+                        text-decoration: none; font-weight: bold; display: inline-block;">
+                Reset Password
+              </a>
+            </div>
+            <p style="color: #666; font-size: 14px;">
+              If you did not request this reset, please ignore this email.
+            </p>
+            <p style="color: #666; font-size: 12px;">
+              Or copy this link into your browser: ${resetLink}
+            </p>
+          </div>
+        `,
+      })
+    } catch (emailError) {
+      // Log the error but don't reveal it to the client
+      console.error('[auth:reset-request] Failed to send reset email:', emailError)
+    }
 
     return {}
   } catch (error) {
@@ -314,13 +392,13 @@ export async function resetPasswordWithToken(
       return { error: 'This reset link has expired.' }
     }
 
-    // Hash new password
-    const { hash, salt } = hashPassword(newPassword)
+    // Hash new password with bcrypt
+    const passwordHash = await hashPassword(newPassword)
 
     // Update customer password
     const { error: updateError } = await supabase
       .from('exp_customers')
-      .update({ password_hash: `${salt}:${hash}` })
+      .update({ password_hash: passwordHash })
       .eq('id', resetRecord.customer_id)
 
     if (updateError) {

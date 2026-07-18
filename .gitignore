@@ -44,6 +44,3 @@ next-env.d.ts
 .DS_Store
 Thumbs.db
 .env.local.example
-src/app/api/debug/shipping/rates/route.ts
-.gitignore
-src/app/debug/shipping/page.tsx
