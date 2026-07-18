@@ -41,9 +41,10 @@ export async function POST(request: NextRequest) {
 
     // Send email via Resend
     const resend = getResend()
+    let emailSent = false
 
     try {
-      await resend.emails.send({
+      const result = await resend.emails.send({
         from: process.env.RESEND_FROM_EMAIL!,
         to: [adminMfaEmail],
         subject: "Your Ruby's Relics Admin Login Code",
@@ -59,14 +60,26 @@ export async function POST(request: NextRequest) {
           </div>
         `,
       })
+      emailSent = true
+      console.log('[MFA Send] Email sent successfully to', adminMfaEmail)
     } catch (emailError) {
       console.error('[MFA Send] Email send failed:', emailError)
-      // Don't reveal email errors to client (don't leak configuration)
-      // Still return success to prevent enumeration
+      // In development, log the code so it can still be used for testing
+      if (process.env.NEXT_PUBLIC_APP_ENV === 'development') {
+        console.log('[MFA Send] ⚠️ DEV MODE — MFA code for IP', ip, 'is:', code)
+      }
     }
 
-    // Return success - don't reveal if email was actually sent
-    return NextResponse.json({ success: true, message: 'Verification code sent' })
+    // Return success - don't reveal if email was actually sent (prevents enumeration)
+    // In development, include the code for testing convenience
+    const response: Record<string, unknown> = { success: true, message: 'Verification code sent' }
+    
+    if (process.env.NEXT_PUBLIC_APP_ENV === 'development' && !emailSent) {
+      response.devCode = code
+      response.devWarning = 'Email send failed. Using dev fallback code above.'
+    }
+
+    return NextResponse.json(response)
   } catch (error: any) {
     console.error('[MFA Send] Error:', error)
     return NextResponse.json({ error: 'Failed to send verification code' }, { status: 500 })
