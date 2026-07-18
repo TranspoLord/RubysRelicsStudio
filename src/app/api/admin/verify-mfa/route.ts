@@ -13,6 +13,9 @@ export async function POST(request: NextRequest) {
     const { code } = await request.json()
     const ip = sessionCheck.context.clientIp
 
+    // Log for debugging (helps diagnose Vercel IP mismatches)
+    console.log('[MFA Verify] IP for verification:', ip)
+
     // Email-based code verification
     if (!code || code.length !== 6) {
       return NextResponse.json({ error: 'Invalid verification code format' }, { status: 400 })

@@ -84,10 +84,30 @@ export function rateLimitResponse(retryAfter: number): Response {
 
 /**
  * Extract the best available IP address from a Next.js request.
- * Falls back through x-forwarded-for → x-real-ip → "unknown".
+ * Handles Vercel edge network headers and standard proxy headers.
+ * Falls back through x-forwarded-for → x-real-ip → x-vercel-forwarded-for → "unknown".
  */
 export function getClientIp(request: Request): string {
+  // Vercel and most CDNs use x-forwarded-for with the original client IP first
   const forwarded = request.headers.get('x-forwarded-for')
-  if (forwarded) return forwarded.split(',')[0].trim()
-  return request.headers.get('x-real-ip') ?? 'unknown'
+  if (forwarded) {
+    // x-forwarded-for may contain multiple IPs (client, proxy1, proxy2, ...)
+    // The original client IP is always first
+    return forwarded.split(',')[0].trim()
+  }
+
+  // Some Vercel regions use this header
+  const vercelForwarded = request.headers.get('x-vercel-forwarded-for')
+  if (vercelForwarded) {
+    return vercelForwarded.split(',')[0].trim()
+  }
+
+  // Fallback to x-real-ip (used by some proxies)
+  const realIp = request.headers.get('x-real-ip')
+  if (realIp) return realIp
+
+  // Last resort - check if we're in a Vercel serverless function
+  // Note: Vercel provides the IP in x-forwarded-for, so "unknown" indicates
+  // a configuration issue if running on Vercel
+  return 'unknown'
 }

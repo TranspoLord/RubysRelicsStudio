@@ -36,6 +36,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'MFA not configured' }, { status: 500 })
     }
 
+    // Log environment info for debugging (helps diagnose Vercel issues)
+    console.log('[MFA Send] Environment check:', {
+      hasServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      appEnv: process.env.NEXT_PUBLIC_APP_ENV,
+      ip,
+    })
+
     // Generate and store the code in Supabase
     const code = await createMFACode(ip)
 
