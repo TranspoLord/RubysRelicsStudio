@@ -10,7 +10,7 @@ import {
 } from '@/lib/catalog/option-templates'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 
-type CatalogAction = 'archive' | 'restore' | 'publish' | 'deactivate'
+type CatalogAction = 'archive' | 'restore' | 'publish' | 'deactivate' | 'delete'
 
 interface CatalogActionBody {
   productId?: unknown
@@ -59,7 +59,7 @@ function asString(value: unknown, maxLen: number): string {
 }
 
 function isCatalogAction(value: string): value is CatalogAction {
-  return value === 'archive' || value === 'restore' || value === 'publish' || value === 'deactivate'
+  return value === 'archive' || value === 'restore' || value === 'publish' || value === 'deactivate' || value === 'delete'
 }
 
 function normalizeStatusFilter(value: string): 'all' | 'active' | 'inactive' | 'archived' {
@@ -444,6 +444,53 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Missing destructive action confirmation.' }, { status: 400 })
     }
 
+    if (action === 'delete' && confirmAction !== 'delete') {
+      await writeAdminAuditLog({
+        action: 'catalog.delete',
+        entityType: 'product',
+        entityId: productId,
+        route: '/api/admin/catalog',
+        request,
+        status: 'failure',
+        details: { reason: 'missing_confirmation_contract' },
+      })
+      return NextResponse.json({ error: 'Missing destructive action confirmation.' }, { status: 400 })
+    }
+
+    const supabase = getSupabaseAdmin()
+
+    // Delete action - permanently remove the product
+    if (action === 'delete') {
+      const { error: deleteError } = await supabase
+        .from('exp_products')
+        .delete()
+        .eq('id', productId)
+
+      if (deleteError) {
+        console.error('[admin:catalog:patch:delete]', deleteError.message)
+        await writeAdminAuditLog({
+          action: 'catalog.delete',
+          entityType: 'product',
+          entityId: productId,
+          route: '/api/admin/catalog',
+          request,
+          status: 'failure',
+          details: { reason: 'delete_failed', message: deleteError.message },
+        })
+        return NextResponse.json({ error: 'Could not delete product.' }, { status: 500 })
+      }
+
+      await writeAdminAuditLog({
+        action: 'catalog.delete',
+        entityType: 'product',
+        entityId: productId,
+        route: '/api/admin/catalog',
+        request,
+        status: 'success',
+      })
+      return NextResponse.json({ success: true }, { status: 200 })
+    }
+
     if (action === 'publish') {
       const checklist = await validatePublishChecklist(productId)
       if (!checklist.ok) {
@@ -469,7 +516,6 @@ export async function PATCH(request: Request) {
       }
     }
 
-    const supabase = getSupabaseAdmin()
     const update: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     }

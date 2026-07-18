@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -20,7 +20,7 @@ import { brandTokens } from '@/theme/theme'
 
 type StatusFilter = 'all' | 'active' | 'inactive' | 'archived'
 
-type CatalogAction = 'archive' | 'restore' | 'publish' | 'deactivate'
+type CatalogAction = 'archive' | 'restore' | 'publish' | 'deactivate' | 'delete'
 
 interface CatalogProductRow {
   id: string
@@ -100,7 +100,7 @@ export default function AdminProductsPage() {
   }, [query, status, categoryFilter])
 
   async function runAction(product: CatalogProductRow, action: CatalogAction) {
-    const confirmAction = action === 'archive' ? 'archive_product' : action === 'restore' ? 'restore_product' : null
+    const confirmAction = action === 'archive' ? 'archive' : action === 'delete' ? 'delete' : null
 
     if (action === 'archive') {
       const confirmed = window.confirm(`Archive ${product.title}? You can restore it later.`)
@@ -109,6 +109,11 @@ export default function AdminProductsPage() {
 
     if (action === 'restore') {
       const confirmed = window.confirm(`Restore ${product.title}?`)
+      if (!confirmed) return
+    }
+
+    if (action === 'delete') {
+      const confirmed = window.confirm(`Delete ${product.title}? This action cannot be undone.`)
       if (!confirmed) return
     }
 
@@ -285,6 +290,10 @@ export default function AdminProductsPage() {
                       Restore
                     </Button>
                   )}
+
+                  <Button size="small" color="error" variant="contained" disabled={workingId === product.id} onClick={() => void runAction(product, 'delete')}>
+                    Delete
+                  </Button>
                 </Stack>
               </Stack>
             </Box>
