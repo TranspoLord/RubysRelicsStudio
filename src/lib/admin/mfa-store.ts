@@ -1,68 +1,80 @@
 /**
- * In-memory store for email-based MFA codes.
+ * Persistent store for email-based MFA codes.
  *
- * Uses a module-level Map so state is shared across requests within the same
- * serverless function instance. Resets on cold starts / redeploys — acceptable
- * for admin MFA as codes are short-lived and rate-limited.
+ * Uses Supabase so codes survive across Vercel serverless instance rotations.
+ * Each code is keyed by IP address and expires after 10 minutes.
  */
 
-interface MFACodeEntry {
+import { getSupabaseAdmin } from '@/lib/supabase/client'
+
+interface MFACodeRow {
+  ip: string
   code: string
-  createdAt: number
-  expiresAt: number
-}
-
-// Module-level singleton
-const mfaStore = new Map<string, MFACodeEntry>()
-
-// Prune expired codes every 5 minutes to avoid unbounded memory growth
-let lastPrune = Date.now()
-const PRUNE_INTERVAL_MS = 5 * 60 * 1000
-
-function maybePrune(): void {
-  const now = Date.now()
-  if (now - lastPrune < PRUNE_INTERVAL_MS) return
-  lastPrune = now
-  for (const [key, entry] of mfaStore.entries()) {
-    if (entry.expiresAt <= now) mfaStore.delete(key)
-  }
+  created_at: string
+  expires_at: string
+  used: boolean
 }
 
 /**
- * Generate and store a 6-digit MFA code.
+ * Generate and store a 6-digit MFA code in Supabase.
  * Returns the code (to be sent via email).
  */
-export function createMFACode(ip: string): string {
-  maybePrune()
+export async function createMFACode(ip: string): Promise<string> {
+  const supabase = getSupabaseAdmin()
 
   // Generate 6-digit code
   const code = Math.floor(100000 + Math.random() * 900000).toString()
-  const now = Date.now()
-  const expiresAt = now + 10 * 60 * 1000 // 10 minutes
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + 10 * 60 * 1000) // 10 minutes
 
-  mfaStore.set(ip, { code, createdAt: now, expiresAt })
+  // Store in Supabase — clean any existing code for this IP first
+  await supabase.from('admin_mfa_codes').delete().eq('ip', ip)
+
+  const { error } = await supabase.from('admin_mfa_codes').insert({
+    ip,
+    code,
+    expires_at: expiresAt.toISOString(),
+  })
+
+  if (error) {
+    console.error('[MFA Store] Failed to store code:', error.message)
+    throw new Error('Failed to generate verification code')
+  }
+
+  // Prune expired codes asynchronously (non-blocking)
+  supabase.from('admin_mfa_codes').delete().lt('expires_at', new Date().toISOString()).then(null, () => {})
+
   return code
 }
 
 /**
  * Verify an MFA code for the given IP.
  * Returns true if valid, false otherwise.
+ * Atomically marks the code as used (one-time use).
  */
-export function verifyMFACode(ip: string, code: string): boolean {
-  maybePrune()
+export async function verifyMFACode(ip: string, code: string): Promise<boolean> {
+  const supabase = getSupabaseAdmin()
 
-  const entry = mfaStore.get(ip)
-  if (!entry) return false
+  // Find the code for this IP that hasn't expired and hasn't been used
+  const { data, error } = await supabase
+    .from('admin_mfa_codes')
+    .select('*')
+    .eq('ip', ip)
+    .eq('code', code)
+    .eq('used', false)
+    .gt('expires_at', new Date().toISOString())
+    .limit(1)
+    .maybeSingle()
 
-  // Check if code has expired
-  if (Date.now() > entry.expiresAt) {
-    mfaStore.delete(ip)
+  if (error || !data) {
     return false
   }
 
-  // Delete the code for one-time use
-  mfaStore.delete(ip)
-  
-  // Compare codes
-  return entry.code === code
+  // Mark as used (one-time use)
+  await supabase
+    .from('admin_mfa_codes')
+    .update({ used: true })
+    .eq('id', (data as any).id)
+
+  return true
 }

@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid verification code format' }, { status: 400 })
     }
 
-    const isValid = verifyMFACode(ip, code)
+    const isValid = await verifyMFACode(ip, code)
 
     if (!isValid) {
       return NextResponse.json({ error: 'Invalid or expired verification code' }, { status: 401 })
