@@ -21,6 +21,16 @@ interface FaqPreviewProps {
 
 const STATIC_FAQS: DbFaqItem[] = [
   {
+    id: 'faq-nsfw',
+    question: 'Is NSFW or suggestive content acceptable?',
+    answer:
+      'Yes, we accept NSFW or suggestive artwork as long as it is legal. We do not discriminate based on subject matter or artistic expression within legal boundaries. We do not print unlawful material or artwork listed on the Public Restriction List.',
+    link_label: 'Content policy',
+    link_href: '/resources/terms',
+    is_visible: true,
+    sort_order: 1,
+  },
+  {
     id: 'faq-artwork',
     question: 'Can I upload my own artwork?',
     answer:
@@ -28,7 +38,7 @@ const STATIC_FAQS: DbFaqItem[] = [
     link_label: 'Artwork requirements',
     link_href: '/resources/artwork',
     is_visible: true,
-    sort_order: 1,
+    sort_order: 2,
   },
   {
     id: 'faq-materials',
@@ -38,7 +48,7 @@ const STATIC_FAQS: DbFaqItem[] = [
     link_label: 'Materials guide',
     link_href: '/resources/materials',
     is_visible: true,
-    sort_order: 2,
+    sort_order: 3,
   },
   {
     id: 'faq-production',
@@ -48,7 +58,7 @@ const STATIC_FAQS: DbFaqItem[] = [
     link_label: 'Shipping & Fulfillment',
     link_href: '/resources/shipping',
     is_visible: true,
-    sort_order: 3,
+    sort_order: 4,
   },
   {
     id: 'faq-custom',
@@ -58,7 +68,7 @@ const STATIC_FAQS: DbFaqItem[] = [
     link_label: 'Start a custom request',
     link_href: '/custom-orders',
     is_visible: true,
-    sort_order: 4,
+    sort_order: 5,
   },
 ]
 

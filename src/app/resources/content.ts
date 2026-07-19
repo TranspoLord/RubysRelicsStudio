@@ -347,6 +347,14 @@ export function getResourcePages(supportEmail: string): Record<string, ResourceP
     lastUpdated: 'May 8, 2026',
     sections: [
       {
+        heading: 'Is NSFW or suggestive content acceptable?',
+        body: [
+          'Yes, we accept NSFW or suggestive artwork as long as it is legal. We do not discriminate based on subject matter or artistic expression within legal boundaries.',
+          'We do not print unlawful material or artwork listed on the Public Restriction List. Orders canceled for policy violations are refunded minus non-recoverable processing fees.',
+          'All standard artwork requirements still apply (resolution, file formats, etc.). See the Artwork Requirements page for details.',
+        ],
+      },
+      {
         heading: 'Can I upload my own artwork?',
         body: [
           'Yes. Customizable product pages and custom-order intake support customer artwork submission when applicable.',
