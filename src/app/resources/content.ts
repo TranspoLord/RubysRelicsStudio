@@ -28,15 +28,14 @@ export function getResourcePages(supportEmail: string): Record<string, ResourceP
         ],
       },
       {
-        heading: 'Intellectual Property and Artist Protections',
+        heading: 'Intellectual Property and Customer Responsibility',
         body: [
-          'By submitting artwork, you represent that you have all required permissions from the original artist for reproduction.',
-          'If your order is for resale or other commercial use, you warrant that the artist has consented to that commercial use and that any artist commercial fees are your responsibility.',
-          'Original artists may request that future production of their artwork stop through the Art Guard Request form.',
-          'Restricted artists or artwork may be listed publicly to prevent accidental infringement. For creators flagged as Contact for Approval, we may hold orders and verify directly with the artist.',
-          'If artist details are missing or inaccurate for required verification, the order may be canceled.',
-          'You agree to indemnify and hold Ruby\'s Relics Studio harmless against claims, losses, and legal costs arising from copyright disputes or unauthorized commercial use.',
-          'Ruby\'s Relics Studio reserves the right to refuse any order, including for suspected art theft, rights concerns, or unusable file quality.',
+          'By submitting artwork, you represent and warrant that you own all rights to the submitted content or have obtained all necessary permissions from the rights holder for reproduction and any intended use.',
+          'It is your sole responsibility to ensure you have the legal right to use any artwork, images, trademarks, or other intellectual property submitted for production.',
+          'Ruby\'s Relics Studio does not verify intellectual property ownership and relies entirely on your representation of rights. We are not a copyright clearance service.',
+          'If your order is for resale or other commercial use, you warrant that the rights holder has consented to that commercial use and that any licensing fees, royalties, or other obligations are your responsibility.',
+          'You agree to indemnify and hold Ruby\'s Relics Studio harmless against any claims, losses, damages, and legal costs arising from copyright infringement, trademark violation, or unauthorized use of intellectual property in connection with submitted artwork.',
+          'Ruby\'s Relics Studio reserves the right to refuse any order if we suspect intellectual property concerns, regardless of your representation.',
         ],
       },
       {

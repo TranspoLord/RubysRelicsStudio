@@ -30,6 +30,7 @@ const NAV_LINKS = [
   { label: 'Home', href: '/' },
   { label: 'Shop', href: '/shop' },
   { label: 'Custom Orders', href: '/custom-orders' },
+  { label: 'Resources', href: '/resources' },
   { label: 'About', href: '/about' },
 ]
 
