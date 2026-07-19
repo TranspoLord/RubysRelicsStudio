@@ -76,31 +76,6 @@ export function HeroSection({ collageConfig }: HeroSectionProps) {
 
       <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1, py: { xs: 10, md: 14 } }}>
         <Box sx={{ maxWidth: 720 }}>
-          {/* Eyebrow */}
-          <Box
-            sx={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 1,
-              mb: 3,
-              px: 2,
-              py: 0.75,
-              borderRadius: 1,
-              backgroundColor: alpha(brandTokens.forgeGold, 0.1),
-              border: `1px solid ${alpha(brandTokens.forgeGold, 0.25)}`,
-            }}
-          >
-            <Box component="span" aria-hidden="true" sx={{ fontSize: '0.9rem' }}>
-              🔥
-            </Box>
-            <Typography
-              variant="overline"
-              sx={{ color: 'primary.light', letterSpacing: '0.1em', lineHeight: 1 }}
-            >
-              Handcrafted · Made to Order · One Dragon Crew
-            </Typography>
-          </Box>
-
           {/* Main headline */}
           <Typography
             variant="h1"
@@ -142,11 +117,24 @@ export function HeroSection({ collageConfig }: HeroSectionProps) {
               fontSize: { xs: '1rem', md: '1.15rem' },
               lineHeight: 1.75,
               maxWidth: 580,
-              mb: 5,
+              mb: 2,
             }}
           >
             Upload your artwork or choose from our ready-made designs, and let the dragons
             craft your treasures — then send the griffins to your lair.
+          </Typography>
+
+          {/* NSFW content notice */}
+          <Typography
+            variant="body2"
+            sx={{
+              color: alpha(brandTokens.forgeGold, 0.65),
+              fontSize: { xs: '0.82rem', md: '0.9rem' },
+              fontStyle: 'italic',
+              mb: 5,
+            }}
+          >
+            NSFW content is welcome. As long as it's legal.
           </Typography>
 
           {/* CTA row */}
