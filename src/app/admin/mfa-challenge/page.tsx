@@ -6,6 +6,7 @@ import { Box, Typography, TextField, Button, Alert, Paper } from '@mui/material'
 import { brandTokens } from '@/theme/theme'
 import { alpha } from '@mui/material/styles'
 import { RubyMascot } from '@/components/mascot/RubyMascot'
+import { collectDeviceFingerprint } from '@/lib/fingerprint'
 
 export default function MFAChallengePage() {
   const router = useRouter()
@@ -14,6 +15,7 @@ export default function MFAChallengePage() {
   const [error, setError] = useState<string | null>(null)
   const [codeSent, setCodeSent] = useState(false)
   const [countdown, setCountdown] = useState(0)
+  const [fingerprintHash, setFingerprintHash] = useState<string | null>(null)
 
   useEffect(() => {
     // Check if admin has completed password login
@@ -22,6 +24,15 @@ export default function MFAChallengePage() {
       router.push('/admin/login')
     }
   }, [router])
+
+  // Collect device fingerprint on mount
+  useEffect(() => {
+    collectDeviceFingerprint().then((fp) => {
+      setFingerprintHash(fp.hash)
+    }).catch((err) => {
+      console.warn('[MFA] Failed to collect device fingerprint:', err)
+    })
+  }, [])
 
   // Countdown timer for code expiration
   useEffect(() => {
@@ -48,6 +59,9 @@ export default function MFAChallengePage() {
       const response = await fetch('/api/admin/send-mfa', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceFingerprint: fingerprintHash,
+        }),
       })
 
       const data = await response.json()
@@ -73,7 +87,10 @@ export default function MFAChallengePage() {
       const response = await fetch('/api/admin/verify-mfa', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({
+          code,
+          deviceFingerprint: fingerprintHash,
+        }),
       })
 
       const data = await response.json()

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getResend } from '@/lib/resend/client'
 import { createMFACode } from '@/lib/admin/mfa-store'
-import { rateLimit, getClientIp } from '@/lib/rate-limit'
+import { rateLimit } from '@/lib/rate-limit'
 import { requireAdminApiSession } from '@/lib/admin/auth'
 
-// Rate limit: 3 send requests per 10 minutes per IP
+// Rate limit: 3 send requests per 10 minutes per session
 const MFA_RATE_LIMIT = 3
 const MFA_RATE_WINDOW_MS = 10 * 60 * 1000
 
@@ -17,9 +17,9 @@ export async function POST(request: NextRequest) {
     }
 
     const { clientIp } = sessionCheck.context
-    const ip = clientIp
 
-    const rl = rateLimit(`admin-mfa-send:${ip}`, MFA_RATE_LIMIT, MFA_RATE_WINDOW_MS)
+    // Rate limit by IP to prevent abuse (but verification uses challenge token, not IP)
+    const rl = rateLimit(`admin-mfa-send:${clientIp}`, MFA_RATE_LIMIT, MFA_RATE_WINDOW_MS)
 
     if (!rl.allowed) {
       const retryAfter = rl.retryAfter ?? 600
@@ -40,11 +40,15 @@ export async function POST(request: NextRequest) {
     console.log('[MFA Send] Environment check:', {
       hasServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
       appEnv: process.env.NEXT_PUBLIC_APP_ENV,
-      ip,
+      ip: clientIp,
     })
 
-    // Generate and store the code in Supabase
-    const code = await createMFACode(ip)
+    // Read optional device fingerprint from request body
+    const body = await request.json().catch(() => ({}))
+    const deviceFingerprint = typeof body.deviceFingerprint === 'string' ? body.deviceFingerprint : undefined
+
+    // Generate and store the code in Supabase — returns a challenge token
+    const { code, challengeToken } = await createMFACode(deviceFingerprint)
 
     // Send email via Resend
     const resend = getResend()
@@ -72,8 +76,17 @@ export async function POST(request: NextRequest) {
       // Don't reveal email errors to client (prevents enumeration)
     }
 
-    // Return success - don't reveal if email was actually sent (prevents enumeration)
-    return NextResponse.json({ success: true, message: 'Verification code sent' })
+    // Set the challenge token as an httpOnly cookie
+    const response = NextResponse.json({ success: true, message: 'Verification code sent' })
+    response.cookies.set('admin_mfa_challenge', challengeToken, {
+      httpOnly: true,
+      secure: process.env.NEXT_PUBLIC_APP_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 10 * 60, // 10 minutes (matches code expiry)
+      path: '/',
+    })
+
+    return response
   } catch (error: any) {
     console.error('[MFA Send] Error:', error)
     return NextResponse.json({ error: 'Failed to send verification code' }, { status: 500 })
