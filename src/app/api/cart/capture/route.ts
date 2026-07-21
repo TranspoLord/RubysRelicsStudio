@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createHash } from 'node:crypto'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
+import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 
 // ---------------------------------------------------------------------------
 // POST /api/cart/capture
@@ -49,6 +50,11 @@ function normalizeCartItem(raw: unknown): CartItemInput | null {
 }
 
 export async function POST(request: Request) {
+  // SEC-015: Rate limit cart-capture — 10 requests/hour per IP
+  const ip = getClientIp(request)
+  const rl = await rateLimit(`cart-capture:${ip}`, 10, 60 * 60 * 1000)
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfter ?? 3600)
+
   let body: CartCaptureBody
 
   try {
@@ -94,11 +100,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ captured: true, updated: true }, { status: 200 })
   }
 
-  // Hash the IP for rate-limit audit only — never store raw IP
-  const forwarded = request.headers.get('x-forwarded-for')
-  const rawIp = forwarded ? forwarded.split(',')[0]?.trim() : null
-  const ipHash = rawIp
-    ? createHash('sha256').update(rawIp).digest('hex')
+  // SEC-047: Hash the IP for rate-limit audit only — never store raw IP.
+  // Use getClientIp() which only trusts x-forwarded-for on Vercel (where the
+  // edge overwrites it). Outside Vercel, returns 'unknown' to prevent spoofing.
+  const ipHash = ip !== 'unknown'
+    ? createHash('sha256').update(ip).digest('hex')
     : null
 
   const { error: insertError } = await supabase

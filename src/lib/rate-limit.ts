@@ -1,41 +1,40 @@
 /**
- * In-memory sliding-window rate limiter.
+ * Persistent rate limiter (SEC-008, SEC-021).
  *
- * Uses a module-level Map so state is shared across requests within the same
- * serverless function instance. Resets on cold starts / redeploys — acceptable
- * for a small storefront. Swap the store for Upstash Redis if persistent
- * cross-instance limiting is ever needed.
+ * Uses a Supabase-backed counter table (`exp_rate_limit_windows`) with an
+ * atomic `increment_rate_limit` RPC so rate limit state survives Vercel
+ * serverless cold starts. The previous in-memory Map pattern is removed.
+ *
+ * The `rateLimit()` function is ASYNC — all callers MUST `await` it.
  *
  * Usage:
- *   const result = rateLimit(`login:${ip}`, 5, 15 * 60 * 1000)
+ *   const result = await rateLimit(`login:${ip}`, 5, 15 * 60 * 1000)
  *   if (!result.allowed) return 429 with Retry-After header
  */
 
-interface Window {
-  count: number
-  resetAt: number   // epoch ms when this window expires
-}
-
-// Module-level singleton — persists for the lifetime of the function instance
-const store = new Map<string, Window>()
-
-// Prune expired windows every 5 minutes to avoid unbounded memory growth
-let lastPrune = Date.now()
-const PRUNE_INTERVAL_MS = 5 * 60 * 1000
-
-function maybePrune(): void {
-  const now = Date.now()
-  if (now - lastPrune < PRUNE_INTERVAL_MS) return
-  lastPrune = now
-  for (const [key, win] of store.entries()) {
-    if (win.resetAt <= now) store.delete(key)
-  }
-}
+import { getSupabaseAdmin } from '@/lib/supabase/client'
+import { safeLogError } from '@/lib/security/logger'
 
 export interface RateLimitResult {
   allowed: boolean
   remaining: number
   retryAfter?: number   // seconds until the window resets (only set when denied)
+}
+
+// Lazy cleanup counter — run cleanup ~every 5 minutes
+let lastCleanup = 0
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000
+
+async function maybeCleanup(): Promise<void> {
+  const now = Date.now()
+  if (now - lastCleanup < CLEANUP_INTERVAL_MS) return
+  lastCleanup = now
+  try {
+    const supabase = getSupabaseAdmin()
+    await supabase.rpc('cleanup_expired_rate_limits')
+  } catch {
+    // Non-critical — lazy cleanup is opportunistic
+  }
 }
 
 /**
@@ -45,25 +44,55 @@ export interface RateLimitResult {
  * @param limit      Maximum number of requests allowed in the window
  * @param windowMs   Window duration in milliseconds
  */
-export function rateLimit(key: string, limit: number, windowMs: number): RateLimitResult {
-  maybePrune()
-
+export async function rateLimit(
+  key: string,
+  limit: number,
+  windowMs: number,
+  options: { failClosed?: boolean } = {}
+): Promise<RateLimitResult> {
   const now = Date.now()
-  const existing = store.get(key)
+  const windowStart = Math.floor(now / windowMs)
+  const windowKey = `${key}:${windowStart}`
+  const expiresAt = new Date(windowStart * windowMs + windowMs).toISOString()
 
-  if (!existing || existing.resetAt <= now) {
-    // New or expired window
-    store.set(key, { count: 1, resetAt: now + windowMs })
+  // Opportunistic cleanup
+  await maybeCleanup()
+
+  try {
+    const supabase = getSupabaseAdmin()
+    const { data, error } = await supabase.rpc('increment_rate_limit', {
+      p_key: windowKey,
+      p_expires_at: expiresAt,
+    })
+
+    if (error) {
+      // SEC-047: If failClosed is true (security-critical endpoints like login/MFA),
+      // reject the request instead of allowing unlimited attempts.
+      safeLogError('[rate-limit]', error)
+      if (options.failClosed) {
+        return { allowed: false, remaining: 0, retryAfter: 60 }
+      }
+      // Otherwise fail OPEN — don't block legitimate traffic
+      return { allowed: true, remaining: limit - 1 }
+    }
+
+    const count = Number(data) || 1
+
+    if (count > limit) {
+      const retryAfter = Math.ceil((windowStart * windowMs + windowMs - now) / 1000)
+      return { allowed: false, remaining: 0, retryAfter }
+    }
+
+    return { allowed: true, remaining: Math.max(0, limit - count) }
+  } catch (error) {
+    // SEC-047: If failClosed is true, reject on infrastructure errors too
+    safeLogError('[rate-limit]', error)
+    if (options.failClosed) {
+      return { allowed: false, remaining: 0, retryAfter: 60 }
+    }
+    // Otherwise fail open — don't block legitimate traffic
     return { allowed: true, remaining: limit - 1 }
   }
-
-  if (existing.count >= limit) {
-    const retryAfter = Math.ceil((existing.resetAt - now) / 1000)
-    return { allowed: false, remaining: 0, retryAfter }
-  }
-
-  existing.count += 1
-  return { allowed: true, remaining: limit - existing.count }
 }
 
 /**
@@ -83,31 +112,34 @@ export function rateLimitResponse(retryAfter: number): Response {
 }
 
 /**
- * Extract the best available IP address from a Next.js request.
- * Handles Vercel edge network headers and standard proxy headers.
- * Falls back through x-forwarded-for → x-real-ip → x-vercel-forwarded-for → "unknown".
+ * Extract the best available IP address from a Next.js request (SEC-021).
+ *
+ * Only trusts X-Forwarded-For when running on Vercel (which overwrites the
+ * header at the edge). Outside Vercel, returns 'unknown' to prevent IP
+ * spoofing via a client-supplied X-Forwarded-For header.
  */
 export function getClientIp(request: Request): string {
-  // Vercel and most CDNs use x-forwarded-for with the original client IP first
-  const forwarded = request.headers.get('x-forwarded-for')
-  if (forwarded) {
-    // x-forwarded-for may contain multiple IPs (client, proxy1, proxy2, ...)
-    // The original client IP is always first
-    return forwarded.split(',')[0].trim()
+  // SEC-021: Only trust X-Forwarded-For on Vercel, which overwrites it at the
+  // edge. Outside Vercel, a client can spoof this header.
+  if (process.env.VERCEL) {
+    const forwarded = request.headers.get('x-forwarded-for')
+    if (forwarded) {
+      // x-forwarded-for may contain multiple IPs (client, proxy1, proxy2, ...)
+      // The original client IP is always first
+      return forwarded.split(',')[0].trim()
+    }
+
+    // Some Vercel regions use this header
+    const vercelForwarded = request.headers.get('x-vercel-forwarded-for')
+    if (vercelForwarded) {
+      return vercelForwarded.split(',')[0].trim()
+    }
   }
 
-  // Some Vercel regions use this header
-  const vercelForwarded = request.headers.get('x-vercel-forwarded-for')
-  if (vercelForwarded) {
-    return vercelForwarded.split(',')[0].trim()
+  // Non-Vercel: refuse to trust X-Forwarded-For to prevent spoofing
+  if (!process.env.VERCEL) {
+    console.warn('[rate-limit] getClientIp called outside Vercel — using unknown')
   }
 
-  // Fallback to x-real-ip (used by some proxies)
-  const realIp = request.headers.get('x-real-ip')
-  if (realIp) return realIp
-
-  // Last resort - check if we're in a Vercel serverless function
-  // Note: Vercel provides the IP in x-forwarded-for, so "unknown" indicates
-  // a configuration issue if running on Vercel
   return 'unknown'
 }

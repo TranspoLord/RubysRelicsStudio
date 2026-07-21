@@ -6,20 +6,9 @@ drop policy if exists "authenticated_read_orders" on exp_orders;
 drop policy if exists "public_read_orders" on exp_orders;
 
 -- Strict ownership policies on exp_orders
--- Users can SELECT their own orders
-create policy "users_select_own_orders"
-  on exp_orders
-  for select
-  to authenticated
-  using (
-    customer_id = auth.uid()
-    or (
-      select 1 
-      from exp_customer_sessions cs 
-      where cs.customer_id = exp_orders.customer_id 
-        and cs.session_token = current_setting('request.jwt.claim.session_token', true)
-    ) is not null
-  );
+-- SEC-027: Removed dead JWT claim branch. All customer reads go through
+-- the service role via API routes — no direct customer DB access.
+-- (customer_id column was dropped in migration 042.)
 
 -- Users can UPDATE their own pending orders
 create policy "users_update_own_orders"

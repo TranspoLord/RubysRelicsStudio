@@ -7,12 +7,14 @@ import {
   getCustomOrderIntakeSettings,
   getOperationalNotificationSettings,
 } from '@/lib/storefront-settings'
+import { safeHtmlEscape } from '@/lib/validate'
 
 interface FileMeta {
   name?: unknown
   size?: unknown
   type?: unknown
   path?: unknown
+  uploadToken?: unknown
 }
 
 const MAX_SINGLE_FILE_BYTES = 15 * 1024 * 1024
@@ -61,7 +63,7 @@ const UPLOAD_PATH_RE = /^[0-9a-f-]{36}\/[a-z0-9._-]{1,120}$/
 function parseFiles(
   value: unknown,
   maxFiles: number
-): { files: Array<{ name: string; size: number; type: string; path?: string }>; error?: string } {
+): { files: Array<{ name: string; size: number; type: string; path?: string; uploadToken?: string }>; error?: string } {
   if (!Array.isArray(value)) return { files: [] }
 
   if (value.length > maxFiles) {
@@ -79,7 +81,8 @@ function parseFiles(
       const type = asTrimmedString(file?.type, 120)
       const rawPath = asTrimmedString(file?.path, 160)
       const path = UPLOAD_PATH_RE.test(rawPath) ? rawPath : undefined
-      return { name, size, type, ...(path ? { path } : {}) }
+      const uploadToken = asTrimmedString(file?.uploadToken, 64) || undefined
+      return { name, size, type, ...(path ? { path } : {}), ...(uploadToken ? { uploadToken } : {}) }
     })
     .filter((file) => file.name.length > 0)
 
@@ -150,13 +153,13 @@ async function sendAdminNotificationEmail(input: {
     subject: `New custom request: ${input.itemType} (${input.requestId.slice(0, 8)})`,
     html: `
       <h2>New Custom Request</h2>
-      <p><strong>ID:</strong> ${input.requestId}</p>
-      <p><strong>Name:</strong> ${input.customerName}</p>
-      <p><strong>Email:</strong> ${input.customerEmail}</p>
-      <p><strong>Item Type:</strong> ${input.itemType}</p>
-      <p><strong>Quantity:</strong> ${input.quantity}</p>
+      <p><strong>ID:</strong> ${safeHtmlEscape(input.requestId)}</p>
+      <p><strong>Name:</strong> ${safeHtmlEscape(input.customerName)}</p>
+      <p><strong>Email:</strong> ${safeHtmlEscape(input.customerEmail)}</p>
+      <p><strong>Item Type:</strong> ${safeHtmlEscape(input.itemType)}</p>
+      <p><strong>Quantity:</strong> ${safeHtmlEscape(String(input.quantity))}</p>
       <p><strong>Description:</strong></p>
-      <p>${input.description.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
+      <p>${safeHtmlEscape(input.description)}</p>
     `,
   })
 }
@@ -164,7 +167,7 @@ async function sendAdminNotificationEmail(input: {
 export async function POST(request: Request) {
   try {
     const ip = getClientIp(request)
-    const rl = rateLimit(`intake:${ip}`, 5, 60 * 60 * 1000)
+    const rl = await rateLimit(`intake:${ip}`, 5, 60 * 60 * 1000)
     if (!rl.allowed) return rateLimitResponse(rl.retryAfter!)
 
     const body = (await request.json()) as CustomOrderBody
@@ -204,6 +207,32 @@ export async function POST(request: Request) {
     }
 
     const supabase = getSupabaseAdmin()
+
+    // SEC-018: Verify artwork ownership — each file with a path must have a
+    // valid uploadToken that matches a row in exp_artwork_uploads.
+    for (const file of files) {
+      if (file.path && file.uploadToken) {
+        const { data: uploadRecord, error: uploadError } = await supabase
+          .from('exp_artwork_uploads')
+          .select('id, file_path')
+          .eq('upload_token', file.uploadToken)
+          .eq('file_path', file.path)
+          .gt('expires_at', new Date().toISOString())
+          .maybeSingle()
+
+        if (uploadError || !uploadRecord) {
+          return NextResponse.json(
+            { error: 'Artwork ownership verification failed. Please re-upload your files.' },
+            { status: 403 }
+          )
+        }
+      } else if (file.path && !file.uploadToken) {
+        return NextResponse.json(
+          { error: 'Missing upload token for artwork file.' },
+          { status: 403 }
+        )
+      }
+    }
 
     const { data, error } = await supabase
       .from('exp_custom_requests')

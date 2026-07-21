@@ -9,6 +9,7 @@ import {
   type ProductOptionType,
 } from '@/lib/catalog/option-templates'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
+import { sanitizeSearchQuery } from '@/lib/validate'
 
 type CatalogAction = 'archive' | 'restore' | 'publish' | 'deactivate' | 'delete'
 
@@ -291,7 +292,8 @@ export async function GET(request: Request) {
     if (!auth.ok) return auth.response
 
     const url = new URL(request.url)
-    const query = asString(url.searchParams.get('q'), 80)
+    // SEC-047: Use sanitizeSearchQuery to strip PostgREST filter characters
+    const query = sanitizeSearchQuery(url.searchParams.get('q')) ?? ''
     const status = normalizeStatusFilter(asString(url.searchParams.get('status'), 20))
     const categoryKey = asString(url.searchParams.get('category'), 120)
 

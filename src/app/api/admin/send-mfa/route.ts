@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getResend } from '@/lib/resend/client'
 import { createMFACode } from '@/lib/admin/mfa-store'
-import { rateLimit } from '@/lib/rate-limit'
-import { requireAdminApiSession } from '@/lib/admin/auth'
+import { getClientIp, rateLimit } from '@/lib/rate-limit'
+import { getExpectedAdminKey } from '@/lib/admin/auth'
+import { ADMIN_COOKIE_NAME, verifyAdminSessionToken } from '@/lib/admin/session'
+import { isProd } from '@/lib/security/env'
 
 // Rate limit: 3 send requests per 10 minutes per session
 const MFA_RATE_LIMIT = 3
@@ -10,16 +12,30 @@ const MFA_RATE_WINDOW_MS = 10 * 60 * 1000
 
 export async function POST(request: NextRequest) {
   try {
-    // Require admin session - must have logged in with admin key first
-    const sessionCheck = await requireAdminApiSession(request)
-    if (!sessionCheck.ok) {
-      return sessionCheck.response
+    // SEC-047: Verify the admin session WITHOUT MFA requirement.
+    // The user is requesting an MFA code, so they have a valid session
+    // but haven't verified MFA yet (mfaFlag='0').
+    const adminKey = getExpectedAdminKey()
+    const sessionToken = request.headers
+      .get('cookie')
+      ?.split(';')
+      .map((e) => e.trim())
+      .find((e) => e.startsWith(`${ADMIN_COOKIE_NAME}=`))
+      ?.split('=')
+      .slice(1)
+      .join('=')
+
+    if (!(await verifyAdminSessionToken(sessionToken, adminKey, false))) {
+      return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 })
     }
 
-    const { clientIp } = sessionCheck.context
+    const clientIp = getClientIp(request)
 
     // Rate limit by IP to prevent abuse (but verification uses challenge token, not IP)
-    const rl = rateLimit(`admin-mfa-send:${clientIp}`, MFA_RATE_LIMIT, MFA_RATE_WINDOW_MS)
+    // SEC-047: failClosed=true so brute-force is blocked if the DB is down
+    const rl = await rateLimit(`admin-mfa-send:${clientIp}`, MFA_RATE_LIMIT, MFA_RATE_WINDOW_MS, {
+      failClosed: true,
+    })
 
     if (!rl.allowed) {
       const retryAfter = rl.retryAfter ?? 600
@@ -35,13 +51,6 @@ export async function POST(request: NextRequest) {
       console.error('[MFA Send] ADMIN_MFA_EMAIL not configured')
       return NextResponse.json({ error: 'MFA not configured' }, { status: 500 })
     }
-
-    // Log environment info for debugging (helps diagnose Vercel issues)
-    console.log('[MFA Send] Environment check:', {
-      hasServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-      appEnv: process.env.NEXT_PUBLIC_APP_ENV,
-      ip: clientIp,
-    })
 
     // Read optional device fingerprint from request body
     const body = await request.json().catch(() => ({}))
@@ -80,7 +89,7 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json({ success: true, message: 'Verification code sent' })
     response.cookies.set('admin_mfa_challenge', challengeToken, {
       httpOnly: true,
-      secure: process.env.NEXT_PUBLIC_APP_ENV === 'production',
+      secure: isProd(), // SEC-019: shared isProd() helper
       sameSite: 'strict',
       maxAge: 10 * 60, // 10 minutes (matches code expiry)
       path: '/',

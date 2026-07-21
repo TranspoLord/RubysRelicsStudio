@@ -17,7 +17,6 @@ import Button from '@mui/material/Button'
 import MenuIcon from '@mui/icons-material/Menu'
 import CloseIcon from '@mui/icons-material/Close'
 import ShoppingCartOutlinedIcon from '@mui/icons-material/ShoppingCartOutlined'
-import AccountCircleOutlinedIcon from '@mui/icons-material/AccountCircleOutlined'
 import SearchIcon from '@mui/icons-material/Search'
 import Link from 'next/link'
 import { alpha } from '@mui/material/styles'
@@ -237,16 +236,6 @@ export function Header({ cartItemCount = 0, currentPath = '/' }: HeaderProps) {
             >
               <ShoppingCartOutlinedIcon fontSize="small" />
             </Badge>
-          </IconButton>
-
-          <IconButton
-            aria-label="Account"
-            component={Link}
-            href="/account"
-            size="medium"
-            sx={{ color: 'text.secondary', '&:hover': { color: 'primary.main' } }}
-          >
-            <AccountCircleOutlinedIcon fontSize="small" />
           </IconButton>
 
           <IconButton

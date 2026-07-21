@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
+import { createHmac, timingSafeEqual } from 'node:crypto'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { getResend } from '@/lib/resend/client'
+import { safeLogError } from '@/lib/security/logger'
+import { safeHtmlEscape } from '@/lib/validate'
 
 // Shippo webhook handler for tracking updates
 // Configure this URL in Shippo dashboard: https://yourdomain.com/api/shippo/webhook
@@ -24,28 +27,46 @@ interface ShippoWebhookPayload {
 }
 
 export async function POST(request: Request) {
+  // SEC-004: Fail-closed — SHIPPO_WEBHOOK_SECRET must be configured
+  const webhookSecret = process.env.SHIPPO_WEBHOOK_SECRET
+  if (!webhookSecret) {
+    safeLogError('[shippo:webhook]', 'SHIPPO_WEBHOOK_SECRET not configured')
+    return new NextResponse('Webhook not configured', { status: 500 })
+  }
+
+  // SEC-004: Fail-closed — signature header must be present
+  const signature = request.headers.get('x-shippo-signature')
+  if (!signature) {
+    safeLogError('[shippo:webhook]', 'Missing x-shippo-signature header')
+    return new NextResponse('Unauthorized', { status: 401 })
+  }
+
+  // Read the raw body for signature verification
+  const body = await request.text()
+
+  // SEC-004: Verify HMAC signature using timing-safe comparison
+  const expectedSignature = createHmac('sha256', webhookSecret)
+    .update(body)
+    .digest('hex')
+
+  // SEC-004: Use crypto.timingSafeEqual instead of !==
+  const actualBuf = Buffer.from(signature)
+  const expectedBuf = Buffer.from(expectedSignature)
+
+  if (actualBuf.length !== expectedBuf.length) {
+    safeLogError('[shippo:webhook]', 'Invalid signature (length mismatch)')
+    return new NextResponse('Unauthorized', { status: 401 })
+  }
+
+  if (!timingSafeEqual(actualBuf, expectedBuf)) {
+    safeLogError('[shippo:webhook]', 'Invalid signature')
+    return new NextResponse('Unauthorized', { status: 401 })
+  }
+
+  // Signature verified — safe to process the payload
   try {
-    // Verify webhook signature (optional but recommended)
-    const signature = request.headers.get('x-shippo-signature')
-    const webhookSecret = process.env.SHIPPO_WEBHOOK_SECRET
+    const payload = JSON.parse(body) as ShippoWebhookPayload
 
-    if (webhookSecret && signature) {
-      // Verify HMAC signature
-      const crypto = await import('node:crypto')
-      const body = await request.text()
-      const expectedSignature = crypto
-        .createHmac('sha256', webhookSecret)
-        .update(body)
-        .digest('hex')
-
-      if (signature !== expectedSignature) {
-        console.error('[shippo:webhook] Invalid signature')
-        return new NextResponse('Unauthorized', { status: 401 })
-      }
-    }
-
-    const payload = (await request.json()) as ShippoWebhookPayload
-    
     // Handle tracking updates
     if (payload.event === 'track_updated' || payload.event === 'track_created') {
       const { tracking_number, carrier, status } = payload.data
@@ -67,13 +88,13 @@ export async function POST(request: Request) {
 
       // Update order shipping status
       const updateData: Record<string, unknown> = {}
-      
+
       if (status.toLowerCase().includes('deliver')) {
         updateData.status = 'delivered'
       } else if (status.toLowerCase().includes('ship')) {
         updateData.status = 'shipped'
       }
-      
+
       updateData.updated_at = new Date().toISOString()
 
       if (Object.keys(updateData).length > 1) {
@@ -110,27 +131,27 @@ export async function POST(request: Request) {
             subject: 'Your order has been delivered!',
             html: `
               <h2>Order Delivered</h2>
-              <p>Your order #${order.id} has been delivered via ${carrier.toUpperCase()} tracking #${tracking_number}.</p>
-              <p><a href="https://yourdomain.com/orders/${order.id}">View order details</a></p>
+              <p>Your order #${safeHtmlEscape(order.id)} has been delivered via ${safeHtmlEscape(carrier.toUpperCase())} tracking #${safeHtmlEscape(tracking_number)}.</p>
+              <p><a href="https://yourdomain.com/orders/${encodeURIComponent(order.id)}">View order details</a></p>
             `,
           })
         } catch (emailError) {
-          console.error('[shippo:webhook] Failed to send email:', emailError)
+          safeLogError('[shippo:webhook] Failed to send email:', emailError)
         }
       }
     }
 
     return new NextResponse('OK', { status: 200 })
   } catch (error) {
-    console.error('[shippo:webhook]', error)
+    safeLogError('[shippo:webhook]', error)
     return new NextResponse('Error', { status: 500 })
   }
 }
 
 // GET endpoint for webhook verification
 export async function GET() {
-  return NextResponse.json({ 
+  return NextResponse.json({
     message: 'Shippo webhook endpoint. Configure in Shippo dashboard.',
-    timestamp: new Date().toISOString() 
+    timestamp: new Date().toISOString()
   })
 }

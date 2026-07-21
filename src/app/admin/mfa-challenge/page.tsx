@@ -18,11 +18,9 @@ export default function MFAChallengePage() {
   const [fingerprintHash, setFingerprintHash] = useState<string | null>(null)
 
   useEffect(() => {
-    // Check if admin has completed password login
-    const isLoggedIn = sessionStorage.getItem('admin_authenticated') === 'true'
-    if (!isLoggedIn) {
-      router.push('/admin/login')
-    }
+    // SEC-047: Removed client-side admin_authenticated sessionStorage check.
+    // Server-side session verification (middleware + requireAdminPageSessionOrRedirect)
+    // is the only auth check. The server will redirect to /admin/login if needed.
   }, [router])
 
   // Collect device fingerprint on mount
@@ -99,11 +97,13 @@ export default function MFAChallengePage() {
         throw new Error(data.error || 'Verification failed')
       }
 
-      // Mark MFA as verified in session
-      sessionStorage.setItem('admin_mfa_verified', 'true')
+      // SEC-047: Removed client-side sessionStorage.setItem('admin_mfa_verified').
+      // The server now re-issues the session token with mfaVerified=true bound
+      // cryptographically. No client-side flag is needed.
 
       // Redirect to the admin panel
       router.push('/admin')
+      router.refresh()
     } catch (err: any) {
       setError(err.message ?? 'Invalid verification code')
     } finally {

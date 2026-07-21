@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { randomBytes } from 'node:crypto'
+import DOMPurify from 'isomorphic-dompurify'
 
 import { requireAdminApiSession } from '@/lib/admin/auth'
 import { writeAdminAuditLog } from '@/lib/admin/audit'
@@ -58,22 +60,22 @@ export async function POST(request: Request) {
       )
     }
 
-    // SVG files must not contain embedded scripts (stored XSS via direct URL access)
+    // SEC-009: SVG files must be sanitized via DOMPurify server-side.
+    // This strips onerror=, onload=, <foreignObject>, <script>, event-handler
+    // attributes, javascript: URIs, data:text/html payloads, etc.
     let uploadBody: File | Blob = file
     if (file.type === 'image/svg+xml') {
       const text = await file.text()
-      if (/<script[\s>]/i.test(text) || /javascript\s*:/i.test(text)) {
-        return NextResponse.json(
-          { error: 'SVG file contains disallowed script content.' },
-          { status: 400 }
-        )
-      }
-      // Re-wrap the validated text so we control what is uploaded
-      uploadBody = new Blob([text], { type: 'image/svg+xml' })
+      const sanitized = DOMPurify.sanitize(text, {
+        USE_PROFILES: { svg: true, svgFilters: true },
+      })
+      uploadBody = new Blob([sanitized], { type: 'image/svg+xml' })
     }
 
+    // SEC-022: Use crypto.randomBytes for filename uniqueness (not Math.random)
     const originalName = sanitizeFileName(file.name || 'upload')
-    const path = `products/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${originalName}`
+    const uniqueSuffix = randomBytes(8).toString('hex')
+    const path = `products/${Date.now()}-${uniqueSuffix}-${originalName}`
 
     const supabase = getSupabaseAdmin()
     const { error: uploadError } = await supabase.storage

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { rateLimit, rateLimitResponse, getClientIp } from '@/lib/rate-limit'
@@ -68,7 +68,7 @@ async function verifyMagicBytes(file: File): Promise<boolean> {
  */
 export async function POST(request: Request) {
   const ip = getClientIp(request)
-  const rl = rateLimit(`artwork-upload:${ip}`, 20, 60 * 60 * 1000)
+  const rl = await rateLimit(`artwork-upload:${ip}`, 20, 60 * 60 * 1000)
   if (!rl.allowed) return rateLimitResponse(rl.retryAfter!)
 
   let formData: FormData
@@ -118,6 +118,9 @@ export async function POST(request: Request) {
   const folder = randomUUID()
   const path = `${folder}/${sanitizedName}`
 
+  // SEC-018: Generate a per-session upload token and bind it to the file path
+  const uploadToken = randomBytes(24).toString('hex')
+
   const supabase = getSupabaseAdmin()
   const { error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(path, file, {
     contentType: file.type,
@@ -130,8 +133,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Upload failed. Please try again.' }, { status: 500 })
   }
 
+  // SEC-018: Store the token↔path binding for verification at intake time
+  const { error: tokenError } = await supabase
+    .from('exp_artwork_uploads')
+    .insert({
+      upload_token: uploadToken,
+      file_path: path,
+    })
+
+  if (tokenError) {
+    // Non-fatal — log but don't fail the upload
+    console.error('[custom-orders:upload:token]', tokenError.message)
+  }
+
   return NextResponse.json(
-    { path, name: file.name, size: file.size, type: file.type },
+    { path, uploadToken, name: file.name, size: file.size, type: file.type },
     { status: 201 }
   )
 }

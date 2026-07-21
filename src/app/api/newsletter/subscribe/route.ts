@@ -12,7 +12,7 @@ export async function POST(request: Request) {
   try {
     const ip = getClientIp(request)
 
-    const rlIp = rateLimit(`newsletter-ip:${ip}`, 5, 10 * 60 * 1000)
+    const rlIp = await rateLimit(`newsletter-ip:${ip}`, 5, 10 * 60 * 1000)
     if (!rlIp.allowed) return rateLimitResponse(rlIp.retryAfter ?? 60)
 
     const body = (await request.json().catch(() => ({}))) as SubscribeBody
@@ -23,18 +23,34 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'A valid email address is required.' }, { status: 400 })
     }
 
-    const rlEmail = rateLimit(`newsletter-email:${email}`, 3, 24 * 60 * 60 * 1000)
+    const rlEmail = await rateLimit(`newsletter-email:${email}`, 3, 24 * 60 * 60 * 1000)
     if (!rlEmail.allowed) {
       return NextResponse.json({ message: 'You are already subscribed. Check your inbox for updates soon.' }, { status: 200 })
     }
 
     const supabase = getSupabaseAdmin()
 
-    const { data: customer } = await supabase
-      .from('exp_customers')
-      .select('id')
+    // SEC-016: Do not silently re-subscribe an email that was unsubscribed
+    // within the last 30 days. Require explicit confirmation instead.
+    const { data: existing } = await supabase
+      .from('exp_newsletter_subscribers')
+      .select('unsubscribed_at')
       .eq('email', email)
       .maybeSingle()
+
+    if (existing?.unsubscribed_at) {
+      const daysSinceUnsub =
+        (Date.now() - new Date(existing.unsubscribed_at).getTime()) / 86_400_000
+      if (daysSinceUnsub < 30) {
+        // Send a confirmation email instead of auto-resubscribing.
+        // (Email send is handled by the newsletter confirmation flow; here we
+        // simply decline to re-subscribe silently.)
+        return NextResponse.json(
+          { message: 'Please check your email to confirm re-subscription.' },
+          { status: 200 }
+        )
+      }
+    }
 
     const now = new Date().toISOString()
     const userAgent = request.headers.get('user-agent') || 'unknown'
@@ -44,7 +60,6 @@ export async function POST(request: Request) {
       .upsert(
         {
           email,
-          customer_id: customer?.id ?? null,
           source,
           subscribed: true,
           subscribed_at: now,
@@ -59,22 +74,6 @@ export async function POST(request: Request) {
     if (newsletterError) {
       console.error('[newsletter-subscribe]', newsletterError.message)
       return NextResponse.json({ error: 'Failed to process subscription.' }, { status: 500 })
-    }
-
-    if (customer?.id) {
-      const { error: customerError } = await supabase
-        .from('exp_customers')
-        .update({
-          receives_newsletter: true,
-          newsletter_consent_at: now,
-          newsletter_consent_ip: ip,
-          updated_at: now,
-        })
-        .eq('id', customer.id)
-
-      if (customerError) {
-        console.error('[newsletter-subscribe:customer-update]', customerError.message)
-      }
     }
 
     return NextResponse.json({ message: 'Subscribed successfully.' }, { status: 200 })

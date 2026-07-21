@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { requireAdminApiSession } from '@/lib/admin/auth'
+import { isProd } from '@/lib/security/env'
 
 interface DebugResults {
   environment: {
     hasSupabaseUrl: boolean
     hasAnonKey: boolean
     hasServiceRoleKey: boolean
-    serviceRoleKeyPrefix: string
     appEnv: string | undefined
   }
   tests: {
@@ -23,8 +23,19 @@ interface DebugResults {
 /**
  * Debug endpoint to test Supabase MFA table connectivity.
  * Helps diagnose Vercel deployment issues.
+ *
+ * SEC-047: This endpoint is blocked in production to prevent exposing
+ * internal state (table counts, error messages, env var presence).
  */
 export async function GET(request: NextRequest) {
+  // SEC-047: Block in production — debug info should not be exposed
+  if (isProd()) {
+    return NextResponse.json(
+      { error: 'Debug endpoint not available in production.' },
+      { status: 403 }
+    )
+  }
+
   // Require admin session to access this endpoint
   const sessionCheck = await requireAdminApiSession(request)
   if (!sessionCheck.ok) {
@@ -35,8 +46,7 @@ export async function GET(request: NextRequest) {
     environment: {
       hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
       hasAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      hasServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-      serviceRoleKeyPrefix: process.env.SUPABASE_SERVICE_ROLE_KEY?.substring(0, 20) ?? 'missing',
+      hasServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY, // SEC-028: boolean only, no key prefix
       appEnv: process.env.NEXT_PUBLIC_APP_ENV,
     },
     tests: {},

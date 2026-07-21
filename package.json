@@ -11,8 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:security:rls": "node ./scripts/test-rls-lockdown.mjs",
-    "test:security": "npm run test:security:rls",
-    "test:square": "node ./scripts/test-square-checkout.mjs"
+    "test:security": "npm run test:security:rls && npm run audit",
+    "test:square": "node ./scripts/test-square-checkout.mjs",
+    "audit": "npm audit --audit-level=high"
   },
   "dependencies": {
     "@emotion/cache": "^11.14.0",
@@ -23,6 +24,8 @@
     "@supabase/supabase-js": "^2.49.0",
     "@vercel/analytics": "^1.4.0",
     "bcryptjs": "^3.0.3",
+    "codegraph": "^1.0.0",
+    "isomorphic-dompurify": "^3.19.0",
     "konva": "^10.3.0",
     "next": "^16.2.10",
     "react": "^19.0.0",

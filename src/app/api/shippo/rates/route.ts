@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { calculateShippingRates } from '@/lib/shippo/client'
 import { getShippoSettings } from '@/lib/shippo/settings'
+import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 
 interface RatesRequest {
   address: {
@@ -22,6 +23,11 @@ function asString(value: unknown, maxLen: number): string {
 
 export async function POST(request: Request) {
   try {
+    // SEC-010: Rate limit Shippo rates endpoint — 20 requests/minute per IP
+    const ip = getClientIp(request)
+    const rl = await rateLimit(`shippo-rates:${ip}`, 20, 60_000)
+    if (!rl.allowed) return rateLimitResponse(rl.retryAfter ?? 60)
+
     const settings = await getShippoSettings()
     
     if (!settings.enabled) {

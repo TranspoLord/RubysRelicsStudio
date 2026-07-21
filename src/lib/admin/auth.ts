@@ -52,7 +52,8 @@ export async function requireAdminApiSession(
     const adminKey = getExpectedAdminKey()
     const sessionToken = extractAdminSessionToken(request.headers.get('cookie'))
 
-    if (!verifyAdminSessionToken(sessionToken, adminKey)) {
+    // SEC-047: requireMfa=true (default) — the token must have mfaFlag='1'
+    if (!(await verifyAdminSessionToken(sessionToken, adminKey, true))) {
       return {
         ok: false,
         response: NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 }),
@@ -62,7 +63,7 @@ export async function requireAdminApiSession(
     const clientIp = getClientIp(request)
 
     if (rateLimitOptions) {
-      const result = rateLimit(
+      const result = await rateLimit(
         `${rateLimitOptions.key}:${clientIp}`,
         rateLimitOptions.maxRequests,
         rateLimitOptions.windowMs
@@ -97,20 +98,26 @@ export async function requireAdminPageSessionOrRedirect(nextPath = '/admin', req
   const adminKey = getExpectedAdminKey()
   const cookieStore = await cookies()
   const token = cookieStore.get(ADMIN_COOKIE_NAME)?.value
-  const mfaVerified = cookieStore.get('admin_mfa_verified')?.value === 'true'
 
-  if (!verifyAdminSessionToken(token, adminKey)) {
+  // SEC-047: MFA verification is now cryptographically bound to the session token.
+  // verifyAdminSessionToken with requireMfa=true rejects tokens without mfaFlag='1'.
+  // No separate admin_mfa_verified cookie is needed.
+  if (!await verifyAdminSessionToken(token, adminKey, requireMFA)) {
+    // If MFA is required and the token doesn't have it, redirect to MFA challenge.
+    // Otherwise redirect to login.
+    if (requireMFA) {
+      // Check if the token is valid without MFA to determine the right redirect
+      const validWithoutMfa = await verifyAdminSessionToken(token, adminKey, false)
+      if (validWithoutMfa) {
+        redirect(`/admin/mfa-challenge?next=${encodeURIComponent(nextPath)}`)
+      }
+    }
     redirect(`/admin/login?next=${encodeURIComponent(nextPath)}`)
-  }
-
-  // Check MFA requirement
-  if (requireMFA && !mfaVerified) {
-    redirect(`/admin/mfa-challenge?next=${encodeURIComponent(nextPath)}`)
   }
 
   return {
     adminKey,
     token,
-    mfa: mfaVerified,
+    mfa: requireMFA,
   }
 }

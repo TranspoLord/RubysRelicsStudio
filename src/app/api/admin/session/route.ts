@@ -7,6 +7,8 @@ import {
 } from '@/lib/admin/session'
 import { extractAdminSessionToken, getExpectedAdminKey, hasValidAdminKey } from '@/lib/admin/auth'
 import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
+import { isProd } from '@/lib/security/env'
+import { validateCsrfOrigin } from '@/lib/security/csrf'
 
 interface SessionBody {
   key?: unknown
@@ -18,6 +20,12 @@ function asTrimmedString(value: unknown, maxLen: number): string {
 }
 
 export async function GET(request: Request) {
+  // SEC-023: Require same-origin check on the GET endpoint to prevent
+  // cross-origin admin-cookie validity probing.
+  if (!validateCsrfOrigin(request)) {
+    return NextResponse.json({ error: 'Cross-origin request blocked.' }, { status: 403 })
+  }
+
   let expectedKey: string
   try {
     expectedKey = getExpectedAdminKey()
@@ -27,7 +35,9 @@ export async function GET(request: Request) {
 
   const sessionToken = extractAdminSessionToken(request.headers.get('cookie'))
 
-  const authenticated = verifyAdminSessionToken(sessionToken, expectedKey)
+  // SEC-047: Use requireMfa=false for the GET status check — we just want to
+  // know if the session is valid, not whether MFA is completed.
+  const authenticated = await verifyAdminSessionToken(sessionToken, expectedKey, false)
   return NextResponse.json({ authenticated }, { status: 200 })
 }
 
@@ -40,7 +50,8 @@ export async function POST(request: Request) {
   }
 
   const ip = getClientIp(request)
-  const rl = rateLimit(`admin-login:${ip}`, 8, 15 * 60 * 1000)
+  // SEC-047: failClosed=true so brute-force is blocked if the DB is down
+  const rl = await rateLimit(`admin-login:${ip}`, 8, 15 * 60 * 1000, { failClosed: true })
   if (!rl.allowed) {
     return rateLimitResponse(rl.retryAfter ?? 60)
   }
@@ -54,12 +65,18 @@ export async function POST(request: Request) {
 
   const response = NextResponse.json({ ok: true }, { status: 200 })
   const maxAge = await getAdminSessionMaxAgeSeconds()
+  // SEC-047: New sessions are created with mfaVerified=false (default).
+  // The user must complete MFA to get a token with mfaVerified=true.
+  const sessionToken = await createAdminSessionToken(expectedKey, maxAge, {
+    ipAddress: ip,
+    userAgent: request.headers.get('user-agent') || undefined,
+  })
   response.cookies.set({
     name: ADMIN_COOKIE_NAME,
-    value: createAdminSessionToken(expectedKey, maxAge),
+    value: sessionToken,
     httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict', // SEC-020: strict, not lax
+    secure: isProd(),   // SEC-019: shared isProd() helper
     path: '/',
     maxAge,
   })
@@ -73,8 +90,8 @@ export async function DELETE() {
     name: ADMIN_COOKIE_NAME,
     value: '',
     httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict', // SEC-020: strict, not lax
+    secure: isProd(),   // SEC-019: shared isProd() helper
     path: '/',
     maxAge: 0,
   })

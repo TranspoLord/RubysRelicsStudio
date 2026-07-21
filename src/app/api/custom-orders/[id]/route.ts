@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server'
+import { randomUUID } from 'node:crypto'
 import { requireAdminApiSession } from '@/lib/admin/auth'
 import { writeAdminAuditLog } from '@/lib/admin/audit'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { getEmailSenderAddress, getResend } from '@/lib/resend/client'
+import { createSquareCheckout } from '@/lib/square/client'
+import { safeHtmlEscape } from '@/lib/validate'
 
 interface RequestContext {
   params: Promise<{ id: string }>
@@ -54,39 +57,54 @@ async function sendQuoteEmail(input: {
     subject: `Your custom quote is ready (${input.requestId.slice(0, 8)})`,
     html: `
       <h2>Your Quote Is Ready</h2>
-      <p><strong>Request ID:</strong> ${input.requestId}</p>
-      <p><strong>Item type:</strong> ${input.itemType}</p>
-      <p><strong>Quoted total:</strong> $${input.quoteAmount.toFixed(2)}</p>
+      <p><strong>Request ID:</strong> ${safeHtmlEscape(input.requestId)}</p>
+      <p><strong>Item type:</strong> ${safeHtmlEscape(input.itemType)}</p>
+      <p><strong>Quoted total:</strong> $${safeHtmlEscape(input.quoteAmount.toFixed(2))}</p>
       <p>
-        <a href="${input.paymentLinkUrl}">Pay securely via Square</a>
+        <a href="${safeHtmlEscape(input.paymentLinkUrl)}">Pay securely via Square</a>
       </p>
       <p>
-        Track your request status: <a href="${input.statusUrl}">${input.statusUrl}</a>
+        Track your request status: <a href="${safeHtmlEscape(input.statusUrl)}">${safeHtmlEscape(input.statusUrl)}</a>
       </p>
-      ${input.note ? `<p><strong>Note from the studio:</strong> ${input.note}</p>` : ''}
+      ${input.note ? `<p><strong>Note from the studio:</strong> ${safeHtmlEscape(input.note)}</p>` : ''}
     `,
   })
 }
 
-// Create a Square payment URL for custom quote
-function createSquareQuotePaymentUrl(input: {
+/**
+ * SEC-047: Create a real Square payment link for a custom quote.
+ * Previously this constructed a URL with the amount as a query parameter,
+ * which could be manipulated by the customer to pay less than the quoted amount.
+ * Now we create a proper Square payment link via the API so the amount is
+ * fixed server-side and cannot be modified.
+ */
+async function createSquareQuotePaymentLink(input: {
   requestId: string
   itemType: string
   quoteAmount: number
-  origin: string
-}) {
+}): Promise<{ paymentLinkId: string; paymentLinkUrl: string }> {
   const amountCents = Math.round(input.quoteAmount * 100)
 
-  // Create a checkout URL using Square's Payment API (hosted checkout)
-  const checkoutUrl = `${input.origin}/api/square/checkout`
-
-  // Store quote details - Square will handle the payment
-  // In production, you'd create a proper payment link via Square's API
-  // For now, we'll just use the checkout page
+  const checkoutResponse = await createSquareCheckout({
+    lineItems: [{
+      name: `Custom Order: ${input.itemType}`,
+      quantity: '1',
+      base_price_money: {
+        amount: amountCents,
+        currency: 'USD',
+      },
+    }],
+    idempotencyKey: randomUUID(),
+    note: `Custom request ${input.requestId}`,
+    metadata: {
+      request_id: input.requestId,
+      custom_order: 'true',
+    },
+  })
 
   return {
-    paymentLinkId: `quote_${input.requestId}`,
-    paymentLinkUrl: `${checkoutUrl}?amount=${amountCents}&requestId=${input.requestId}&itemType=${encodeURIComponent(input.itemType)}`,
+    paymentLinkId: checkoutResponse.payment_link.id,
+    paymentLinkUrl: checkoutResponse.payment_link.url,
   }
 }
 
@@ -183,12 +201,21 @@ export async function PATCH(request: Request, context: RequestContext) {
       }
 
       const origin = new URL(request.url).origin
-      const paymentLink = createSquareQuotePaymentUrl({
-        requestId: requestRow.id,
-        itemType: requestRow.item_type,
-        quoteAmount,
-        origin,
-      })
+
+      // SEC-047: Create a real Square payment link via the API.
+      // The amount is fixed server-side and cannot be modified by the customer.
+      let paymentLink: { paymentLinkId: string; paymentLinkUrl: string }
+      try {
+        paymentLink = await createSquareQuotePaymentLink({
+          requestId: requestRow.id,
+          itemType: requestRow.item_type,
+          quoteAmount,
+        })
+      } catch (squareError) {
+        console.error('[custom-orders:id:send-quote:square]', squareError)
+        await writeAdminAuditLog({ action: 'custom_request.send_quote', entityType: 'custom_request', entityId: requestRow.id, route: `/api/custom-orders/${requestRow.id}`, request, status: 'failure', details: { reason: 'square_link_creation_failed' } })
+        return NextResponse.json({ error: 'Could not create payment link. Please try again.' }, { status: 500 })
+      }
 
       const now = Date.now()
       const quoteExpiresAt = new Date(now + QUOTE_EXPIRY_DAYS * 24 * 60 * 60 * 1000).toISOString()

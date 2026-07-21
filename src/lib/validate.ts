@@ -75,6 +75,7 @@ export function sanitizeSearchQuery(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const sanitized = value
     .replace(/[%_\\]/g, '')        // strip ILIKE wildcards and escapes
+    .replace(/[,.()]/g, '')        // SEC-013: strip PostgREST filter-syntax chars
     .replace(/\0/g, '')            // strip null bytes
     .trim()
     .slice(0, 200)

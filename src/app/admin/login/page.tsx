@@ -38,9 +38,8 @@ export default function AdminLoginPage() {
         throw new Error(typeof payload?.error === 'string' ? payload.error : 'Login failed.')
       }
 
-      // Set session flag for MFA check
-      sessionStorage.setItem('admin_authenticated', 'true')
-
+      // SEC-030: Removed client-side admin_authenticated flag.
+      // Server-side session verification is the only auth check.
       router.replace('/admin/mfa-challenge')
       router.refresh()
     } catch (err) {

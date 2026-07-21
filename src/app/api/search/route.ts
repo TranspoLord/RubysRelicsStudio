@@ -21,7 +21,7 @@ interface SearchProductRow {
 export async function GET(request: Request) {
   try {
     const ip = getClientIp(request)
-    const rl = rateLimit(`search:${ip}`, 30, 60 * 1000)
+    const rl = await rateLimit(`search:${ip}`, 30, 60 * 1000)
     if (!rl.allowed) return rateLimitResponse(rl.retryAfter!)
 
     const { searchParams } = new URL(request.url)

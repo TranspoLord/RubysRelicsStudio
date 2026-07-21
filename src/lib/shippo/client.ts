@@ -197,6 +197,59 @@ export async function validateAddress(address: ShippoAddress): Promise<Validated
   }
 }
 
+// SEC-047: Allowed carriers for tracking lookups (prevents SSRF/path traversal)
+const ALLOWED_CARRIERS = new Set(['usps', 'ups', 'fedex', 'dhl', 'dhl_express', 'canada_post', 'royal_mail'])
+const TRACKING_NUMBER_RE = /^[A-Za-z0-9]{8,40}$/
+
+/**
+ * SEC-047: Re-fetch a shipping rate by its Shippo object_id to get the
+ * authoritative amount server-side. This prevents price manipulation where
+ * a client could send a modified amount in the checkout request body.
+ */
+export async function getRateByObjectId(rateObjectId: string): Promise<{
+  amount: number
+  currency: string
+  carrier: string
+  serviceName: string
+  status: string
+} | null> {
+  if (!SHIPPO_API_TOKEN) {
+    throw new Error('Shippo API token not configured.')
+  }
+
+  // Validate the object_id format (Shippo uses hex-like IDs)
+  if (!/^[a-zA-Z0-9]{10,64}$/.test(rateObjectId)) {
+    return null
+  }
+
+  const response = await fetch(
+    `${SHIPPO_API_BASE}/rates/${encodeURIComponent(rateObjectId)}`,
+    {
+      method: 'GET',
+      headers: getHeaders(),
+    }
+  )
+
+  if (!response.ok) {
+    console.error('[shippo:rate-lookup]', await response.text())
+    return null
+  }
+
+  const rate = await response.json() as ShippoRate & { status: string }
+
+  if (!rate.amount || rate.status !== 'SUCCESS') {
+    return null
+  }
+
+  return {
+    amount: parseFloat(rate.amount),
+    currency: rate.currency,
+    carrier: rate.servicelevel?.carrier || rate.provider,
+    serviceName: rate.servicelevel?.name || rate.provider,
+    status: rate.status,
+  }
+}
+
 export async function getTrackingInfo(trackingNumber: string, carrier: string): Promise<{
   trackingStatus: {
     status: string
@@ -213,8 +266,17 @@ export async function getTrackingInfo(trackingNumber: string, carrier: string): 
     throw new Error('Shippo API token not configured.')
   }
 
+  // SEC-047: Validate inputs to prevent SSRF/path traversal
+  const normalizedCarrier = carrier.toLowerCase().trim()
+  if (!ALLOWED_CARRIERS.has(normalizedCarrier)) {
+    throw new Error('Unsupported carrier.')
+  }
+  if (!TRACKING_NUMBER_RE.test(trackingNumber)) {
+    throw new Error('Invalid tracking number format.')
+  }
+
   const response = await fetch(
-    `${SHIPPO_API_BASE}/tracks/${carrier}/${trackingNumber}`,
+    `${SHIPPO_API_BASE}/tracks/${encodeURIComponent(normalizedCarrier)}/${encodeURIComponent(trackingNumber)}`,
     {
       method: 'GET',
       headers: getHeaders(),

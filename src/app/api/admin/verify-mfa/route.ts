@@ -1,13 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyMFACode } from '@/lib/admin/mfa-store'
-import { requireAdminApiSession } from '@/lib/admin/auth'
+import { verifyMFACode, invalidateChallengeToken } from '@/lib/admin/mfa-store'
+import { getExpectedAdminKey } from '@/lib/admin/auth'
+import {
+  ADMIN_COOKIE_NAME,
+  createAdminSessionToken,
+  getAdminSessionMaxAgeSeconds,
+  verifyAdminSessionToken,
+} from '@/lib/admin/session'
+import { getClientIp, rateLimit } from '@/lib/rate-limit'
+import { isProd } from '@/lib/security/env'
+import { safeLogError } from '@/lib/security/logger'
 
 export async function POST(request: NextRequest) {
   try {
-    // Require admin session - must have logged in with admin key first
-    const sessionCheck = await requireAdminApiSession(request)
-    if (!sessionCheck.ok) {
-      return sessionCheck.response
+    // Require admin session - must have logged in with admin key first.
+    // SEC-047: We verify the token WITHOUT MFA requirement here because the
+    // user is about to verify their MFA code. The token must be valid (correct
+    // HMAC, not expired, not revoked) but mfaFlag can be '0'.
+    const adminKey = getExpectedAdminKey()
+    const sessionToken = request.headers
+      .get('cookie')
+      ?.split(';')
+      .map((e) => e.trim())
+      .find((e) => e.startsWith(`${ADMIN_COOKIE_NAME}=`))
+      ?.split('=')
+      .slice(1)
+      .join('=')
+
+    // Verify the session token WITHOUT MFA requirement (the user is about to verify MFA)
+    if (!(await verifyAdminSessionToken(sessionToken, adminKey, false))) {
+      return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 })
     }
 
     const body = await request.json().catch(() => ({}))
@@ -25,12 +47,25 @@ export async function POST(request: NextRequest) {
       .join('=')
 
     if (!challengeToken) {
-      console.log('[MFA Verify] No challenge token found in cookies')
-      return NextResponse.json({ error: 'No active verification session. Please request a new code.' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'No active verification session. Please request a new code.' },
+        { status: 400 }
+      )
     }
 
-    // Log for debugging (helps diagnose Vercel issues)
-    console.log('[MFA Verify] Challenge token prefix:', challengeToken.slice(0, 8) + '...')
+    // SEC-006: Rate limit by challenge token (not IP) — 5 attempts per 5 minutes
+    // SEC-047: failClosed=true so brute-force is blocked if the DB is down
+    const rl = await rateLimit(`admin-mfa-verify:${challengeToken}`, 5, 5 * 60 * 1000, {
+      failClosed: true,
+    })
+    if (!rl.allowed) {
+      // SEC-006: After 5 failed attempts, invalidate the challenge token
+      await invalidateChallengeToken(challengeToken)
+      return NextResponse.json(
+        { error: 'Too many attempts. Request a new code.' },
+        { status: 429 }
+      )
+    }
 
     // Code format validation
     if (!code || code.length !== 6) {
@@ -43,20 +78,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid or expired verification code' }, { status: 401 })
     }
 
-    // Set session cookie - MFA verified
+    // SEC-047: Re-issue the session token with mfaVerified=true.
+    // This cryptographically binds the MFA-verified state to the session,
+    // replacing the old client-forgeable admin_mfa_verified cookie.
+    const maxAge = await getAdminSessionMaxAgeSeconds()
+    const newToken = await createAdminSessionToken(adminKey, maxAge, {
+      ipAddress: getClientIp(request),
+      userAgent: request.headers.get('user-agent') || undefined,
+      mfaVerified: true,
+    })
+
     const response = NextResponse.json({ success: true })
-    response.cookies.set('admin_mfa_verified', 'true', {
+    response.cookies.set({
+      name: ADMIN_COOKIE_NAME,
+      value: newToken,
       httpOnly: true,
-      secure: process.env.NEXT_PUBLIC_APP_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 60 * 60 * 8, // 8 hours
+      secure: isProd(),
       path: '/',
+      maxAge,
     })
 
     // Clear the challenge token cookie since it's been consumed
     response.cookies.set('admin_mfa_challenge', '', {
       httpOnly: true,
-      secure: process.env.NEXT_PUBLIC_APP_ENV === 'production',
+      secure: isProd(),
       sameSite: 'strict',
       maxAge: 0,
       path: '/',
@@ -64,7 +110,7 @@ export async function POST(request: NextRequest) {
 
     return response
   } catch (error: any) {
-    console.error('[MFA Verify] Error:', error)
+    safeLogError('[MFA Verify]', error)
     return NextResponse.json({ error: 'Verification failed' }, { status: 500 })
   }
 }

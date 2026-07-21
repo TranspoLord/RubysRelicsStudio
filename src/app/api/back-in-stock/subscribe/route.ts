@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   try {
     const ip = getClientIp(request)
 
-    const rlIp = rateLimit(`bis-ip:${ip}`, 8, 10 * 60 * 1000)
+    const rlIp = await rateLimit(`bis-ip:${ip}`, 8, 10 * 60 * 1000)
     if (!rlIp.allowed) return rateLimitResponse(rlIp.retryAfter ?? 60)
 
     const body = (await request.json().catch(() => ({}))) as SubscribeBody
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'A valid email address is required.' }, { status: 400 })
     }
 
-    const rlEmail = rateLimit(`bis-email:${productId}:${email}`, 4, 24 * 60 * 60 * 1000)
+    const rlEmail = await rateLimit(`bis-email:${productId}:${email}`, 4, 24 * 60 * 60 * 1000)
     if (!rlEmail.allowed) {
       return NextResponse.json({ message: 'You are already subscribed for this product.' }, { status: 200 })
     }
@@ -46,12 +46,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Product not found.' }, { status: 404 })
     }
 
-    const { data: customer } = await supabase
-      .from('exp_customers')
-      .select('id')
-      .eq('email', email)
-      .maybeSingle()
-
     const now = new Date().toISOString()
 
     const { error: upsertError } = await supabase
@@ -60,7 +54,6 @@ export async function POST(request: Request) {
         {
           product_id: productId,
           email,
-          customer_id: customer?.id ?? null,
           status: 'active',
           source,
           consent_ip: ip,
@@ -76,16 +69,6 @@ export async function POST(request: Request) {
     if (upsertError) {
       console.error('[back-in-stock:subscribe]', upsertError.message)
       return NextResponse.json({ error: 'Failed to save subscription.' }, { status: 500 })
-    }
-
-    if (customer?.id) {
-      await supabase
-        .from('exp_customers')
-        .update({
-          receives_back_in_stock: true,
-          updated_at: now,
-        })
-        .eq('id', customer.id)
     }
 
     return NextResponse.json({ message: 'Subscribed for back-in-stock alerts.' }, { status: 200 })

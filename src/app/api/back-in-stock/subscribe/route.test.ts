@@ -37,7 +37,8 @@ describe('POST /api/back-in-stock/subscribe', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.getClientIp.mockReturnValue('127.0.0.1')
-    mocks.rateLimit.mockReturnValue({ allowed: true, retryAfter: null })
+    // rateLimit is now async — mock returns a Promise
+    mocks.rateLimit.mockResolvedValue({ allowed: true, retryAfter: null })
   })
 
   it('returns 400 when productId is missing', async () => {
@@ -112,19 +113,6 @@ describe('POST /api/back-in-stock/subscribe', () => {
           }
         }
 
-        if (table === 'exp_customers') {
-          return {
-            select: vi.fn(() => ({
-              eq: vi.fn(() => ({
-                maybeSingle: vi.fn(async () => ({ data: { id: 'cust_1' }, error: null })),
-              })),
-            })),
-            update: vi.fn(() => ({
-              eq: vi.fn(async () => ({ error: null })),
-            })),
-          }
-        }
-
         if (table === 'exp_back_in_stock_alerts') {
           return {
             upsert,
@@ -160,7 +148,6 @@ describe('POST /api/back-in-stock/subscribe', () => {
       expect.objectContaining({
         product_id: 'prod_1',
         email: 'shopper@example.com',
-        customer_id: 'cust_1',
         status: 'active',
       }),
       { onConflict: 'product_id,email' }

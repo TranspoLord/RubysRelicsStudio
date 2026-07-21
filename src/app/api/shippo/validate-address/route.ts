@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { validateAddress } from '@/lib/shippo/client'
 import { getShippoSettings } from '@/lib/shippo/settings'
+import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 
 interface ValidateAddressRequest {
   address: {
@@ -16,6 +17,11 @@ interface ValidateAddressRequest {
 
 export async function POST(request: Request) {
   try {
+    // SEC-010: Rate limit Shippo validate-address endpoint — 20 requests/minute per IP
+    const ip = getClientIp(request)
+    const rl = await rateLimit(`shippo-validate:${ip}`, 20, 60_000)
+    if (!rl.allowed) return rateLimitResponse(rl.retryAfter ?? 60)
+
     const settings = await getShippoSettings()
     
     if (!settings.enabled) {
