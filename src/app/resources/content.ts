@@ -17,7 +17,7 @@ export function getResourcePages(supportEmail: string): Record<string, ResourceP
     slug: 'terms',
     title: 'Terms of Service',
     summary: 'Age, content, IP protections, fulfillment, liability, and dispute terms for custom production orders.',
-    lastUpdated: 'May 12, 2026',
+    lastUpdated: 'July 20, 2026',
     sections: [
       {
         heading: 'Age Requirement and Content Policy',
@@ -52,15 +52,14 @@ export function getResourcePages(supportEmail: string): Record<string, ResourceP
       {
         heading: 'Shipping, Conventions, and Liability Transfer',
         body: [
-          'Ruby\'s Relics Studio legal and financial liability ends at the earliest applicable point: delivery confirmation from you (email, DM, or text), in-person acceptance at pickup or convention handoff, or 72 hours after carrier tracking marks a package as Delivered.',
-          'We are not liable for carrier errors, delays, theft, or transit damage after shipment handoff, but we provide reasonable support such as tracking logs and shipping documentation for claims.',
+          'Ruby\'s Relics Studio legal and financial liability ends at the earliest applicable point: delivery confirmation from you (email, DM, or text), in-person acceptance at pickup or convention handoff, or after carrier tracking marks a package as Delivered.',
+          'We are not liable for carrier errors, delays, theft, or transit damage after shipment handoff, however our packages are insured and we provide reasonable support for claims. We are not responsible for lost or stolen packages after delivery confirmation.',
           'Use and application of stickers or other products on personal or third-party property is at your own risk. Ruby\'s Relics Studio is not liable for damage from application or removal.',
         ],
       },
       {
-        heading: 'File Retention and Attribution',
+        heading: 'Attribution',
         body: [
-          'Customer artwork files are retained for up to 90 days from the most recent related order to support easier re-orders.',
           'You may not claim credit for physical manufacturing. If you resell produced items, you agree to clearly credit Ruby\'s Relics Studio as manufacturer.',
         ],
       },
@@ -94,7 +93,7 @@ export function getResourcePages(supportEmail: string): Record<string, ResourceP
     slug: 'privacy',
     title: 'Privacy Policy',
     summary: 'How customer data is collected, used, and retained for storefront operations.',
-    lastUpdated: 'May 8, 2026',
+    lastUpdated: 'Jul 20, 2026',
     sections: [
       {
         heading: 'Data We Collect',
@@ -107,7 +106,7 @@ export function getResourcePages(supportEmail: string): Record<string, ResourceP
         heading: 'How Data Is Used',
         body: [
           'Data is used to fulfill orders, communicate order status, prevent abuse, and improve storefront operations.',
-          'Sensitive payment handling is delegated to Stripe and is not stored as raw card details in this storefront.',
+          'Sensitive payment handling is delegated to Square and is not stored in our database or storefront.',
         ],
       },
       {
@@ -198,20 +197,21 @@ export function getResourcePages(supportEmail: string): Record<string, ResourceP
     slug: 'shipping',
     title: 'Shipping and Fulfillment',
     summary: 'Production windows, shipment handling, and delivery expectation guidance.',
-    lastUpdated: 'May 8, 2026',
+    lastUpdated: 'July 20, 2026',
     sections: [
       {
         heading: 'Production First, Then Shipment',
         body: [
           'Most products are made to order, so production time is a core part of total delivery time.',
           'Order pages and product pages show estimated production windows to set expectations early.',
+          'This is not a guarantee of production or delivery date, as queue depth, order complexity, and material readiness can affect fulfillment timing.',
         ],
       },
       {
         heading: 'Carriers and Tracking',
         body: [
           'Shipping carrier selection may vary by package profile and destination.',
-          'When tracking is available, shipment milestones are shared through order status links or direct communication.',
+          'When tracking is available, shipment milestones are shared through order status links or Square.',
         ],
       },
       {
@@ -349,14 +349,14 @@ export function getResourcePages(supportEmail: string): Record<string, ResourceP
         heading: 'Is NSFW or suggestive content acceptable?',
         body: [
           'Yes, we accept NSFW or suggestive artwork as long as it is legal. We do not discriminate based on subject matter or artistic expression within legal boundaries.',
-          'We do not print unlawful material or artwork listed on the Public Restriction List. Orders canceled for policy violations are refunded minus non-recoverable processing fees.',
+          'Orders canceled for policy violations are refunded minus non-recoverable processing fees. We reserve the right to report unlawful content to authorities.',
           'All standard artwork requirements still apply (resolution, file formats, etc.). See the Artwork Requirements page for details.',
         ],
       },
       {
         heading: 'Can I upload my own artwork?',
         body: [
-          'Yes. Customizable product pages and custom-order intake support customer artwork submission when applicable.',
+          'Yes! This storefront is designed for custom artwork submission. You can upload your own designs during the order process.',
           'You must have rights to use submitted artwork for production.',
         ],
       },
@@ -372,6 +372,7 @@ export function getResourcePages(supportEmail: string): Record<string, ResourceP
         body: [
           'Yes. Use the custom-order intake route for requests outside standard catalog options.',
           'Each request is reviewed for feasibility, timeline, and quoting before production.',
+          'This does not guarantee acceptance, but we will provide feedback and guidance on next steps.',
         ],
       },
     ],
