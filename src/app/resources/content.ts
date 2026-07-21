@@ -58,9 +58,12 @@ export function getResourcePages(supportEmail: string): Record<string, ResourceP
         ],
       },
       {
-        heading: 'Attribution',
+        heading: 'Attribution and File Retention',
         body: [
           'You may not claim credit for physical manufacturing. If you resell produced items, you agree to clearly credit Ruby\'s Relics Studio as manufacturer.',
+          'We do not retain files for resale or commercial use. We are not responsible for lost or deleted files after the retention period.',
+          'We do not provide file backups or storage for customer artwork. It is your responsibility to maintain your own copies of submitted files.',
+          'Artwork and customer files are retained in a private database. It does not become public nor shared with Square or other third parties.'
         ],
       },
       {
@@ -375,6 +378,14 @@ export function getResourcePages(supportEmail: string): Record<string, ResourceP
           'This does not guarantee acceptance, but we will provide feedback and guidance on next steps.',
         ],
       },
+      {
+        heading: 'What happens to my artwork after order and delivery?',
+        body: [
+          'Your artwork is stored on a private database that only we can see. It is not shared with Square or other third parties.',
+          'To your payment processor, you are buying a simple mug, for example. To us, you are buying a spicy gift for your friend.',
+          'Because storage is not cheap, we keep artwork until the 7 day mark after the products are delivered.',
+        ],
+      }
     ],
   },
   }
