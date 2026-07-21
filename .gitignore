@@ -44,3 +44,8 @@ next-env.d.ts
 .DS_Store
 Thumbs.db
 .env.local.example
+docs/SECURITY_AUDIT_REPORT_NEW.md
+docs/SECURITY_AUDIT_REPORT.md
+docs/SECURITY_AUDIT.md
+docs/SECURITY_REMEDIATION_PLAN.md
+docs/SECURITY_SPECIFICATION.md
