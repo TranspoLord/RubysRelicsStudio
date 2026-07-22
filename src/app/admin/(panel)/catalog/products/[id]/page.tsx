@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useEffect, useState } from 'react'
+import { use, useEffect, useRef, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -103,6 +103,8 @@ export default function ProductPageEditorPage({ params }: { params: Promise<{ id
   const [mediaSortOrder, setMediaSortOrder] = useState('0')
   const [mediaFeatured, setMediaFeatured] = useState(false)
   const [mediaBusyId, setMediaBusyId] = useState<string | null>(null)
+  const [mediaUploading, setMediaUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [productOptions, setProductOptions] = useState<ProductOptionRow[]>([])
   const [optionBusyId, setOptionBusyId] = useState<string | null>(null)
   const [optionValueBusyId, setOptionValueBusyId] = useState<string | null>(null)
@@ -201,6 +203,41 @@ export default function ProductPageEditorPage({ params }: { params: Promise<{ id
       setError(saveError instanceof Error ? saveError.message : 'Failed to save product content.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setMediaUploading(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await fetch('/api/admin/catalog/media/upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Upload failed.')
+      }
+
+      setMediaUrl(payload.url)
+      setSuccess('File uploaded. Set alt text and click Add Media to save.')
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : 'Failed to upload file.')
+    } finally {
+      setMediaUploading(false)
+      // Reset the file input so the same file can be re-selected
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
     }
   }
 
@@ -569,9 +606,31 @@ export default function ProductPageEditorPage({ params }: { params: Promise<{ id
             control={<Checkbox checked={mediaFeatured} onChange={(event) => setMediaFeatured(event.target.checked)} />}
             label="Featured"
           />
-          <Button variant="outlined" disabled={saving} onClick={() => void addMedia()}>
+          <Button variant="outlined" disabled={saving || !mediaUrl} onClick={() => void addMedia()}>
             Add Media
           </Button>
+        </Stack>
+
+        <Stack direction="row" spacing={1} alignItems="center">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
+            style={{ display: 'none' }}
+            onChange={(event) => void handleFileUpload(event)}
+          />
+          <Button
+            variant="contained"
+            disabled={mediaUploading}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {mediaUploading ? 'Uploading...' : 'Upload Image File'}
+          </Button>
+          {mediaUrl && (
+            <Typography sx={{ color: alpha(brandTokens.parchment, 0.65), fontSize: '0.78rem', wordBreak: 'break-all' }}>
+              URL set: {mediaUrl}
+            </Typography>
+          )}
         </Stack>
 
         {mediaItems.length === 0 ? (
@@ -761,7 +820,7 @@ export default function ProductPageEditorPage({ params }: { params: Promise<{ id
       </Box>
 
       <Typography sx={{ color: alpha(brandTokens.parchment, 0.6), fontSize: '0.78rem' }}>
-        Advanced bulk-edit controls remain available in the full editor at /admin/catalog/products.
+        Advanced bulk-edit controls remain available at /admin/catalog/products.
       </Typography>
     </Box>
   )
