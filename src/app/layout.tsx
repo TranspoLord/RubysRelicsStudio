@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Cinzel, Inter } from 'next/font/google'
+import { headers } from 'next/headers'
 import { Analytics } from '@vercel/analytics/react'
 import { ThemeRegistry } from '@/theme/ThemeRegistry'
 import { SkipToMain } from '@/components/common/SkipToMain'
@@ -61,10 +62,16 @@ export const viewport: Viewport = {
 }
 
 // ─── Root layout ─────────────────────────────────────────────────────────────
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // SEC-047: Read the CSP nonce set by middleware so Next.js can add it to
+  // its injected inline scripts. Without this, the CSP blocks Next.js's own
+  // bootstrap scripts and the page won't function (including controlled inputs).
+  const headersList = await headers()
+  const nonce = headersList.get('x-nonce') ?? ''
+
   return (
     <html lang="en" className={`${cinzel.variable} ${inter.variable}`}>
-      <body>
+      <body nonce={nonce}>
         <ThemeRegistry>
           <CartProvider>
             <SkipToMain />
