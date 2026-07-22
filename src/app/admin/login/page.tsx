@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -18,6 +18,7 @@ export default function AdminLoginPage() {
   const [key, setKey] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -48,6 +49,32 @@ export default function AdminLoginPage() {
     }
   }
 
+  // Detect password manager autofill: browsers populate the DOM value without
+  // firing React's onChange event, so the button stays disabled even though
+  // the field visibly has text. Poll for the first 3 seconds as a fallback.
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+
+    // If already filled, sync synchronously
+    if (el.value && el.value !== key) {
+      setKey(el.value)
+    }
+
+    const interval = setInterval(() => {
+      if (el.value !== key) {
+        setKey(el.value)
+      }
+    }, 250)
+
+    const timeout = setTimeout(() => clearInterval(interval), 3000)
+
+    return () => {
+      clearInterval(interval)
+      clearTimeout(timeout)
+    }
+  }, [key])
+
   return (
     <Box component="main" id="main-content" sx={{ minHeight: '100vh', backgroundColor: brandTokens.bgVoid, py: { xs: 6, md: 8 } }}>
       <Container maxWidth="sm">
@@ -77,6 +104,7 @@ export default function AdminLoginPage() {
               onChange={(e) => setKey(e.target.value)}
               autoFocus
               fullWidth
+              inputRef={inputRef}
             />
 
             {error && (
