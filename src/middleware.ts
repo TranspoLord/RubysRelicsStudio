@@ -74,11 +74,16 @@ async function verifyTokenEdge(
  * SEC-047: Generate a per-request CSP nonce and build the CSP header.
  * The nonce is passed to the app via the x-nonce response header so
  * Server Components can include it in script tags.
+ *
+ * NOTE: 'unsafe-eval' is required for Next.js in both dev and production
+ * (Turbopack HMR, React DevTools, source-map reconstruction, etc.).
+ * Without it, React controlled inputs may not update the DOM value,
+ * causing MUI labels to never float up.
  */
 function buildCspHeader(nonce: string): string {
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' https://vercel.live https://js.stripe.com`,
+    `script-src 'self' 'unsafe-eval' 'nonce-${nonce}' https://vercel.live https://js.stripe.com`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: blob: https:",

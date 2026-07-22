@@ -31,9 +31,19 @@ export async function POST(request: NextRequest) {
 
     const clientIp = getClientIp(request)
 
+    // When running outside Vercel, getClientIp returns 'unknown' for all
+    // requests, which would make all local dev share the same rate-limit
+    // bucket. Use the user-agent to differentiate sessions.
+    const rateLimitKey =
+      clientIp === 'unknown'
+        ? `admin-mfa-send:unknown:${(request.headers.get('user-agent') ?? 'local').slice(0, 40)}`
+        : `admin-mfa-send:${clientIp}`
+
+    const rateLimitMax = clientIp === 'unknown' ? 200 : MFA_RATE_LIMIT
+
     // Rate limit by IP to prevent abuse (but verification uses challenge token, not IP)
     // SEC-047: failClosed=true so brute-force is blocked if the DB is down
-    const rl = await rateLimit(`admin-mfa-send:${clientIp}`, MFA_RATE_LIMIT, MFA_RATE_WINDOW_MS, {
+    const rl = await rateLimit(rateLimitKey, rateLimitMax, MFA_RATE_WINDOW_MS, {
       failClosed: true,
     })
 
