@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -20,9 +20,34 @@ export default function AdminLoginPage() {
   const [submitting, setSubmitting] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // Detect MUI autofill animation — browsers fire this on password fields
+  // when a password manager fills in the value. This catches autofill
+  // before the user interacts with the form.
+  const handleAnimationStart = useCallback(
+    (event: React.AnimationEvent<HTMLInputElement>) => {
+      if (event.animationName === 'mui-auto-fill') {
+        const el = inputRef.current
+        if (el && el.value !== key) {
+          setKey(el.value)
+        }
+      }
+    },
+    [key]
+  )
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!key.trim() || submitting) return
+
+    // Read from the DOM directly — React state may be stale if a
+    // password manager autofilled the field without firing onChange.
+    // Use the DOM value for both the empty check AND the fetch.
+    const domValue = inputRef.current?.value ?? ''
+    if (!domValue.trim() || submitting) return
+
+    // Sync React state for correctness
+    if (domValue !== key) {
+      setKey(domValue)
+    }
 
     setSubmitting(true)
     setError(null)
@@ -31,7 +56,7 @@ export default function AdminLoginPage() {
       const response = await fetch('/api/admin/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key }),
+        body: JSON.stringify({ key: domValue }),
       })
 
       const payload = await response.json().catch(() => ({}))
@@ -48,32 +73,6 @@ export default function AdminLoginPage() {
       setSubmitting(false)
     }
   }
-
-  // Detect password manager autofill: browsers populate the DOM value without
-  // firing React's onChange event, so the button stays disabled even though
-  // the field visibly has text. Poll for the first 3 seconds as a fallback.
-  useEffect(() => {
-    const el = inputRef.current
-    if (!el) return
-
-    // If already filled, sync synchronously
-    if (el.value && el.value !== key) {
-      setKey(el.value)
-    }
-
-    const interval = setInterval(() => {
-      if (el.value !== key) {
-        setKey(el.value)
-      }
-    }, 250)
-
-    const timeout = setTimeout(() => clearInterval(interval), 3000)
-
-    return () => {
-      clearInterval(interval)
-      clearTimeout(timeout)
-    }
-  }, [key])
 
   return (
     <Box component="main" id="main-content" sx={{ minHeight: '100vh', backgroundColor: brandTokens.bgVoid, py: { xs: 6, md: 8 } }}>
@@ -102,6 +101,7 @@ export default function AdminLoginPage() {
               type="password"
               value={key}
               onChange={(e) => setKey(e.target.value)}
+              onAnimationStart={handleAnimationStart}
               autoFocus
               fullWidth
               inputRef={inputRef}
@@ -111,7 +111,7 @@ export default function AdminLoginPage() {
               <Typography sx={{ color: '#f3a8a8', fontSize: '0.82rem' }}>{error}</Typography>
             )}
 
-            <Button type="submit" variant="contained" disabled={submitting || key.trim().length < 2}>
+            <Button type="submit" variant="contained" disabled={submitting}>
               {submitting ? 'Signing in...' : 'Sign in'}
             </Button>
           </Box>
