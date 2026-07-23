@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getEmailSenderAddress, getResend } from '@/lib/resend/client'
 import { createMFACode } from '@/lib/admin/mfa-store'
-import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
+import { getClientIp, rateLimit } from '@/lib/rate-limit'
 import { getExpectedAdminKey } from '@/lib/admin/auth'
 import { ADMIN_COOKIE_NAME, verifyAdminSessionToken } from '@/lib/admin/session'
 import { isProd } from '@/lib/security/env'
