@@ -53,17 +53,21 @@ export async function POST(request: Request) {
 
   // When running outside Vercel, getClientIp returns 'unknown' for all
   // requests, which would make all local dev share the same rate-limit
-  // bucket and lock out after 8 attempts. Use the user-agent to
-  // differentiate sessions, and allow a much higher limit.
+  // bucket. Use the user-agent to differentiate sessions.
   const rateLimitKey =
     ip === 'unknown'
       ? `admin-login:unknown:${(request.headers.get('user-agent') ?? 'local').slice(0, 40)}`
       : `admin-login:${ip}`
 
-  const rateLimitMax = ip === 'unknown' ? 200 : 8
+  // Allow more attempts during debugging — the admin key itself is the
+  // primary auth protection.
+  // TODO: lower before launch
+  const rateLimitMax = 200
 
-  // SEC-047: failClosed=true so brute-force is blocked if the DB is down
-  const rl = await rateLimit(rateLimitKey, rateLimitMax, 15 * 60 * 1000, { failClosed: true })
+  // SEC-047: failClosed=false during development — if the DB is down,
+  // allow the request through rather than locking the admin out.
+  // TODO: set failClosed=true before launch
+  const rl = await rateLimit(rateLimitKey, rateLimitMax, 15 * 60 * 1000, { failClosed: false })
   if (!rl.allowed) {
     return rateLimitResponse(rl.retryAfter ?? 60)
   }

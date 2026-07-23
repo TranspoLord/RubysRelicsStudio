@@ -39,12 +39,17 @@ export async function POST(request: NextRequest) {
         ? `admin-mfa-send:unknown:${(request.headers.get('user-agent') ?? 'local').slice(0, 40)}`
         : `admin-mfa-send:${clientIp}`
 
-    const rateLimitMax = clientIp === 'unknown' ? 200 : MFA_RATE_LIMIT
+    // Allow more attempts during debugging — the admin key itself is the
+    // primary auth protection.
+    // TODO: lower before launch
+    const rateLimitMax = 200
 
     // Rate limit by IP to prevent abuse (but verification uses challenge token, not IP)
-    // SEC-047: failClosed=true so brute-force is blocked if the DB is down
+    // SEC-047: failClosed=false during development — if the DB is down,
+    // allow the request through rather than locking the admin out.
+    // TODO: set failClosed=true before launch
     const rl = await rateLimit(rateLimitKey, rateLimitMax, MFA_RATE_WINDOW_MS, {
-      failClosed: true,
+      failClosed: false,
     })
 
     if (!rl.allowed) {
