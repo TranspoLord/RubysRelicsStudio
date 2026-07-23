@@ -28,9 +28,13 @@ ALTER TABLE exp_rate_limit_windows ADD PRIMARY KEY (key);
 -- Atomic increment: INSERT ... ON CONFLICT DO UPDATE
 -- Returns the new count for the window.
 -- If the existing row's window has expired, reset count to 1.
+-- NOTE: PostgREST maps named parameters alphabetically. Since p_expires_at
+-- sorts before p_key alphabetically (p_e < p_k), the function signature
+-- must list parameters in alphabetical order to match how PostgREST calls them.
+-- We use p_expiresat (no underscore) so p_key sorts first.
 CREATE OR REPLACE FUNCTION increment_rate_limit(
   p_key        TEXT,
-  p_expires_at TIMESTAMPTZ
+  p_expiresat  TIMESTAMPTZ
 ) RETURNS INT
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -40,7 +44,7 @@ DECLARE
   v_count INT;
 BEGIN
   INSERT INTO exp_rate_limit_windows (key, window_start, count, expires_at)
-  VALUES (p_key, extract(epoch from now())::bigint, 1, p_expires_at)
+  VALUES (p_key, extract(epoch from now())::bigint, 1, p_expiresat)
   ON CONFLICT (key)
   DO UPDATE SET
     count = CASE
@@ -54,7 +58,7 @@ BEGIN
       ELSE exp_rate_limit_windows.window_start
     END,
     expires_at = CASE
-      WHEN exp_rate_limit_windows.expires_at < now() THEN p_expires_at
+      WHEN exp_rate_limit_windows.expires_at < now() THEN p_expiresat
       ELSE exp_rate_limit_windows.expires_at
     END
   RETURNING count INTO v_count;
