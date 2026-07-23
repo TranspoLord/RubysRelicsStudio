@@ -88,7 +88,7 @@ function buildCspHeader(nonce: string): string {
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: blob: https:",
     "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com https://vitals.vercel-insights.com https://api.resend.com https://secure.shippingapis.com",
-    "frame-src https://js.stripe.com https://hooks.stripe.com",
+    "frame-src https://js.stripe.com https://hooks.stripe.com https://vercel.live",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
