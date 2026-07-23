@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getResend } from '@/lib/resend/client'
+import { getEmailSenderAddress, getResend } from '@/lib/resend/client'
 import { createMFACode } from '@/lib/admin/mfa-store'
-import { getClientIp, rateLimit } from '@/lib/rate-limit'
+import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 import { getExpectedAdminKey } from '@/lib/admin/auth'
 import { ADMIN_COOKIE_NAME, verifyAdminSessionToken } from '@/lib/admin/session'
 import { isProd } from '@/lib/security/env'
+
+export const runtime = 'nodejs'
 
 // Rate limit: 3 send requests per 10 minutes per session
 const MFA_RATE_LIMIT = 3
@@ -39,18 +41,24 @@ export async function POST(request: NextRequest) {
         ? `admin-mfa-send:unknown:${(request.headers.get('user-agent') ?? 'local').slice(0, 40)}`
         : `admin-mfa-send:${clientIp}`
 
-    // Allow more attempts during debugging — the admin key itself is the
-    // primary auth protection.
-    // TODO: lower before launch
-    const rateLimitMax = 200
-
-    // Rate limit by IP to prevent abuse (but verification uses challenge token, not IP)
-    // SEC-047: failClosed=false during development — if the DB is down,
-    // allow the request through rather than locking the admin out.
-    // TODO: set failClosed=true before launch
-    const rl = await rateLimit(rateLimitKey, rateLimitMax, MFA_RATE_WINDOW_MS, {
-      failClosed: false,
+    // Rate limit MFA send requests by IP to prevent email spam
+    const rl = await rateLimit(rateLimitKey, MFA_RATE_LIMIT, MFA_RATE_WINDOW_MS, {
+      failClosed: true,
     })
+
+    // When running outside Vercel, add a global cap to prevent UA rotation from
+    // bypassing the per-session limit.
+    if (clientIp === 'unknown') {
+      const globalRl = await rateLimit('admin-mfa-send:non-vercel-global', 10, MFA_RATE_WINDOW_MS, {
+        failClosed: true,
+      })
+      if (!globalRl.allowed) {
+        return NextResponse.json(
+          { error: 'Too many requests. Please wait before trying again.' },
+          { status: 429 }
+        )
+      }
+    }
 
     if (!rl.allowed) {
       const retryAfter = rl.retryAfter ?? 600
@@ -74,12 +82,15 @@ export async function POST(request: NextRequest) {
     // Generate and store the code in Supabase — returns a challenge token
     const { code, challengeToken } = await createMFACode(deviceFingerprint)
 
+    // Resolve the sender address from storefront settings (with DB fallback)
+    const fromAddress = await getEmailSenderAddress()
+
     // Send email via Resend
     const resend = getResend()
 
     try {
       await resend.emails.send({
-        from: process.env.RESEND_FROM_EMAIL!,
+        from: fromAddress,
         to: [adminMfaEmail],
         subject: "Your Ruby's Relics Admin Login Code",
         html: `
@@ -97,7 +108,12 @@ export async function POST(request: NextRequest) {
       console.log('[MFA Send] Email sent successfully to', adminMfaEmail)
     } catch (emailError) {
       console.error('[MFA Send] Email send failed:', emailError)
-      // Don't reveal email errors to client (prevents enumeration)
+      // Email failed — return an error so the admin knows to try again.
+      // The risk of enumeration is minimal (the recipient address is the admin's own email).
+      return NextResponse.json(
+        { error: 'Failed to send verification code. Please try again.' },
+        { status: 500 }
+      )
     }
 
     // Set the challenge token as an httpOnly cookie

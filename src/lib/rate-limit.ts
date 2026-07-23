@@ -62,6 +62,7 @@ export async function rateLimit(
     const supabase = getSupabaseAdmin()
     const { data, error } = await supabase.rpc('increment_rate_limit', {
       p_key: windowKey,
+      p_window_start: windowStart,
       p_expires_at: expiresAt,
     })
 

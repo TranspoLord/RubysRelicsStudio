@@ -59,17 +59,19 @@ export async function POST(request: Request) {
       ? `admin-login:unknown:${(request.headers.get('user-agent') ?? 'local').slice(0, 40)}`
       : `admin-login:${ip}`
 
-  // Allow more attempts during debugging — the admin key itself is the
-  // primary auth protection.
-  // TODO: lower before launch
-  const rateLimitMax = 200
-
-  // SEC-047: failClosed=false during development — if the DB is down,
-  // allow the request through rather than locking the admin out.
-  // TODO: set failClosed=true before launch
-  const rl = await rateLimit(rateLimitKey, rateLimitMax, 15 * 60 * 1000, { failClosed: false })
+  // Rate limit login attempts by IP
+  const rl = await rateLimit(rateLimitKey, 5, 15 * 60 * 1000, { failClosed: true })
   if (!rl.allowed) {
     return rateLimitResponse(rl.retryAfter ?? 60)
+  }
+
+  // When running outside Vercel, add a global cap to prevent UA rotation from
+  // bypassing the per-IP limit.
+  if (ip === 'unknown') {
+    const globalRl = await rateLimit('admin-login:non-vercel-global', 20, 15 * 60 * 1000, { failClosed: true })
+    if (!globalRl.allowed) {
+      return rateLimitResponse(globalRl.retryAfter ?? 60)
+    }
   }
 
   const body = (await request.json().catch(() => ({}))) as SessionBody

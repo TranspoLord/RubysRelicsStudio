@@ -6,6 +6,8 @@ import { requireAdminApiSession } from '@/lib/admin/auth'
 import { writeAdminAuditLog } from '@/lib/admin/audit'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 
+export const runtime = 'nodejs'
+
 const BUCKET_NAME = 'product-media'
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 const ALLOWED_MIME_TYPES = new Set([

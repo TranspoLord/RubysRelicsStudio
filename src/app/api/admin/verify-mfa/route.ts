@@ -11,6 +11,8 @@ import { getClientIp, rateLimit } from '@/lib/rate-limit'
 import { isProd } from '@/lib/security/env'
 import { safeLogError } from '@/lib/security/logger'
 
+export const runtime = 'nodejs'
+
 export async function POST(request: NextRequest) {
   try {
     // Require admin session - must have logged in with admin key first.
