@@ -63,10 +63,13 @@ export async function rateLimit(
 
   try {
     const supabase = getSupabaseAdmin()
-    const { data, error } = await supabase.rpc('increment_rate_limit', {
-      p_key: windowKey,
-      p_expiresat: expiresAt,
-    })
+    // Use positional parameters (array) to avoid PostgREST's alphabetical
+    // reordering of named parameters. PostgREST sends named params in
+    // alphabetical order, which can mismatch the function signature.
+    const { data, error } = await supabase.rpc('increment_rate_limit', [
+      windowKey,
+      expiresAt,
+    ])
 
     if (error) {
       console.error(`[rate-limit] RPC ERROR for key=${windowKey}:`, error, error.message)
