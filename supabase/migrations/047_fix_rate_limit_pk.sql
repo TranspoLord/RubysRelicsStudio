@@ -21,20 +21,21 @@ DROP FUNCTION IF EXISTS increment_rate_limit(TEXT, TIMESTAMPTZ);
 DROP FUNCTION IF EXISTS increment_rate_limit(TEXT, BIGINT, TIMESTAMPTZ);
 
 -- Recreate the table with the corrected PK.
--- We use IF NOT EXISTS + ALTER so this is idempotent.
 ALTER TABLE exp_rate_limit_windows DROP CONSTRAINT IF EXISTS exp_rate_limit_windows_pkey;
 ALTER TABLE exp_rate_limit_windows ADD PRIMARY KEY (key);
 
 -- Atomic increment: INSERT ... ON CONFLICT DO UPDATE
 -- Returns the new count for the window.
 -- If the existing row's window has expired, reset count to 1.
--- NOTE: PostgREST maps named parameters alphabetically. Since p_expires_at
--- sorts before p_key alphabetically (p_e < p_k), the function signature
--- must list parameters in alphabetical order to match how PostgREST calls them.
--- We use p_expiresat (no underscore) so p_key sorts first.
+--
+-- IMPORTANT: Parameters are in ALPHABETICAL ORDER by name!
+-- PostgREST sorts the JSON object keys alphabetically when building
+-- the schema cache lookup. Defining the function with params in
+-- alphabetical order ensures the lookup succeeds. After finding the
+-- function, PostgREST maps values to params by name, not position.
 CREATE OR REPLACE FUNCTION increment_rate_limit(
-  p_key        TEXT,
-  p_expiresat  TIMESTAMPTZ
+  p_expires_at TIMESTAMPTZ,
+  p_key        TEXT
 ) RETURNS INT
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -44,13 +45,11 @@ DECLARE
   v_count INT;
 BEGIN
   INSERT INTO exp_rate_limit_windows (key, window_start, count, expires_at)
-  VALUES (p_key, extract(epoch from now())::bigint, 1, p_expiresat)
+  VALUES (p_key, extract(epoch from now())::bigint, 1, p_expires_at)
   ON CONFLICT (key)
   DO UPDATE SET
     count = CASE
-      -- If the window has expired, reset the counter
       WHEN exp_rate_limit_windows.expires_at < now() THEN 1
-      -- Otherwise increment
       ELSE exp_rate_limit_windows.count + 1
     END,
     window_start = CASE
@@ -58,7 +57,7 @@ BEGIN
       ELSE exp_rate_limit_windows.window_start
     END,
     expires_at = CASE
-      WHEN exp_rate_limit_windows.expires_at < now() THEN p_expiresat
+      WHEN exp_rate_limit_windows.expires_at < now() THEN p_expires_at
       ELSE exp_rate_limit_windows.expires_at
     END
   RETURNING count INTO v_count;
