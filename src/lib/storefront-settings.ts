@@ -39,8 +39,8 @@ export interface BudgetRangeSetting {
   sort_order: number
 }
 
-export const DEFAULT_SUPPORT_EMAIL = 'orders@rubysrelics.com'
-export const DEFAULT_FROM_EMAIL = 'hello@rubysrelics.com'
+export const DEFAULT_SUPPORT_EMAIL = 'orders@rubysrelicsstudio.com'
+export const DEFAULT_FROM_EMAIL = 'hello@rubysrelicsstudio.com'
 export const DEFAULT_FROM_NAME = "Ruby's Relics"
 
 const DEFAULT_GUEST_ORDER_TRACKING_SETTINGS: GuestOrderTrackingSettings = {
