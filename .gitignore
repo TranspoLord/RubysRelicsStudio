@@ -65,3 +65,4 @@ supabase/verification/00_TABLES.md
 supabase/migrations/044_rate_limit_table.sql
 supabase/migrations/044_rate_limit_table.sql
 supabase/migrations/044_rate_limit_table.sql
+.supabase/*

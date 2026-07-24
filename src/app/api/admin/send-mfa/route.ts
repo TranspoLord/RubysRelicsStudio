@@ -82,8 +82,8 @@ export async function POST(request: NextRequest) {
     // Generate and store the code in Supabase — returns a challenge token
     const { code, challengeToken } = await createMFACode(deviceFingerprint)
 
-    // Resolve the sender address from storefront settings (with DB fallback)
-    const fromAddress = await getEmailSenderAddress()
+    // Resolve the sender address from environment variables
+    const fromAddress = getEmailSenderAddress()
 
     // Send email via Resend
     const resend = getResend()

@@ -1,5 +1,4 @@
 import { Resend } from 'resend'
-import { getFromAddress } from '@/lib/storefront-settings'
 
 // ─── Resend client (server-only) ──────────────────────────────────────────────
 export function getResend(): Resend {
@@ -11,8 +10,13 @@ export function getResend(): Resend {
 }
 
 // ─── Sender identity ──────────────────────────────────────────────────────────
-export async function getEmailSenderAddress(): Promise<string> {
-  return getFromAddress()
+export function getEmailSenderAddress(): string {
+  const fromEmail = process.env.RESEND_FROM_EMAIL
+  const fromName = process.env.RESEND_FROM_NAME ?? "Ruby's Relics Studio"
+  if (!fromEmail) {
+    throw new Error('[Resend] RESEND_FROM_EMAIL must be set.')
+  }
+  return `${fromName} <${fromEmail}>`
 }
 
 // ─── Email catalog keys ───────────────────────────────────────────────────────

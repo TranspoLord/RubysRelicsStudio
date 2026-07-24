@@ -2,11 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireAdminApiSession } from '@/lib/admin/auth'
 import { writeAdminAuditLog } from '@/lib/admin/audit'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
-import {
-  DEFAULT_FROM_EMAIL,
-  DEFAULT_FROM_NAME,
-  DEFAULT_SUPPORT_EMAIL,
-} from '@/lib/storefront-settings'
+import { DEFAULT_SUPPORT_EMAIL } from '@/lib/storefront-settings'
 
 interface SettingsFormData {
   guest_order_tracking: {
@@ -62,8 +58,8 @@ export async function GET(request: Request) {
       }) as SettingsFormData['guest_order_tracking'],
       contact: (settingsByKey.get('contact') ?? {
         support_email: DEFAULT_SUPPORT_EMAIL,
-        from_email: DEFAULT_FROM_EMAIL,
-        from_name: DEFAULT_FROM_NAME,
+        from_email: 'hello@rubysrelicsstudio.com',
+        from_name: "Ruby's Relics",
       }) as SettingsFormData['contact'],
       operational_notifications: (settingsByKey.get('operational_notifications') ?? {
         custom_request_notify_email: DEFAULT_SUPPORT_EMAIL,

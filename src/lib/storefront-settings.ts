@@ -40,8 +40,6 @@ export interface BudgetRangeSetting {
 }
 
 export const DEFAULT_SUPPORT_EMAIL = 'orders@rubysrelicsstudio.com'
-export const DEFAULT_FROM_EMAIL = 'hello@rubysrelicsstudio.com'
-export const DEFAULT_FROM_NAME = "Ruby's Relics"
 
 const DEFAULT_GUEST_ORDER_TRACKING_SETTINGS: GuestOrderTrackingSettings = {
   enabled: true,
@@ -59,8 +57,8 @@ const DEFAULT_CUSTOM_ORDER_INTAKE_SETTINGS: CustomOrderIntakeSettings = {
 
 const DEFAULT_CONTACT_SETTINGS: ContactSettings = {
   support_email: DEFAULT_SUPPORT_EMAIL,
-  from_email: DEFAULT_FROM_EMAIL,
-  from_name: DEFAULT_FROM_NAME,
+  from_email: 'hello@rubysrelicsstudio.com',
+  from_name: "Ruby's Relics",
 }
 
 const DEFAULT_OPERATIONAL_NOTIFICATION_SETTINGS: OperationalNotificationSettings = {
