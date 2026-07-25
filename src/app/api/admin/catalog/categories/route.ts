@@ -252,6 +252,12 @@ export async function DELETE(request: Request) {
       )
     }
 
+    // Remove category reference from gallery entries before deleting
+    await supabase
+      .from('exp_gallery')
+      .update({ category_key: null })
+      .eq('category_key', key)
+
     const { error } = await supabase
       .from('exp_taxonomy')
       .delete()
