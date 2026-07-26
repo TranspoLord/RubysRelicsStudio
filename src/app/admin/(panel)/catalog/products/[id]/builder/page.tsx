@@ -315,6 +315,74 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
     }
   }
 
+  async function handleFileUpload() {
+    if (!uploadFile) return
+
+    setUploadingMedia(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      // Step 1: Upload the file to Supabase storage
+      const formData = new FormData()
+      formData.append('file', uploadFile)
+
+      const uploadRes = await fetch('/api/admin/catalog/media/upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const uploadPayload = await uploadRes.json().catch(() => ({}))
+      if (!uploadRes.ok) {
+        throw new Error(typeof uploadPayload?.error === 'string' ? uploadPayload.error : 'Upload failed.')
+      }
+
+      // Step 2: Auto-create the media item with the uploaded URL
+      const altText = uploadFile.name.replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ').trim()
+
+      const mediaRes = await fetch('/api/admin/catalog/media', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId,
+          url: uploadPayload.url,
+          alt: altText,
+          emoji: mediaEmoji || null,
+          gradient: mediaGradient || null,
+          is_featured: mediaFeatured,
+          sort_order: asNumber(mediaSortOrder, 0),
+        }),
+      })
+
+      const mediaPayload = await mediaRes.json().catch(() => ({}))
+      if (!mediaRes.ok) {
+        throw new Error(typeof mediaPayload?.error === 'string' ? mediaPayload.error : 'Failed to create media item.')
+      }
+
+      setSuccess('File uploaded and media item created.')
+      setUploadFile(null)
+      setMediaUrl('')
+      setMediaAlt('')
+      setMediaEmoji('')
+      setMediaGradient('')
+      setMediaSortOrder('')
+      setMediaFeatured(false)
+
+      // Refresh media list
+      const refreshRes = await fetch(`/api/admin/catalog/media?productId=${encodeURIComponent(productId)}`, {
+        cache: 'no-store',
+      })
+      const refreshPayload = await refreshRes.json().catch(() => ({}))
+      if (refreshRes.ok && Array.isArray(refreshPayload?.media)) {
+        setMediaItems(refreshPayload.media)
+      }
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : 'Failed to upload file.')
+    } finally {
+      setUploadingMedia(false)
+    }
+  }
+
   async function addMedia() {
     setUploadingMedia(true)
     setError(null)
@@ -1005,7 +1073,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
           <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.78rem', flex: 1 }}>
             {uploadFile ? uploadFile.name : 'No file chosen'}
           </Typography>
-          <Button variant="outlined" disabled={uploadingMedia || !uploadFile} onClick={() => void addMedia()}>
+          <Button variant="outlined" disabled={uploadingMedia || !uploadFile} onClick={() => void handleFileUpload()}>
             {uploadingMedia ? 'Uploading...' : 'Upload file'}
           </Button>
         </Stack>
