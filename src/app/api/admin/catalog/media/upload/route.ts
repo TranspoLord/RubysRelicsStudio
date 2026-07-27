@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
 import { randomBytes } from 'node:crypto'
-import DOMPurify from 'isomorphic-dompurify'
 
 import { requireAdminApiSession } from '@/lib/admin/auth'
 import { writeAdminAuditLog } from '@/lib/admin/audit'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
+import { sanitizeSvg } from '@/lib/security/svg-sanitizer'
 
 export const runtime = 'nodejs'
 
@@ -62,15 +62,16 @@ export async function POST(request: Request) {
       )
     }
 
-    // SEC-009: SVG files must be sanitized via DOMPurify server-side.
-    // This strips onerror=, onload=, <foreignObject>, <script>, event-handler
-    // attributes, javascript: URIs, data:text/html payloads, etc.
+    // SEC-009: SVG files must be sanitized server-side before storage.
+    // This strips <script>, on* event handlers, <foreignObject>, javascript:
+    // URIs, data:text/html payloads, and enforces an element/attribute
+    // allowlist. Uses @xmldom/xmldom (CJS) instead of isomorphic-dompurify
+    // (which pulled in jsdom → @exodus/bytes, an ESM-only package that
+    // breaks under Next.js Turbopack's CJS require()).
     let uploadBody: File | Blob = file
     if (file.type === 'image/svg+xml') {
       const text = await file.text()
-      const sanitized = DOMPurify.sanitize(text, {
-        USE_PROFILES: { svg: true, svgFilters: true },
-      })
+      const sanitized = sanitizeSvg(text)
       uploadBody = new Blob([sanitized], { type: 'image/svg+xml' })
     }
 
