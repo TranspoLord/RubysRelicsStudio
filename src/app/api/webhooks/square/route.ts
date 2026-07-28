@@ -3,6 +3,8 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 import { safeLogError } from '@/lib/security/logger'
+import { getEmailSenderAddress, getResend } from '@/lib/resend/client'
+import { safeHtmlEscape } from '@/lib/validate'
 
 const supabase = getSupabaseAdmin()
 
@@ -173,6 +175,55 @@ export async function POST(request: NextRequest) {
 
     if (updateError) {
       safeLogError('[Square Webhook]', updateError)
+    } else {
+      // Send payment confirmation email to the customer if this is a custom
+      // request order. The DB trigger (migration 050) will set the custom
+      // request status to 'paid' — we just notify the customer here.
+      try {
+        const { data: orderDetails } = await supabase
+          .from('exp_orders')
+          .select('id, customer_email, custom_request_id, order_total')
+          .eq('id', order.id)
+          .single()
+
+        if (orderDetails?.customer_email && orderDetails?.custom_request_id) {
+          const { data: customRequest } = await supabase
+            .from('exp_custom_requests')
+            .select('id, item_type, customer_name, customer_access_token')
+            .eq('id', orderDetails.custom_request_id)
+            .single()
+
+          if (customRequest && process.env.RESEND_API_KEY) {
+            const resend = getResend()
+            const fromAddress = await getEmailSenderAddress()
+            const origin = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://rubysrelicsstudio.com'
+            const statusUrl = customRequest.customer_access_token
+              ? `${origin}/custom-orders/${customRequest.id}?access=${encodeURIComponent(customRequest.customer_access_token)}`
+              : `${origin}/custom-orders`
+
+            await resend.emails.send({
+              from: fromAddress,
+              to: [orderDetails.customer_email],
+              subject: `Payment received — your custom order is now in production (${customRequest.id.slice(0, 8)})`,
+              html: `
+                <h2>Payment Received — Thank You!</h2>
+                <p>Hi ${safeHtmlEscape(customRequest.customer_name ?? 'there')},</p>
+                <p>We've received your payment and your custom order is now in production!</p>
+                <p><strong>Request ID:</strong> ${safeHtmlEscape(customRequest.id)}</p>
+                <p><strong>Item type:</strong> ${safeHtmlEscape(customRequest.item_type)}</p>
+                <p><strong>Amount paid:</strong> $${Number(orderDetails.order_total).toFixed(2)}</p>
+                <h3>What Happens Next?</h3>
+                <p>Our team will begin working on your item. You'll receive updates as your order progresses through production.</p>
+                <p>Track your request status anytime:</p>
+                <p><a href="${safeHtmlEscape(statusUrl)}">${safeHtmlEscape(statusUrl)}</a></p>
+              `,
+            })
+          }
+        }
+      } catch (emailError) {
+        safeLogError('[Square Webhook:payment-email]', emailError)
+        // Email failure should not affect webhook processing
+      }
     }
   }
 

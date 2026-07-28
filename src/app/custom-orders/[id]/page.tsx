@@ -17,7 +17,7 @@ interface RequestRow {
   quantity: number
   description: string
   quote_amount: number | null
-  stripe_payment_link_url: string | null
+  square_payment_link_url: string | null
   admin_notes: string | null
   created_at: string
   updated_at: string
@@ -31,7 +31,7 @@ async function getCustomRequest(id: string, access: string) {
 
   const { data, error } = await supabase
     .from('exp_custom_requests')
-    .select('id, status, item_type, quantity, description, quote_amount, stripe_payment_link_url, admin_notes, created_at, updated_at, customer_access_expires_at')
+    .select('id, status, item_type, quantity, description, quote_amount, square_payment_link_url, admin_notes, created_at, updated_at, customer_access_expires_at')
     .eq('id', id)
     .eq('customer_access_token', access)
     .single()
@@ -179,16 +179,16 @@ export default async function CustomOrderStatusPage({
                     <Typography sx={{ color: alpha(brandTokens.parchment, 0.78), mt: 0.25 }}>
                       Total quote: ${Number(request.quote_amount).toFixed(2)}
                     </Typography>
-                    {request.stripe_payment_link_url && (
+                    {request.square_payment_link_url && (
                       <Button
                         component="a"
-                        href={request.stripe_payment_link_url}
+                        href={request.square_payment_link_url}
                         target="_blank"
                         rel="noopener noreferrer"
                         variant="contained"
                         sx={{ mt: 1.1 }}
                       >
-                        Pay Quote via Stripe
+                        Pay Quote via Square
                       </Button>
                     )}
                   </Box>

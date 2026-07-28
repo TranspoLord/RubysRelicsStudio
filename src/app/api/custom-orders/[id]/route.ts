@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { randomUUID } from 'node:crypto'
 import { requireAdminApiSession } from '@/lib/admin/auth'
 import { writeAdminAuditLog } from '@/lib/admin/audit'
-import { getSupabaseAdmin } from '@/lib/supabase/client'
+import { getSupabaseAdmin, branch } from '@/lib/supabase/client'
 import { getEmailSenderAddress, getResend } from '@/lib/resend/client'
 import { createSquareCheckout } from '@/lib/square/client'
 import { safeHtmlEscape } from '@/lib/validate'
@@ -82,7 +82,7 @@ async function createSquareQuotePaymentLink(input: {
   requestId: string
   itemType: string
   quoteAmount: number
-}): Promise<{ paymentLinkId: string; paymentLinkUrl: string }> {
+}): Promise<{ paymentLinkId: string; paymentLinkUrl: string; orderId: string }> {
   const amountCents = Math.round(input.quoteAmount * 100)
 
   const checkoutResponse = await createSquareCheckout({
@@ -105,6 +105,7 @@ async function createSquareQuotePaymentLink(input: {
   return {
     paymentLinkId: checkoutResponse.payment_link.id,
     paymentLinkUrl: checkoutResponse.payment_link.url,
+    orderId: checkoutResponse.payment_link.order_id,
   }
 }
 
@@ -204,7 +205,7 @@ export async function PATCH(request: Request, context: RequestContext) {
 
       // SEC-047: Create a real Square payment link via the API.
       // The amount is fixed server-side and cannot be modified by the customer.
-      let paymentLink: { paymentLinkId: string; paymentLinkUrl: string }
+      let paymentLink: { paymentLinkId: string; paymentLinkUrl: string; orderId: string }
       try {
         paymentLink = await createSquareQuotePaymentLink({
           requestId: requestRow.id,
@@ -249,6 +250,40 @@ export async function PATCH(request: Request, context: RequestContext) {
       const statusUrl = requestRow.customer_access_token
         ? `${origin}/custom-orders/${requestRow.id}?access=${encodeURIComponent(requestRow.customer_access_token)}`
         : `${origin}/custom-orders`
+
+      // Create an exp_orders row linked to this custom request so the Square
+      // webhook can match the payment and the trigger can auto-set status=paid.
+      // We use the Square payment link's order_id as square_order_id.
+      const { error: orderInsertError } = await supabase
+        .from('exp_orders')
+        .insert({
+          square_order_id: paymentLink.orderId,
+          order_path: 'custom',
+          payment_mode: 'square_payment_link',
+          payment_status: 'pending',
+          status: 'awaiting_payment',
+          order_total: quoteAmount,
+          subtotal: quoteAmount,
+          discount_amount: 0,
+          shipping_cost: 0,
+          shipping_method: 'standard',
+          shipping_address: {},
+          cart_snapshot: {
+            custom_request_id: requestRow.id,
+            item_type: requestRow.item_type,
+            quote_amount: quoteAmount,
+          },
+          custom_request_id: requestRow.id,
+          customer_email: requestRow.customer_email,
+          branch,
+        })
+
+      if (orderInsertError) {
+        console.error('[custom-orders:id:send-quote:order-insert]', orderInsertError.message)
+        // Non-fatal — the quote is already saved and the email will be sent.
+        // The webhook may not match this payment, but the admin can manually
+        // update the status. Log for investigation.
+      }
 
       try {
         await sendQuoteEmail({

@@ -27,7 +27,7 @@ interface CustomRequestRow {
   description: string
   files: Array<{ name: string; size: number; type: string; path?: string }> | null
   quote_amount: number | null
-  stripe_payment_link_url: string | null
+  square_payment_link_url: string | null
   quote_sent_at: string | null
   quote_expires_at: string | null
   quote_last_resent_at: string | null
@@ -515,10 +515,10 @@ export default function AdminCustomRequestsPage() {
                 </Box>
               )}
 
-              {row.stripe_payment_link_url && (
+              {row.square_payment_link_url && (
                 <Button
                   component="a"
-                  href={row.stripe_payment_link_url}
+                  href={row.square_payment_link_url}
                   target="_blank"
                   rel="noopener noreferrer"
                   size="small"

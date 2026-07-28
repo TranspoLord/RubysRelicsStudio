@@ -7,7 +7,7 @@ import {
   getCustomOrderIntakeSettings,
   getOperationalNotificationSettings,
 } from '@/lib/storefront-settings'
-import { safeHtmlEscape } from '@/lib/validate'
+import { safeHtmlEscape, validateEmail } from '@/lib/validate'
 
 interface FileMeta {
   name?: unknown
@@ -164,6 +164,48 @@ async function sendAdminNotificationEmail(input: {
   })
 }
 
+/**
+ * Send a confirmation email to the customer after they submit a custom request.
+ * Includes a link to track their request status.
+ */
+async function sendCustomerConfirmationEmail(input: {
+  customerEmail: string
+  customerName: string
+  requestId: string
+  itemType: string
+  quantity: number
+  statusUrl: string
+}) {
+  if (!process.env.RESEND_API_KEY) return
+
+  const resend = getResend()
+  const fromAddress = await getEmailSenderAddress()
+
+  await resend.emails.send({
+    from: fromAddress,
+    to: [input.customerEmail],
+    subject: `We received your custom request (${input.requestId.slice(0, 8)})`,
+    html: `
+      <h2>Thank You for Your Request!</h2>
+      <p>Hi ${safeHtmlEscape(input.customerName)},</p>
+      <p>We've received your custom request and our team will review it shortly. Here's a summary:</p>
+      <p><strong>Request ID:</strong> ${safeHtmlEscape(input.requestId)}</p>
+      <p><strong>Item type:</strong> ${safeHtmlEscape(input.itemType)}</p>
+      <p><strong>Quantity:</strong> ${safeHtmlEscape(String(input.quantity))}</p>
+      <h3>What Happens Next?</h3>
+      <ol>
+        <li><strong>Review:</strong> We'll review your request and any artwork you uploaded (usually within 1–2 business days).</li>
+        <li><strong>Quote:</strong> You'll receive an email with a quote including pricing and an estimated timeline.</li>
+        <li><strong>Payment:</strong> If you approve the quote, you can pay securely via Square.</li>
+        <li><strong>Production:</strong> Once paid, we'll begin production and keep you updated.</li>
+      </ol>
+      <p>You can track your request status anytime:</p>
+      <p><a href="${safeHtmlEscape(input.statusUrl)}">${safeHtmlEscape(input.statusUrl)}</a></p>
+      <p>Please bookmark this link — it's your private access to your request details.</p>
+    `,
+  })
+}
+
 export async function POST(request: Request) {
   try {
     const ip = getClientIp(request)
@@ -195,6 +237,15 @@ export async function POST(request: Request) {
     if (!customerName || !customerEmail || !itemType || !description) {
       return NextResponse.json(
         { error: 'Missing required fields. Please complete all required inputs.' },
+        { status: 400 }
+      )
+    }
+
+    // Validate email format — prevents invalid emails from entering the pipeline
+    const validEmail = validateEmail(customerEmail)
+    if (!validEmail) {
+      return NextResponse.json(
+        { error: 'Please provide a valid email address.' },
         { status: 400 }
       )
     }
@@ -265,6 +316,9 @@ export async function POST(request: Request) {
       )
     }
 
+    const origin = new URL(request.url).origin
+    const statusUrl = `${origin}/custom-orders/${data.id}?access=${encodeURIComponent(data.customer_access_token)}`
+
     try {
       await sendAdminNotificationEmail({
         requestId: data.id,
@@ -275,7 +329,22 @@ export async function POST(request: Request) {
         description,
       })
     } catch (mailError) {
-      console.error('[custom-orders:email]', mailError)
+      console.error('[custom-orders:email:admin]', mailError)
+      // Email failure should not fail the request submission itself.
+    }
+
+    // Send confirmation email to the customer with their status tracking link
+    try {
+      await sendCustomerConfirmationEmail({
+        customerEmail,
+        customerName,
+        requestId: data.id,
+        itemType,
+        quantity,
+        statusUrl,
+      })
+    } catch (mailError) {
+      console.error('[custom-orders:email:customer]', mailError)
       // Email failure should not fail the request submission itself.
     }
 
