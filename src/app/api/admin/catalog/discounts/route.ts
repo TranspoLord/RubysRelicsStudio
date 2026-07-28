@@ -4,7 +4,7 @@ import { requireAdminApiSession } from '@/lib/admin/auth'
 import { writeAdminAuditLog } from '@/lib/admin/audit'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 
-const DISCOUNT_TYPES = ['percent', 'fixed_amount', 'unit_price'] as const
+const DISCOUNT_TYPES = ['percent', 'fixed_amount', 'unit_price', 'stepped'] as const
 type DiscountType = (typeof DISCOUNT_TYPES)[number]
 
 interface DiscountBody {
@@ -14,6 +14,7 @@ interface DiscountBody {
   max_qty?: unknown
   discount_type?: unknown
   discount_value?: unknown
+  step_qty?: unknown
   label?: unknown
   is_enabled?: unknown
   sort_order?: unknown
@@ -54,7 +55,7 @@ function isDiscountType(value: unknown): value is DiscountType {
 }
 
 const SELECT_COLUMNS =
-  'id, product_id, min_qty, max_qty, discount_type, discount_value, label, is_enabled, sort_order, updated_at'
+  'id, product_id, min_qty, max_qty, discount_type, discount_value, step_qty, label, is_enabled, sort_order, updated_at'
 
 export async function GET(request: Request) {
   try {
@@ -102,6 +103,7 @@ export async function POST(request: Request) {
     const maxQtyRaw = asOptionalNumber(body.max_qty)
     const discountType = body.discount_type
     const discountValueRaw = asNumber(body.discount_value)
+    const stepQtyRaw = asOptionalNumber(body.step_qty)
     const label = asOptionalString(body.label, 120)
     const isEnabled = asBoolean(body.is_enabled, true)
     const sortOrderRaw = asNumber(body.sort_order)
@@ -123,7 +125,7 @@ export async function POST(request: Request) {
 
     if (!isDiscountType(discountType)) {
       return NextResponse.json(
-        { error: 'Discount type must be percent, fixed_amount, or unit_price.' },
+        { error: 'Discount type must be percent, fixed_amount, unit_price, or stepped.' },
         { status: 400 }
       )
     }
@@ -142,6 +144,15 @@ export async function POST(request: Request) {
       )
     }
 
+    if (discountType === 'stepped') {
+      if (stepQtyRaw === null || !Number.isInteger(stepQtyRaw) || stepQtyRaw < 1) {
+        return NextResponse.json(
+          { error: 'Step quantity must be a positive integer for stepped discounts.' },
+          { status: 400 }
+        )
+      }
+    }
+
     if (sortOrderRaw === null || sortOrderRaw < -10000 || sortOrderRaw > 10000) {
       return NextResponse.json({ error: 'Sort order must be between -10000 and 10000.' }, { status: 400 })
     }
@@ -155,6 +166,7 @@ export async function POST(request: Request) {
         max_qty: maxQtyRaw,
         discount_type: discountType,
         discount_value: Math.round(discountValueRaw * 100) / 100,
+        step_qty: discountType === 'stepped' ? Math.trunc(stepQtyRaw!) : null,
         label,
         is_enabled: isEnabled,
         sort_order: Math.trunc(sortOrderRaw),
@@ -217,6 +229,7 @@ export async function PUT(request: Request) {
     const maxQtyRaw = asOptionalNumber(body.max_qty)
     const discountType = body.discount_type
     const discountValueRaw = asNumber(body.discount_value)
+    const stepQtyRaw = asOptionalNumber(body.step_qty)
     const label = asOptionalString(body.label, 120)
     const isEnabled = asBoolean(body.is_enabled, true)
     const sortOrderRaw = asNumber(body.sort_order)
@@ -238,7 +251,7 @@ export async function PUT(request: Request) {
 
     if (!isDiscountType(discountType)) {
       return NextResponse.json(
-        { error: 'Discount type must be percent, fixed_amount, or unit_price.' },
+        { error: 'Discount type must be percent, fixed_amount, unit_price, or stepped.' },
         { status: 400 }
       )
     }
@@ -257,6 +270,15 @@ export async function PUT(request: Request) {
       )
     }
 
+    if (discountType === 'stepped') {
+      if (stepQtyRaw === null || !Number.isInteger(stepQtyRaw) || stepQtyRaw < 1) {
+        return NextResponse.json(
+          { error: 'Step quantity must be a positive integer for stepped discounts.' },
+          { status: 400 }
+        )
+      }
+    }
+
     if (sortOrderRaw === null || sortOrderRaw < -10000 || sortOrderRaw > 10000) {
       return NextResponse.json({ error: 'Sort order must be between -10000 and 10000.' }, { status: 400 })
     }
@@ -269,6 +291,7 @@ export async function PUT(request: Request) {
         max_qty: maxQtyRaw,
         discount_type: discountType,
         discount_value: Math.round(discountValueRaw * 100) / 100,
+        step_qty: discountType === 'stepped' ? Math.trunc(stepQtyRaw!) : null,
         label,
         is_enabled: isEnabled,
         sort_order: Math.trunc(sortOrderRaw),

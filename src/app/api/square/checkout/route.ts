@@ -69,7 +69,7 @@ async function fetchPricingContext(productId: string): Promise<PricingContext | 
   // Fetch bulk discounts
   const { data: bulkDiscounts } = await supabase
     .from('exp_product_bulk_discounts')
-    .select('min_qty, max_qty, discount_type, discount_value, label, sort_order, is_enabled')
+    .select('min_qty, max_qty, discount_type, discount_value, step_qty, label, sort_order, is_enabled')
     .eq('product_id', productId)
 
   return {
@@ -101,6 +101,7 @@ async function fetchPricingContext(productId: string): Promise<PricingContext | 
       max_qty: b.max_qty,
       discount_type: b.discount_type,
       discount_value: Number(b.discount_value),
+      step_qty: b.step_qty ?? null,
       label: b.label,
       sort_order: b.sort_order,
       is_enabled: b.is_enabled,

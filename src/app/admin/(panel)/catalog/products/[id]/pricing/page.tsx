@@ -31,8 +31,9 @@ interface BulkDiscountRow {
   id: string
   min_qty: number
   max_qty: number | null
-  discount_type: 'percent' | 'fixed_amount' | 'unit_price'
+  discount_type: 'percent' | 'fixed_amount' | 'unit_price' | 'stepped'
   discount_value: number
+  step_qty: number | null
   label: string | null
   is_enabled: boolean
   sort_order: number
@@ -53,6 +54,7 @@ const DISCOUNT_TYPE_CHOICES: Array<BulkDiscountRow['discount_type']> = [
   'percent',
   'fixed_amount',
   'unit_price',
+  'stepped',
 ]
 
 export default function ProductPricingEditorPage({ params }: { params: Promise<{ id: string }> }) {
@@ -70,6 +72,7 @@ export default function ProductPricingEditorPage({ params }: { params: Promise<{
   const [maxQty, setMaxQty] = useState('')
   const [discountType, setDiscountType] = useState<BulkDiscountRow['discount_type']>('percent')
   const [discountValue, setDiscountValue] = useState('10')
+  const [stepQty, setStepQty] = useState('10')
   const [label, setLabel] = useState('')
   const [sortOrder, setSortOrder] = useState('0')
   const [variantLabel, setVariantLabel] = useState('')
@@ -177,6 +180,7 @@ export default function ProductPricingEditorPage({ params }: { params: Promise<{
           max_qty: maxQty.trim().length > 0 ? Number(maxQty) : null,
           discount_type: discountType,
           discount_value: Number(discountValue),
+          step_qty: discountType === 'stepped' ? Number(stepQty) : null,
           label,
           is_enabled: true,
           sort_order: Number(sortOrder),
@@ -193,6 +197,7 @@ export default function ProductPricingEditorPage({ params }: { params: Promise<{
       setMaxQty('')
       setDiscountType('percent')
       setDiscountValue('10')
+      setStepQty('10')
       setLabel('')
       setSortOrder('0')
       await loadData()
@@ -364,6 +369,9 @@ export default function ProductPricingEditorPage({ params }: { params: Promise<{
             ))}
           </Select>
           <TextField size="small" type="number" label="Value" value={discountValue} onChange={(event) => setDiscountValue(event.target.value)} sx={{ width: 140 }} />
+          {discountType === 'stepped' && (
+            <TextField size="small" type="number" label="Step qty (every X items)" value={stepQty} onChange={(event) => setStepQty(event.target.value)} sx={{ width: 180 }} />
+          )}
           <TextField size="small" label="Label" value={label} onChange={(event) => setLabel(event.target.value)} sx={{ minWidth: 200 }} />
           <TextField size="small" type="number" label="Sort" value={sortOrder} onChange={(event) => setSortOrder(event.target.value)} sx={{ width: 110 }} />
           <Button variant="outlined" disabled={saving || !product} onClick={() => void addDiscount()}>
@@ -386,7 +394,7 @@ export default function ProductPricingEditorPage({ params }: { params: Promise<{
                 }}
               >
                 <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.7) }}>
-                  Qty {tier.min_qty}{tier.max_qty ? ` - ${tier.max_qty}` : '+'} | {tier.discount_type} {tier.discount_value} | {tier.label || 'No label'} | {tier.is_enabled ? 'Enabled' : 'Disabled'}
+                  Qty {tier.min_qty}{tier.max_qty ? ` - ${tier.max_qty}` : '+'} | {tier.discount_type} {tier.discount_value}{tier.step_qty ? ` /${tier.step_qty}pcs` : ''} | {tier.label || 'No label'} | {tier.is_enabled ? 'Enabled' : 'Disabled'}
                 </Typography>
               </Box>
             ))}

@@ -40,8 +40,10 @@ export interface PricingOption {
 export interface PricingBulkTier {
   min_qty: number
   max_qty: number | null
-  discount_type: 'percent' | 'fixed_amount' | 'unit_price'
+  discount_type: 'percent' | 'fixed_amount' | 'unit_price' | 'stepped'
   discount_value: number
+  /** Step quantity for 'stepped' type — discount increases every step_qty items */
+  step_qty: number | null
   label: string | null
   sort_order: number
   is_enabled: boolean
@@ -167,6 +169,17 @@ export function computeCanonicalLine(
       discount = Number(appliedTier.discount_value) * quantity
     } else if (appliedTier.discount_type === 'unit_price') {
       discount = Math.max(0, (unitPrice - Number(appliedTier.discount_value)) * quantity)
+    } else if (appliedTier.discount_type === 'stepped') {
+      // Stepped: for every step_qty items, the per-unit discount increases by
+      // discount_value. The number of complete steps is floor(quantity / step_qty).
+      // The per-unit discount = steps * discount_value, capped at unitPrice.
+      // Total discount = perUnitDiscount * quantity.
+      const stepQty = Number(appliedTier.step_qty ?? 0)
+      if (stepQty > 0) {
+        const steps = Math.floor(quantity / stepQty)
+        const perUnitDiscount = Math.min(unitPrice, steps * Number(appliedTier.discount_value))
+        discount = perUnitDiscount * quantity
+      }
     }
   }
 

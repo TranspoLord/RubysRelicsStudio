@@ -74,7 +74,7 @@ export async function POST(request: Request) {
 
       supabase
         .from('exp_product_bulk_discounts')
-        .select('min_qty, max_qty, discount_type, discount_value, label, sort_order, is_enabled')
+        .select('min_qty, max_qty, discount_type, discount_value, step_qty, label, sort_order, is_enabled')
         .eq('product_id', productId),
     ])
 
@@ -116,6 +116,14 @@ export async function POST(request: Request) {
           if (tier.discount_type === 'fixed_amount') return tier.discount_value * quantity
           if (tier.discount_type === 'unit_price')
             return Math.max(0, (result.unitPriceBeforeDiscount - tier.discount_value) * quantity)
+          if (tier.discount_type === 'stepped') {
+            const stepQty = Number(tier.step_qty ?? 0)
+            if (stepQty > 0) {
+              const steps = Math.floor(quantity / stepQty)
+              const perUnitDiscount = Math.min(result.unitPriceBeforeDiscount, steps * tier.discount_value)
+              return perUnitDiscount * quantity
+            }
+          }
           return 0
         })(),
       }))
