@@ -89,8 +89,9 @@ interface DiscountTier {
   id: string
   min_qty: number
   max_qty: number | null
-  discount_type: 'percent' | 'fixed_amount'
+  discount_type: 'percent' | 'fixed_amount' | 'unit_price' | 'stepped'
   discount_value: number
+  step_qty: number | null
   label: string | null
   is_enabled: boolean
 }
@@ -170,8 +171,9 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
   // Discount editing state
   const [minQty, setMinQty] = useState('')
   const [maxQty, setMaxQty] = useState('')
-  const [discountType, setDiscountType] = useState<'percent' | 'fixed_amount'>('percent')
+  const [discountType, setDiscountType] = useState<'percent' | 'fixed_amount' | 'unit_price' | 'stepped'>('percent')
   const [discountValue, setDiscountValue] = useState('')
+  const [stepQty, setStepQty] = useState('10')
   const [discountLabel, setDiscountLabel] = useState('')
   const [discountSortOrder, setDiscountSortOrder] = useState('')
   const [discountBusyId, setDiscountBusyId] = useState<string | null>(null)
@@ -580,6 +582,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
           max_qty: maxQty ? asNumber(maxQty, 0) : null,
           discount_type: discountType,
           discount_value: asNumber(discountValue, 0),
+          step_qty: discountType === 'stepped' ? asNumber(stepQty, 10) : null,
           label: discountLabel || null,
           sort_order: asNumber(discountSortOrder, 0),
         }),
@@ -594,6 +597,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
       setMinQty('')
       setMaxQty('')
       setDiscountValue('')
+      setStepQty('10')
       setDiscountLabel('')
       setDiscountSortOrder('')
 
@@ -1608,11 +1612,13 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
           <Select
             size="small"
             value={discountType}
-            onChange={(event) => setDiscountType(event.target.value as 'percent' | 'fixed_amount')}
+            onChange={(event) => setDiscountType(event.target.value as 'percent' | 'fixed_amount' | 'unit_price' | 'stepped')}
             sx={{ minWidth: 180 }}
           >
             <MenuItem value="percent">Percent off</MenuItem>
-            <MenuItem value="fixed_amount">Fixed amount off</MenuItem>
+            <MenuItem value="fixed_amount">Fixed $ off/unit</MenuItem>
+            <MenuItem value="unit_price">Set unit price</MenuItem>
+            <MenuItem value="stepped">Stepped ($/step)</MenuItem>
           </Select>
           <TextField
             size="small"
@@ -1622,6 +1628,16 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
             onChange={(event) => setDiscountValue(event.target.value)}
             sx={{ width: 140 }}
           />
+          {discountType === 'stepped' && (
+            <TextField
+              size="small"
+              type="number"
+              label="Step qty (every X)"
+              value={stepQty}
+              onChange={(event) => setStepQty(event.target.value)}
+              sx={{ width: 160 }}
+            />
+          )}
           <TextField
             size="small"
             label="Label"
@@ -1660,7 +1676,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
               >
                 <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1}>
                   <Typography sx={{ color: alpha(brandTokens.parchment, 0.66), fontSize: '0.78rem' }}>
-                    Qty {tier.min_qty}{tier.max_qty ? ` - ${tier.max_qty}` : '+'} | {tier.discount_type} {tier.discount_value} | {tier.label || 'No label'} | {tier.is_enabled ? 'Enabled' : 'Disabled'}
+                    Qty {tier.min_qty}{tier.max_qty ? ` - ${tier.max_qty}` : '+'} | {tier.discount_type} {tier.discount_value}{tier.step_qty ? ` /${tier.step_qty}pcs` : ''} | {tier.label || 'No label'} | {tier.is_enabled ? 'Enabled' : 'Disabled'}
                   </Typography>
                   <Button
                     size="small"
