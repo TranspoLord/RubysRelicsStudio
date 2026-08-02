@@ -35,6 +35,7 @@ interface BulkDiscountRow {
   discount_value: number
   step_qty: number | null
   label: string | null
+  description: string | null
   is_enabled: boolean
   sort_order: number
 }

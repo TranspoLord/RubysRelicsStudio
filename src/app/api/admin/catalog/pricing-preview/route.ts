@@ -28,7 +28,11 @@ function asNullableString(value: unknown, maxLen: number): string | null {
 
 export async function POST(request: Request) {
   try {
-    const auth = await requireAdminApiSession(request)
+    const auth = await requireAdminApiSession(request, {
+      key: 'admin-catalog-pricing-preview',
+      maxRequests: 60,
+      windowMs: 15 * 60 * 1000,
+    })
     if (!auth.ok) return auth.response
 
     const body = (await request.json().catch(() => ({}))) as PricingPreviewBody
@@ -74,7 +78,7 @@ export async function POST(request: Request) {
 
       supabase
         .from('exp_product_bulk_discounts')
-        .select('min_qty, max_qty, discount_type, discount_value, step_qty, label, sort_order, is_enabled')
+        .select('min_qty, max_qty, discount_type, discount_value, step_qty, label, description, sort_order, is_enabled')
         .eq('product_id', productId),
     ])
 
@@ -144,6 +148,7 @@ export async function POST(request: Request) {
         appliedTierLabel: result.appliedTier?.label ?? null,
         appliedTierType: result.appliedTier?.discount_type ?? null,
         appliedTierValue: result.appliedTier?.discount_value ?? null,
+        appliedTierDescription: result.appliedTier?.description ?? null,
         description: result.description,
         allTiers,
       },

@@ -93,6 +93,7 @@ interface DiscountTier {
   discount_value: number
   step_qty: number | null
   label: string | null
+  description: string | null
   is_enabled: boolean
 }
 
@@ -175,6 +176,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
   const [discountValue, setDiscountValue] = useState('')
   const [stepQty, setStepQty] = useState('10')
   const [discountLabel, setDiscountLabel] = useState('')
+  const [discountDescription, setDiscountDescription] = useState('')
   const [discountSortOrder, setDiscountSortOrder] = useState('')
   const [discountBusyId, setDiscountBusyId] = useState<string | null>(null)
 
@@ -584,6 +586,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
           discount_value: asNumber(discountValue, 0),
           step_qty: discountType === 'stepped' ? asNumber(stepQty, 10) : null,
           label: discountLabel || null,
+          description: discountDescription || null,
           sort_order: asNumber(discountSortOrder, 0),
         }),
       })
@@ -599,6 +602,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
       setDiscountValue('')
       setStepQty('10')
       setDiscountLabel('')
+      setDiscountDescription('')
       setDiscountSortOrder('')
 
       const discountsRes = await fetch(`/api/admin/catalog/discounts?productId=${encodeURIComponent(productId)}`, { cache: 'no-store' })
@@ -1591,7 +1595,20 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
           Bulk Discount Tiers
         </Typography>
 
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
+        {/* Type selector — drives which fields show below */}
+        <Select
+          size="small"
+          value={discountType}
+          onChange={(event) => setDiscountType(event.target.value as 'percent' | 'fixed_amount' | 'unit_price' | 'stepped')}
+          sx={{ minWidth: 220 }}
+        >
+          <MenuItem value="percent">Percent off</MenuItem>
+          <MenuItem value="fixed_amount">Fixed $ off/unit</MenuItem>
+          <MenuItem value="unit_price">Set unit price</MenuItem>
+          <MenuItem value="stepped">Stepped unit price</MenuItem>
+        </Select>
+
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }}>
           <TextField
             size="small"
             type="number"
@@ -1609,41 +1626,43 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
             sx={{ width: 130 }}
             inputProps={{ placeholder: 'Leave empty for unlimited' }}
           />
-          <Select
-            size="small"
-            value={discountType}
-            onChange={(event) => setDiscountType(event.target.value as 'percent' | 'fixed_amount' | 'unit_price' | 'stepped')}
-            sx={{ minWidth: 180 }}
-          >
-            <MenuItem value="percent">Percent off</MenuItem>
-            <MenuItem value="fixed_amount">Fixed $ off/unit</MenuItem>
-            <MenuItem value="unit_price">Set unit price</MenuItem>
-            <MenuItem value="stepped">Stepped ($/step)</MenuItem>
-          </Select>
           <TextField
             size="small"
             type="number"
-            label="Value"
+            label={discountType === 'stepped' ? 'Discount value ($/unit/step)' : 'Discount value'}
             value={discountValue}
             onChange={(event) => setDiscountValue(event.target.value)}
-            sx={{ width: 140 }}
+            sx={{ width: discountType === 'stepped' ? 200 : 160 }}
+            InputProps={{
+              startAdornment: <InputAdornment position="start">$</InputAdornment>,
+            }}
           />
           {discountType === 'stepped' && (
             <TextField
               size="small"
               type="number"
-              label="Step qty (every X)"
+              label="Per qty (every X)"
               value={stepQty}
               onChange={(event) => setStepQty(event.target.value)}
               sx={{ width: 160 }}
+              inputProps={{ placeholder: 'e.g. 10' }}
             />
           )}
           <TextField
             size="small"
-            label="Label"
+            label="Label (display name override)"
             value={discountLabel}
             onChange={(event) => setDiscountLabel(event.target.value)}
-            sx={{ minWidth: 190 }}
+            sx={{ minWidth: 200 }}
+            inputProps={{ placeholder: 'Optional' }}
+          />
+          <TextField
+            size="small"
+            label="Description (shown under price)"
+            value={discountDescription}
+            onChange={(event) => setDiscountDescription(event.target.value)}
+            sx={{ minWidth: 240 }}
+            inputProps={{ placeholder: 'Optional', maxLength: 280 }}
           />
           <TextField
             size="small"
@@ -1675,9 +1694,16 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
                 }}
               >
                 <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1}>
-                  <Typography sx={{ color: alpha(brandTokens.parchment, 0.66), fontSize: '0.78rem' }}>
-                    Qty {tier.min_qty}{tier.max_qty ? ` - ${tier.max_qty}` : '+'} | {tier.discount_type} {tier.discount_value}{tier.step_qty ? ` /${tier.step_qty}pcs` : ''} | {tier.label || 'No label'} | {tier.is_enabled ? 'Enabled' : 'Disabled'}
-                  </Typography>
+                  <Box>
+                    <Typography sx={{ color: alpha(brandTokens.parchment, 0.66), fontSize: '0.78rem' }}>
+                      Qty {tier.min_qty}{tier.max_qty ? ` - ${tier.max_qty}` : '+'} | {tier.discount_type} {tier.discount_value}{tier.step_qty ? ` /${tier.step_qty}pcs` : ''} | {tier.label || 'No label'} | {tier.is_enabled ? 'Enabled' : 'Disabled'}
+                    </Typography>
+                    {tier.description && (
+                      <Typography sx={{ color: alpha(brandTokens.parchment, 0.5), fontSize: '0.72rem', mt: 0.3 }}>
+                        {tier.description}
+                      </Typography>
+                    )}
+                  </Box>
                   <Button
                     size="small"
                     variant="outlined"

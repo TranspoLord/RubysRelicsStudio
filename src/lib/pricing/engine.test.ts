@@ -29,6 +29,7 @@ const BASE_PRODUCT: PricingContext = {
       discount_value: 10,
       step_qty: null,
       label: '10% off',
+      description: null,
       sort_order: 10,
       is_enabled: true,
     },
@@ -93,6 +94,7 @@ const STEPPED_PRODUCT: PricingContext = {
       discount_value: 0.50,
       step_qty: 10,
       label: 'Volume pricing',
+      description: null,
       sort_order: 0,
       is_enabled: true,
     },
@@ -155,6 +157,7 @@ describe('computeCanonicalLine — stepped discount', () => {
           discount_value: 2.00, // $2/step, unit price is $5
           step_qty: 10,
           label: 'Aggressive volume',
+          description: null,
           sort_order: 0,
           is_enabled: true,
         },
@@ -179,6 +182,7 @@ describe('computeCanonicalLine — stepped discount', () => {
           discount_value: 0.50,
           step_qty: null, // missing — should produce no discount
           label: 'Broken tier',
+          description: null,
           sort_order: 0,
           is_enabled: true,
         },

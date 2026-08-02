@@ -45,6 +45,8 @@ export interface PricingBulkTier {
   /** Step quantity for 'stepped' type — discount increases every step_qty items */
   step_qty: number | null
   label: string | null
+  /** Customer-facing note shown under the price in the storefront */
+  description: string | null
   sort_order: number
   is_enabled: boolean
 }

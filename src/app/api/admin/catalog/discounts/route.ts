@@ -16,6 +16,7 @@ interface DiscountBody {
   discount_value?: unknown
   step_qty?: unknown
   label?: unknown
+  description?: unknown
   is_enabled?: unknown
   sort_order?: unknown
   confirmAction?: unknown
@@ -55,7 +56,7 @@ function isDiscountType(value: unknown): value is DiscountType {
 }
 
 const SELECT_COLUMNS =
-  'id, product_id, min_qty, max_qty, discount_type, discount_value, step_qty, label, is_enabled, sort_order, updated_at'
+  'id, product_id, min_qty, max_qty, discount_type, discount_value, step_qty, label, description, is_enabled, sort_order, updated_at'
 
 export async function GET(request: Request) {
   try {
@@ -105,6 +106,7 @@ export async function POST(request: Request) {
     const discountValueRaw = asNumber(body.discount_value)
     const stepQtyRaw = asOptionalNumber(body.step_qty)
     const label = asOptionalString(body.label, 120)
+    const description = asOptionalString(body.description, 280)
     const isEnabled = asBoolean(body.is_enabled, true)
     const sortOrderRaw = asNumber(body.sort_order)
 
@@ -168,6 +170,7 @@ export async function POST(request: Request) {
         discount_value: Math.round(discountValueRaw * 100) / 100,
         step_qty: discountType === 'stepped' ? Math.trunc(stepQtyRaw!) : null,
         label,
+        description,
         is_enabled: isEnabled,
         sort_order: Math.trunc(sortOrderRaw),
         updated_at: new Date().toISOString(),
@@ -231,6 +234,7 @@ export async function PUT(request: Request) {
     const discountValueRaw = asNumber(body.discount_value)
     const stepQtyRaw = asOptionalNumber(body.step_qty)
     const label = asOptionalString(body.label, 120)
+    const description = asOptionalString(body.description, 280)
     const isEnabled = asBoolean(body.is_enabled, true)
     const sortOrderRaw = asNumber(body.sort_order)
 
@@ -293,6 +297,7 @@ export async function PUT(request: Request) {
         discount_value: Math.round(discountValueRaw * 100) / 100,
         step_qty: discountType === 'stepped' ? Math.trunc(stepQtyRaw!) : null,
         label,
+        description,
         is_enabled: isEnabled,
         sort_order: Math.trunc(sortOrderRaw),
         updated_at: new Date().toISOString(),

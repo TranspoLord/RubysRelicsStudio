@@ -123,6 +123,13 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
         discount += activeBulkTier.discount_value * state.quantity
       } else if (activeBulkTier.discount_type === 'unit_price') {
         discount += Math.max(0, (unitPrice - activeBulkTier.discount_value) * state.quantity)
+      } else if (activeBulkTier.discount_type === 'stepped') {
+        const stepQty = Number(activeBulkTier.step_qty ?? 0)
+        if (stepQty > 0) {
+          const steps = Math.floor(state.quantity / stepQty)
+          const perUnitDiscount = Math.min(unitPrice, steps * Number(activeBulkTier.discount_value))
+          discount += perUnitDiscount * state.quantity
+        }
       }
     }
 
@@ -225,6 +232,12 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
           ${pricing.total.toFixed(2)}
         </Typography>
       </Box>
+
+      {pricing.activeBulkTier?.description && (
+        <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.5), mt: -1, mb: 0.5 }}>
+          {pricing.activeBulkTier.description}
+        </Typography>
+      )}
 
       {pricing.activeBulkTier && (
         <Box sx={{ mt: -1, p: 1.25, borderRadius: 1, border: `1px solid ${alpha(brandTokens.forgeGold, 0.32)}`, backgroundColor: alpha(brandTokens.forgeGold, 0.1) }}>
@@ -349,6 +362,7 @@ function formatBulkTierLabel(tier: DbProductBulkDiscount): string {
   if (tier.label) return `${range}: ${tier.label}`
   if (tier.discount_type === 'percent') return `${range}: ${tier.discount_value}% off`
   if (tier.discount_type === 'fixed_amount') return `${range}: -$${tier.discount_value.toFixed(2)} each`
+  if (tier.discount_type === 'stepped') return `${range}: -$${tier.discount_value.toFixed(2)}/each per ${tier.step_qty ?? '?'} pcs`
   return `${range}: $${tier.discount_value.toFixed(2)} each`
 }
 

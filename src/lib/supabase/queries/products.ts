@@ -118,9 +118,11 @@ export interface DbProductBulkDiscount {
   product_id: string
   min_qty: number
   max_qty: number | null
-  discount_type: 'percent' | 'fixed_amount' | 'unit_price'
+  discount_type: 'percent' | 'fixed_amount' | 'unit_price' | 'stepped'
   discount_value: number
+  step_qty: number | null
   label: string | null
+  description: string | null
   is_enabled: boolean
   sort_order: number
 }
@@ -382,7 +384,7 @@ export async function getProductBySlug(
 
     supabase
       .from('exp_product_bulk_discounts')
-      .select('id, product_id, min_qty, max_qty, discount_type, discount_value, label, is_enabled, sort_order')
+      .select('id, product_id, min_qty, max_qty, discount_type, discount_value, step_qty, label, description, is_enabled, sort_order')
       .eq('product_id', productId)
       .eq('is_enabled', true)
       .order('sort_order', { ascending: true }),
