@@ -168,6 +168,13 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
   const [variantSortOrder, setVariantSortOrder] = useState('')
   const [variantEnabled, setVariantEnabled] = useState(true)
   const [variantBusyId, setVariantBusyId] = useState<string | null>(null)
+  const [editingVariantId, setEditingVariantId] = useState<string | null>(null)
+  const [editVariantLabel, setEditVariantLabel] = useState('')
+  const [editVariantSku, setEditVariantSku] = useState('')
+  const [editVariantPriceDelta, setEditVariantPriceDelta] = useState('')
+  const [editVariantWeight, setEditVariantWeight] = useState('')
+  const [editVariantSortOrder, setEditVariantSortOrder] = useState('')
+  const [editVariantEnabled, setEditVariantEnabled] = useState(true)
 
   // Discount editing state
   const [minQty, setMinQty] = useState('')
@@ -197,6 +204,14 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
   const [newOptionHelpText, setNewOptionHelp] = useState('')
   const [newOptionRequired, setNewOptionRequired] = useState(false)
   const [newOptionSortOrder, setNewOptionSortOrder] = useState('')
+  const [editingOptionId, setEditingOptionId] = useState<string | null>(null)
+  const [editOptionKey, setEditOptionKey] = useState('')
+  const [editOptionLabel, setEditOptionLabel] = useState('')
+  const [editOptionType, setEditOptionType] = useState<OptionType>('select')
+  const [editOptionPlaceholder, setEditOptionPlaceholder] = useState('')
+  const [editOptionHelpText, setEditOptionHelpText] = useState('')
+  const [editOptionRequired, setEditOptionRequired] = useState(false)
+  const [editOptionSortOrder, setEditOptionSortOrder] = useState('')
 
   useEffect(() => {
     const loadData = async () => {
@@ -568,6 +583,44 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
     }
   }
 
+  async function updateVariant(variantId: string) {
+    setVariantBusyId(variantId)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/admin/catalog/variants', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          variantId,
+          label: editVariantLabel,
+          sku: editVariantSku || null,
+          price_delta: asNumber(editVariantPriceDelta, 0),
+          capacity_weight: editVariantWeight ? asNumber(editVariantWeight, 0) : null,
+          is_enabled: editVariantEnabled,
+          sort_order: asNumber(editVariantSortOrder, 0),
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to update variant.')
+      }
+
+      setSuccess('Variant updated.')
+      setEditingVariantId(null)
+      const variantsRes = await fetch(`/api/admin/catalog/variants?productId=${encodeURIComponent(productId)}`, { cache: 'no-store' })
+      const variantsPayload = await variantsRes.json().catch(() => ({}))
+      if (variantsRes.ok && Array.isArray(variantsPayload?.variants)) {
+        setVariants(variantsPayload.variants)
+      }
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : 'Failed to update variant.')
+    } finally {
+      setVariantBusyId(null)
+    }
+  }
+
   async function addDiscountTier() {
     if (!minQty || !discountValue) {
       setError('Min qty and discount value are required.')
@@ -713,6 +766,12 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
   const [newValuePriceDelta, setNewValuePriceDelta] = useState('')
   const [newValueSort, setNewValueSort] = useState('')
   const [addingValueForOption, setAddingValueForOption] = useState<string | null>(null)
+  const [editingValueId, setEditingValueId] = useState<string | null>(null)
+  const [editValueLabel, setEditValueLabel] = useState('')
+  const [editValueValue, setEditValueValue] = useState('')
+  const [editValuePriceDelta, setEditValuePriceDelta] = useState('')
+  const [editValueSort, setEditValueSort] = useState('')
+  const [editValueEnabled, setEditValueEnabled] = useState(true)
 
   async function saveOption(optionId: string) {
     setOptionBusyKey(optionId)
@@ -723,7 +782,16 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
       const response = await fetch('/api/admin/catalog/options', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ optionId }),
+        body: JSON.stringify({
+          optionId,
+          option_key: editOptionKey,
+          label: editOptionLabel,
+          option_type: editOptionType,
+          placeholder: editOptionPlaceholder || null,
+          help_text: editOptionHelpText || null,
+          is_required: editOptionRequired,
+          sort_order: asNumber(editOptionSortOrder, 0),
+        }),
       })
 
       const payload = await response.json().catch(() => ({}))
@@ -732,6 +800,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
       }
 
       setOptionSuccess(`Option saved.`)
+      setEditingOptionId(null)
       const optionsRes = await fetch(`/api/admin/catalog/options?productId=${encodeURIComponent(productId)}`, { cache: 'no-store' })
       const optionsPayload = await optionsRes.json().catch(() => ({}))
       if (optionsRes.ok && Array.isArray(optionsPayload?.options)) {
@@ -882,6 +951,44 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
       }
     } catch (deleteError) {
       setOptionError(deleteError instanceof Error ? deleteError.message : 'Failed to delete option value.')
+    }
+  }
+
+  async function updateOptionValue(valueId: string) {
+    setOptionBusyKey(valueId)
+    setOptionError(null)
+    setOptionSuccess(null)
+
+    try {
+      const response = await fetch('/api/admin/catalog/options/values', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          optionValueId: valueId,
+          label: editValueLabel,
+          value: editValueValue,
+          price_delta: asNumber(editValuePriceDelta, 0),
+          is_enabled: editValueEnabled,
+          sort_order: asNumber(editValueSort, 0),
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to update option value.')
+      }
+
+      setOptionSuccess('Option value updated.')
+      setEditingValueId(null)
+      const optionsRes = await fetch(`/api/admin/catalog/options?productId=${encodeURIComponent(productId)}`, { cache: 'no-store' })
+      const optionsPayload = await optionsRes.json().catch(() => ({}))
+      if (optionsRes.ok && Array.isArray(optionsPayload?.options)) {
+        setOptions(optionsPayload.options)
+      }
+    } catch (updateError) {
+      setOptionError(updateError instanceof Error ? updateError.message : 'Failed to update option value.')
+    } finally {
+      setOptionBusyKey(null)
     }
   }
 
@@ -1341,20 +1448,100 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
                   background: cardSurface(brandTokens.forgeGold, 0.07),
                 }}
               >
-                <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1}>
-                  <Typography sx={{ color: alpha(brandTokens.parchment, 0.66), fontSize: '0.78rem' }}>
-                    {variant.label} | SKU {variant.sku || 'n/a'} | delta ${variant.price_delta.toFixed(2)} | sort {variant.sort_order} | {variant.is_enabled ? 'Enabled' : 'Disabled'}
-                  </Typography>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    color="error"
-                    disabled={variantBusyId === variant.id}
-                    onClick={() => void deleteVariant(variant.id)}
-                  >
-                    Delete
-                  </Button>
-                </Stack>
+                {editingVariantId === variant.id ? (
+                  <Box sx={{ display: 'grid', gap: 1 }}>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
+                      <TextField
+                        size="small"
+                        label="Label"
+                        value={editVariantLabel}
+                        onChange={(event) => setEditVariantLabel(event.target.value)}
+                        sx={{ width: 180 }}
+                      />
+                      <TextField
+                        size="small"
+                        label="SKU"
+                        value={editVariantSku}
+                        onChange={(event) => setEditVariantSku(event.target.value)}
+                        sx={{ width: 140 }}
+                      />
+                      <TextField
+                        size="small"
+                        type="number"
+                        label="Price delta"
+                        value={editVariantPriceDelta}
+                        onChange={(event) => setEditVariantPriceDelta(event.target.value)}
+                        sx={{ width: 130 }}
+                      />
+                      <TextField
+                        size="small"
+                        type="number"
+                        label="Weight"
+                        value={editVariantWeight}
+                        onChange={(event) => setEditVariantWeight(event.target.value)}
+                        sx={{ width: 110 }}
+                      />
+                      <TextField
+                        size="small"
+                        type="number"
+                        label="Sort"
+                        value={editVariantSortOrder}
+                        onChange={(event) => setEditVariantSortOrder(event.target.value)}
+                        sx={{ width: 100 }}
+                      />
+                      <Select
+                        size="small"
+                        value={editVariantEnabled ? 'enabled' : 'disabled'}
+                        onChange={(event) => setEditVariantEnabled(event.target.value === 'enabled')}
+                        sx={{ minWidth: 120 }}
+                      >
+                        <MenuItem value="enabled">Enabled</MenuItem>
+                        <MenuItem value="disabled">Disabled</MenuItem>
+                      </Select>
+                    </Stack>
+                    <Stack direction="row" spacing={1}>
+                      <Button size="small" variant="contained" disabled={variantBusyId === variant.id} onClick={() => void updateVariant(variant.id)}>
+                        {variantBusyId === variant.id ? 'Saving...' : 'Save'}
+                      </Button>
+                      <Button size="small" variant="text" onClick={() => setEditingVariantId(null)}>
+                        Cancel
+                      </Button>
+                    </Stack>
+                  </Box>
+                ) : (
+                  <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1}>
+                    <Typography sx={{ color: alpha(brandTokens.parchment, 0.66), fontSize: '0.78rem' }}>
+                      {variant.label} | SKU {variant.sku || 'n/a'} | delta ${variant.price_delta.toFixed(2)} | sort {variant.sort_order} | {variant.is_enabled ? 'Enabled' : 'Disabled'}
+                    </Typography>
+                    <Stack direction="row" spacing={0.5}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        disabled={variantBusyId === variant.id}
+                        onClick={() => {
+                          setEditingVariantId(variant.id)
+                          setEditVariantLabel(variant.label)
+                          setEditVariantSku(variant.sku)
+                          setEditVariantPriceDelta(String(variant.price_delta))
+                          setEditVariantWeight(variant.weight ? String(variant.weight) : '')
+                          setEditVariantSortOrder(String(variant.sort_order))
+                          setEditVariantEnabled(variant.is_enabled)
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="error"
+                        disabled={variantBusyId === variant.id}
+                        onClick={() => void deleteVariant(variant.id)}
+                      >
+                        Delete
+                      </Button>
+                    </Stack>
+                  </Stack>
+                )}
               </Box>
             ))}
           </Box>
@@ -1842,30 +2029,114 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
                   background: cardSurface(brandTokens.forgeGold, 0.02),
                 }}
               >
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
-                  <Typography sx={{ fontWeight: 700, fontSize: '0.86rem' }}>
-                    {option.label || 'Untitled option'} ({optionTypeLabel(option.option_type)})
-                  </Typography>
-                  <Stack direction="row" spacing={0.5}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      disabled={optionBusyKey === option.id}
-                      onClick={() => void saveOption(option.id)}
-                    >
-                      Save
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      color="error"
-                      disabled={optionBusyKey === option.id}
-                      onClick={() => void deleteOption(option.id)}
-                    >
-                      Delete
-                    </Button>
+                {editingOptionId === option.id ? (
+                  <Box sx={{ display: 'grid', gap: 1 }}>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
+                      <TextField
+                        size="small"
+                        label="Key"
+                        value={editOptionKey}
+                        onChange={(event) => setEditOptionKey(event.target.value)}
+                        sx={{ width: 160 }}
+                      />
+                      <TextField
+                        size="small"
+                        label="Label"
+                        value={editOptionLabel}
+                        onChange={(event) => setEditOptionLabel(event.target.value)}
+                        sx={{ width: 160 }}
+                      />
+                      <Select
+                        size="small"
+                        value={editOptionType}
+                        onChange={(event) => setEditOptionType(event.target.value as OptionType)}
+                        sx={{ minWidth: 150 }}
+                      >
+                        <MenuItem value="select">Single choice</MenuItem>
+                        <MenuItem value="text">Text</MenuItem>
+                        <MenuItem value="textarea">Long text</MenuItem>
+                        <MenuItem value="file">File upload</MenuItem>
+                        <MenuItem value="checkbox">Toggle</MenuItem>
+                        <MenuItem value="number">Number</MenuItem>
+                      </Select>
+                      <TextField
+                        size="small"
+                        type="number"
+                        label="Sort"
+                        value={editOptionSortOrder}
+                        onChange={(event) => setEditOptionSortOrder(event.target.value)}
+                        sx={{ width: 100 }}
+                      />
+                      <FormControlLabel
+                        control={<Checkbox checked={editOptionRequired} onChange={(event) => setEditOptionRequired(event.target.checked)} />}
+                        label="Required"
+                      />
+                    </Stack>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
+                      <TextField
+                        size="small"
+                        label="Placeholder"
+                        value={editOptionPlaceholder}
+                        onChange={(event) => setEditOptionPlaceholder(event.target.value)}
+                        sx={{ minWidth: 220 }}
+                      />
+                      <TextField
+                        size="small"
+                        label="Help text"
+                        value={editOptionHelpText}
+                        onChange={(event) => setEditOptionHelpText(event.target.value)}
+                        sx={{ minWidth: 220 }}
+                      />
+                    </Stack>
+                    <Stack direction="row" spacing={1}>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        disabled={optionBusyKey === option.id}
+                        onClick={() => void saveOption(option.id)}
+                      >
+                        {optionBusyKey === option.id ? 'Saving...' : 'Save'}
+                      </Button>
+                      <Button size="small" variant="text" onClick={() => setEditingOptionId(null)}>
+                        Cancel
+                      </Button>
+                    </Stack>
+                  </Box>
+                ) : (
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between">
+                    <Typography sx={{ fontWeight: 700, fontSize: '0.86rem' }}>
+                      {option.label || 'Untitled option'} ({optionTypeLabel(option.option_type)})
+                    </Typography>
+                    <Stack direction="row" spacing={0.5}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        disabled={optionBusyKey === option.id}
+                        onClick={() => {
+                          setEditingOptionId(option.id)
+                          setEditOptionKey(option.option_key)
+                          setEditOptionLabel(option.label)
+                          setEditOptionType(option.option_type)
+                          setEditOptionPlaceholder(option.placeholder ?? '')
+                          setEditOptionHelpText(option.help_text ?? '')
+                          setEditOptionRequired(option.is_required)
+                          setEditOptionSortOrder(String(option.sort_order))
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="error"
+                        disabled={optionBusyKey === option.id}
+                        onClick={() => void deleteOption(option.id)}
+                      >
+                        Delete
+                      </Button>
+                    </Stack>
                   </Stack>
-                </Stack>
+                )}
 
                 <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.6), mt: 0.5 }}>
                   Option values:
@@ -1880,20 +2151,99 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
                 {option.values.length > 0 && (
                   <Box sx={{ display: 'grid', gap: 0.4, pl: 1 }}>
                     {option.values.map((value) => (
-                      <Stack key={value.id} direction="row" spacing={1} alignItems="center">
-                        <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.6), flex: 1 }}>
-                          • {value.label} ({value.value}) | delta ${value.price_delta.toFixed(2)}
-                        </Typography>
-                        <Button
-                          size="small"
-                          variant="text"
-                          color="error"
-                          sx={{ fontSize: '0.7rem', minWidth: 'auto', p: 0.3 }}
-                          onClick={() => void deleteOptionValue(value.id)}
-                        >
-                          ✕
-                        </Button>
-                      </Stack>
+                      <Box key={value.id}>
+                        {editingValueId === value.id ? (
+                          <Box
+                            sx={{
+                              display: 'grid',
+                              gap: 0.6,
+                              border: `1px solid ${alpha(brandTokens.parchment, 0.12)}`,
+                              borderRadius: 1,
+                              p: 0.6,
+                            }}
+                          >
+                            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
+                              <TextField
+                                size="small"
+                                label="Label"
+                                value={editValueLabel}
+                                onChange={(event) => setEditValueLabel(event.target.value)}
+                                sx={{ width: 140 }}
+                              />
+                              <TextField
+                                size="small"
+                                label="Value"
+                                value={editValueValue}
+                                onChange={(event) => setEditValueValue(event.target.value)}
+                                sx={{ width: 140 }}
+                              />
+                              <TextField
+                                size="small"
+                                type="number"
+                                label="Price delta"
+                                value={editValuePriceDelta}
+                                onChange={(event) => setEditValuePriceDelta(event.target.value)}
+                                sx={{ width: 120 }}
+                              />
+                              <TextField
+                                size="small"
+                                type="number"
+                                label="Sort"
+                                value={editValueSort}
+                                onChange={(event) => setEditValueSort(event.target.value)}
+                                sx={{ width: 80 }}
+                              />
+                              <FormControlLabel
+                                control={<Checkbox checked={editValueEnabled} onChange={(event) => setEditValueEnabled(event.target.checked)} />}
+                                label="Enabled"
+                              />
+                            </Stack>
+                            <Stack direction="row" spacing={1}>
+                              <Button
+                                size="small"
+                                variant="contained"
+                                disabled={optionBusyKey === value.id}
+                                onClick={() => void updateOptionValue(value.id)}
+                              >
+                                {optionBusyKey === value.id ? 'Saving...' : 'Save'}
+                              </Button>
+                              <Button size="small" variant="text" onClick={() => setEditingValueId(null)}>
+                                Cancel
+                              </Button>
+                            </Stack>
+                          </Box>
+                        ) : (
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.6), flex: 1 }}>
+                              • {value.label} ({value.value}) | delta ${value.price_delta.toFixed(2)} | {value.is_enabled ? 'Enabled' : 'Disabled'}
+                            </Typography>
+                            <Button
+                              size="small"
+                              variant="text"
+                              sx={{ fontSize: '0.7rem', minWidth: 'auto', p: 0.3 }}
+                              onClick={() => {
+                                setEditingValueId(value.id)
+                                setEditValueLabel(value.label)
+                                setEditValueValue(value.value)
+                                setEditValuePriceDelta(String(value.price_delta))
+                                setEditValueSort(String(value.sort_order))
+                                setEditValueEnabled(value.is_enabled)
+                              }}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="text"
+                              color="error"
+                              sx={{ fontSize: '0.7rem', minWidth: 'auto', p: 0.3 }}
+                              onClick={() => void deleteOptionValue(value.id)}
+                            >
+                              ✕
+                            </Button>
+                          </Stack>
+                        )}
+                      </Box>
                     ))}
                   </Box>
                 )}

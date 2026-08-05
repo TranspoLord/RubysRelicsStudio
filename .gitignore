@@ -67,3 +67,5 @@ supabase/migrations/044_rate_limit_table.sql
 supabase/migrations/044_rate_limit_table.sql
 .supabase/*
 BULK_DISCOUNT_CHANGES.md
+scripts/_fix_discount
+PRODUCT_BUILDER_EDITABILITY.md
