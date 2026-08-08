@@ -227,14 +227,28 @@ async function tryVerifyWithColumn(
       return false
     }
 
-    for (const row of rows as Array<{ id: string; code: string; device_fingerprint?: string }>) {
-      if (!verifyStoredMfaCode(String(row.code ?? ''), challengeToken, code)) {
+    for (const rawRow of rows) {
+      if (!rawRow || typeof rawRow !== 'object') {
+        continue
+      }
+
+      const row = rawRow as Record<string, unknown>
+      const rowId = typeof row.id === 'string' ? row.id : ''
+      const storedCode = typeof row.code === 'string' ? row.code : ''
+      const storedFingerprint = typeof row.device_fingerprint === 'string'
+        ? row.device_fingerprint
+        : undefined
+
+      if (!rowId || !storedCode) {
+        continue
+      }
+
+      if (!verifyStoredMfaCode(storedCode, challengeToken, code)) {
         continue
       }
 
       // HARD CHECK: If a device fingerprint was stored with this code,
       // the verify request MUST provide a matching fingerprint.
-      const storedFingerprint = row.device_fingerprint
       if (storedFingerprint) {
         if (!deviceFingerprint || storedFingerprint !== deviceFingerprint) {
           continue
@@ -242,7 +256,7 @@ async function tryVerifyWithColumn(
       }
 
       // Mark as used (one-time use)
-      await supabase.from('admin_mfa_codes').update({ used: true }).eq('id', row.id)
+      await supabase.from('admin_mfa_codes').update({ used: true }).eq('id', rowId)
       return true
     }
 

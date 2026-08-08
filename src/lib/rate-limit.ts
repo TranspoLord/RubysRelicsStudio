@@ -55,9 +55,6 @@ export async function rateLimit(
   const windowKey = `${key}:${windowStart}`
   const expiresAt = new Date(windowStart * windowMs + windowMs).toISOString()
 
-  // DEBUG: Log the rate-limit parameters
-  console.log(`[rate-limit] key=${key} windowKey=${windowKey} limit=${limit} windowMs=${windowMs} windowStart=${windowStart} expiresAt=${expiresAt} failClosed=${options.failClosed}`)
-
   // Opportunistic cleanup
   await maybeCleanup()
 
@@ -69,7 +66,6 @@ export async function rateLimit(
     })
 
     if (error) {
-      console.error(`[rate-limit] RPC ERROR for key=${windowKey}:`, error, error.message)
       // SEC-047: If failClosed is true (security-critical endpoints like login/MFA),
       // reject the request instead of allowing unlimited attempts.
       safeLogError('[rate-limit]', error)
@@ -81,18 +77,14 @@ export async function rateLimit(
     }
 
     const count = Number(data) || 1
-    console.log(`[rate-limit] RPC SUCCESS for key=${windowKey} count=${count} limit=${limit}`)
 
     if (count > limit) {
       const retryAfter = Math.ceil((windowStart * windowMs + windowMs - now) / 1000)
-      console.log(`[rate-limit] RATE LIMITED key=${windowKey} count=${count} > limit=${limit} retryAfter=${retryAfter}s`)
       return { allowed: false, remaining: 0, retryAfter }
     }
 
-    console.log(`[rate-limit] ALLOWED key=${windowKey} count=${count} remaining=${Math.max(0, limit - count)}`)
     return { allowed: true, remaining: Math.max(0, limit - count) }
   } catch (error) {
-    console.error(`[rate-limit] CATCH ERROR for key=${windowKey}:`, error, error instanceof Error ? error.message : '')
     // SEC-047: If failClosed is true, reject on infrastructure errors too
     safeLogError('[rate-limit]', error)
     if (options.failClosed) {

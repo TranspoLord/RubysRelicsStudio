@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { getResend } from '@/lib/resend/client'
 import { safeLogError } from '@/lib/security/logger'
@@ -65,13 +66,44 @@ export async function POST(request: Request) {
 
   // Signature verified — safe to process the payload
   try {
+    const supabase = getSupabaseAdmin()
+
+    // Replay protection: dedupe webhook payloads using a deterministic hash.
+    // If Shippo retries the exact same event, the hash collides and we no-op.
+    const payloadHash = createHash('sha256').update(body).digest('hex')
+    const payloadId = `shippo:${payloadHash}`
+    const { data: inserted, error: dedupeError } = await supabase
+      .from('exp_shippo_webhook_events')
+      .insert({
+        id: payloadId,
+        event_type: 'unknown',
+        received_at: new Date().toISOString(),
+      })
+      .select('id')
+      .single()
+
+    if (dedupeError || !inserted) {
+      return new NextResponse('OK', { status: 200 })
+    }
+
     const payload = JSON.parse(body) as ShippoWebhookPayload
+
+    await supabase
+      .from('exp_shippo_webhook_events')
+      .update({ event_type: payload.event || 'unknown' })
+      .eq('id', payloadId)
+      .then(null, () => {})
+
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    await supabase
+      .from('exp_shippo_webhook_events')
+      .delete()
+      .lt('received_at', cutoff)
+      .then(null, () => {})
 
     // Handle tracking updates
     if (payload.event === 'track_updated' || payload.event === 'track_created') {
       const { tracking_number, carrier, status } = payload.data
-
-      const supabase = getSupabaseAdmin()
 
       // Find order by tracking number
       const { data: order, error: orderError } = await supabase

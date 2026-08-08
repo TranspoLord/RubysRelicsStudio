@@ -14,6 +14,10 @@ function signPayload(payload: string, key: string): string {
   return createHmac('sha256', key).update(payload).digest('hex')
 }
 
+function allowLegacySessionFallback(): boolean {
+  return process.env.ALLOW_LEGACY_ADMIN_SESSION_FALLBACK === 'true'
+}
+
 // SEC-047: Derive the hash key from an environment variable (or ADMIN_LOGIN_KEY)
 // instead of a hardcoded constant.
 function hashToken(token: string): string {
@@ -95,8 +99,8 @@ export async function verifyAdminSessionToken(
   if (!timingSafeEqual(actualBuf, expectedBuf)) return false
 
   // SEC-011: Check the session row exists and is not revoked.
-  // This is a defense-in-depth check — if the DB is unavailable, we
-  // fall back to HMAC-only verification (the token is still cryptographically valid).
+  // Fail closed when revocation state cannot be validated. A temporary
+  // compatibility bypass is available via ALLOW_LEGACY_ADMIN_SESSION_FALLBACK=true.
   try {
     const supabase = getSupabaseAdmin()
     const { data: session, error } = await supabase
@@ -105,17 +109,28 @@ export async function verifyAdminSessionToken(
       .eq('jti', jti)
       .maybeSingle()
 
-    if (!error && session) {
-      // Session found — check revocation
-      if (session.revoked_at) return false
-      // Check DB expiry (in case it was shortened)
-      if (new Date(session.expires_at) < new Date()) return false
+    if (error) {
+      if (allowLegacySessionFallback()) {
+        return true
+      }
+      safeLogError('[admin:session:verify]', error)
+      return false
     }
-    // If error or no session found, fall back to HMAC-only verification.
-    // This maintains backward compatibility if the migration hasn't run.
+
+    if (!session) {
+      return allowLegacySessionFallback()
+    }
+
+    // Session found — check revocation
+    if (session.revoked_at) return false
+    // Check DB expiry (in case it was shortened)
+    if (new Date(session.expires_at) < new Date()) return false
   } catch (err) {
-    // DB unavailable — fall back to HMAC-only verification
+    if (allowLegacySessionFallback()) {
+      return true
+    }
     safeLogError('[admin:session:verify]', err)
+    return false
   }
 
   return true

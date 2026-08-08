@@ -15,13 +15,10 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { CSRF_COOKIE_NAME } from '@/lib/security/csrf'
+import { isProd } from '@/lib/security/env'
 
 // SEC-047: Updated to v2 to match the new token format (5 parts with mfaFlag)
 const SESSION_VERSION = 'v2'
-
-function isProd(): boolean {
-  return process.env.NODE_ENV === 'production' && process.env.VERCEL_ENV === 'production'
-}
 
 function ensureCsrfCookie(request: NextRequest, response: NextResponse): NextResponse {
   const existing = request.cookies.get(CSRF_COOKIE_NAME)?.value

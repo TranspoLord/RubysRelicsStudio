@@ -42,6 +42,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  // Require same-origin on auth mutations to prevent cross-site abuse.
+  if (!validateCsrfOrigin(request)) {
+    return NextResponse.json({ error: 'Cross-origin request blocked.' }, { status: 403 })
+  }
+
   let expectedKey: string
   try {
     expectedKey = getExpectedAdminKey()
@@ -102,7 +107,11 @@ export async function POST(request: Request) {
   return response
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
+  if (!validateCsrfOrigin(request)) {
+    return NextResponse.json({ error: 'Cross-origin request blocked.' }, { status: 403 })
+  }
+
   const response = NextResponse.json({ ok: true }, { status: 200 })
   response.cookies.set({
     name: ADMIN_COOKIE_NAME,

@@ -14,8 +14,15 @@
  * over an http connection.
  */
 export function isProd(): boolean {
-  return (
-    process.env.NODE_ENV === 'production' &&
-    process.env.VERCEL_ENV === 'production'
-  )
+  if (process.env.NODE_ENV !== 'production') {
+    return false
+  }
+
+  // On Vercel, only treat production deploys as production.
+  if (process.env.VERCEL) {
+    return process.env.VERCEL_ENV === 'production'
+  }
+
+  // Non-Vercel production deployments should still enable production safeguards.
+  return true
 }
