@@ -1114,3 +1114,82 @@ All three features are controlled by database values:
 - **Admin response tab**: Read + status management (viewed/responded/denied with reason). No edit of the subscriber's email/name/interest data.
 - **No email confirmation** for the notify form — it captures interest, not a newsletter subscription. Admin follows up manually if desired.
 - **Revertibility**: All features are toggleable via homepage visibility settings or storefront settings. No code deployment needed to turn off.
+
+---
+
+## 13. Addendum: WYSIWYG Product Designer Popup
+
+This addendum captures the separate art-placement popup effort discussed after the future-products plan. It does not replace the plan above. It extends the storefront with a secure, print-accurate design editor for custom product artwork.
+
+### 13.1 Scope
+
+1. Replace the current prototype designer with a production-ready popup editor.
+2. Support both shop products and custom orders in v1, but keep the first release 2D-only.
+3. Make the editor mobile-friendly, theme-aligned, and usable on desktop and touch devices.
+4. Allow multiple layers, duplicate artwork instances, and a configurable image limit.
+5. Generate both PNG and PDF print-ready exports at product-specific physical dimensions.
+6. Keep 3D architecture-ready, but defer true interactive 3D until a later phase.
+
+### 13.2 Security Gates Before Feature Work
+
+1. Fix the customer custom-order submission flow so uploaded artwork tokens are preserved end to end.
+2. Remove any customer-facing dependency on admin upload routes.
+3. Delete the unused direct-browser upload component rather than hardening dead code.
+4. Set sensitive upload, intake, and export endpoints to fail closed when rate limiting infrastructure is unavailable.
+5. Add audit logging and shorter-lived signed URLs for private artwork retrieval.
+6. Enforce strict server-side design schema validation and reject unknown fields.
+7. Add explicit export limits for canvas size, layer count, source asset size, and render time.
+
+### 13.3 Architecture Plan
+
+1. Define a shared DesignDocument model that is renderer-agnostic.
+2. Store design metadata and export artifacts in private storage, not public product-media buckets.
+3. Add per-product print templates in the admin product builder so each product can define exact sizing, bleed, and safe areas.
+4. Persist design state through cart and order submission so customers can reopen and edit before checkout.
+5. Add a server export endpoint that produces both PNG and PDF artifacts and returns customer-downloadable URLs.
+
+### 13.4 Execution Phases
+
+1. Phase 0: lock the design schema and security constraints.
+2. Phase 1: add storefront settings for image limits, export toggles, and future 3D flags.
+3. Phase 2: replace the prototype editor shell and wire customer-safe uploads.
+4. Phase 3: add product template management in the admin product builder.
+5. Phase 4: integrate design persistence into cart and order flow.
+6. Phase 5: build the PNG/PDF export pipeline.
+7. Phase 6: add tests, abuse cases, and rollout controls.
+
+### 13.5 Known Concerns And Required Fixes
+
+1. ProductDesigner currently uses an admin upload endpoint and must be switched to a customer-safe route.
+2. ArtUploadPortal is unused and should be removed instead of left as a risk.
+3. Custom-order submission currently needs the uploadToken carried through the submit payload.
+4. Artwork retrieval should use shorter signed URL lifetimes and log access events.
+5. Upload and export routes should use fail-closed rate limiting.
+6. True 3D should remain out of v1 because WebGL/mobile stability risk is materially higher than the 2D path.
+
+### 13.6 Primary Files To Touch
+
+1. [src/components/shop/ProductDesigner.tsx](src/components/shop/ProductDesigner.tsx)
+2. [src/components/shop/ProductConfigurator.tsx](src/components/shop/ProductConfigurator.tsx)
+3. [src/components/custom-orders/CustomOrderIntakeForm.tsx](src/components/custom-orders/CustomOrderIntakeForm.tsx)
+4. [src/components/shop/ArtUploadPortal.tsx](src/components/shop/ArtUploadPortal.tsx)
+5. [src/app/api/custom-orders/upload/route.ts](src/app/api/custom-orders/upload/route.ts)
+6. [src/app/api/custom-orders/route.ts](src/app/api/custom-orders/route.ts)
+7. [src/app/api/admin/custom-requests/[id]/artwork/route.ts](src/app/api/admin/custom-requests/[id]/artwork/route.ts)
+8. [src/lib/rate-limit.ts](src/lib/rate-limit.ts)
+9. [src/lib/storefront-settings.ts](src/lib/storefront-settings.ts)
+10. [src/app/api/admin/settings/route.ts](src/app/api/admin/settings/route.ts)
+11. [src/app/admin/(panel)/settings/page.tsx](src/app/admin/(panel)/settings/page.tsx)
+12. [src/lib/supabase/queries/products.ts](src/lib/supabase/queries/products.ts)
+13. [src/app/admin/(panel)/catalog/products/[id]/builder/page.tsx](src/app/admin/(panel)/catalog/products/[id]/builder/page.tsx)
+14. [supabase/migrations/006_orders_foundation.sql](supabase/migrations/006_orders_foundation.sql)
+15. [supabase/migrations/046_artwork_uploads.sql](supabase/migrations/046_artwork_uploads.sql)
+
+### 13.7 Verification Checklist
+
+1. Customer cannot reach admin upload paths from the designer.
+2. Upload token ownership is preserved through submit and validated server-side.
+3. Private artwork downloads are signed, short-lived, and auditable.
+4. Designer exports are limited, deterministic, and print-size accurate.
+5. Mobile touch interactions remain usable on small screens.
+6. 2D remains the production path; 3D stays deferred behind a feature boundary.
