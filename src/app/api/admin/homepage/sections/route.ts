@@ -13,6 +13,8 @@ const ALL_SECTION_KEYS = [
   'order_paths',
   'category_grid',
   'featured_collections',
+  'shop_all_preview',
+  'future_products_notify',
   'fresh_from_forge',
   'materials_teaser',
   'process_strip',

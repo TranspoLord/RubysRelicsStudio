@@ -57,7 +57,7 @@ export function validateCsrfOrigin(request: Request): boolean {
 
   // SEC-047: Exact origin comparison prevents subdomain bypass
   if (origin && normalizeOrigin(origin) !== allowedOrigin) return false
-  if (referer && !normalizeOrigin(referer).startsWith(allowedOrigin + '/')) return false
+  if (referer && normalizeOrigin(referer) !== allowedOrigin) return false
 
   return true
 }
@@ -107,6 +107,20 @@ export function requireCsrf(request: Request): NextResponse | null {
   if (!validateCsrfToken(request)) {
     return NextResponse.json(
       { error: 'CSRF token missing or invalid.' },
+      { status: 403 }
+    )
+  }
+  return null
+}
+
+/**
+ * Origin-only CSRF check for public mutation endpoints that do not rely on
+ * cookie auth but should still reject cross-site submissions.
+ */
+export function requireCsrfOriginOnly(request: Request): NextResponse | null {
+  if (!validateCsrfOrigin(request)) {
+    return NextResponse.json(
+      { error: 'Cross-origin request blocked.' },
       { status: 403 }
     )
   }

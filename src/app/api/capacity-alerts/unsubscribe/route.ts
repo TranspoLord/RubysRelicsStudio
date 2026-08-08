@@ -3,13 +3,24 @@ import { NextResponse } from 'next/server'
 import { unsubscribeCapacityAlert } from '@/lib/capacity-alerts'
 
 export async function GET(request: Request) {
-  const token = new URL(request.url).searchParams.get('token')?.trim() ?? ''
+  let title = 'Unsubscribe failed'
+  let message = 'The unsubscribe token is invalid or expired.'
+  let status = 400
 
-  const result = await unsubscribeCapacityAlert(token)
-  const title = result.ok ? 'You are unsubscribed' : 'Unsubscribe failed'
-  const message = result.ok
-    ? 'Capacity reopened alerts have been removed for this category.'
-    : result.error ?? 'The unsubscribe token is invalid or expired.'
+  try {
+    const token = new URL(request.url).searchParams.get('token')?.trim() ?? ''
+    const result = await unsubscribeCapacityAlert(token)
+
+    title = result.ok ? 'You are unsubscribed' : 'Unsubscribe failed'
+    message = result.ok
+      ? 'Capacity reopened alerts have been removed for this category.'
+      : result.error ?? 'The unsubscribe token is invalid or expired.'
+    status = result.ok ? 200 : 400
+  } catch {
+    title = 'Unsubscribe temporarily unavailable'
+    message = 'We could not process your request right now. Please contact support.'
+    status = 503
+  }
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -33,7 +44,7 @@ export async function GET(request: Request) {
 </html>`
 
   return new NextResponse(html, {
-    status: result.ok ? 200 : 400,
+    status,
     headers: { 'content-type': 'text/html; charset=utf-8' },
   })
 }

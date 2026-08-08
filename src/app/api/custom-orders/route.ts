@@ -3,6 +3,7 @@ import { branch, getSupabaseAdmin } from '@/lib/supabase/client'
 import { getEmailSenderAddress, getResend } from '@/lib/resend/client'
 import { randomBytes } from 'node:crypto'
 import { rateLimit, rateLimitResponse, getClientIp } from '@/lib/rate-limit'
+import { requireCsrfOriginOnly } from '@/lib/security/csrf'
 import {
   getCustomOrderIntakeSettings,
   getOperationalNotificationSettings,
@@ -208,8 +209,11 @@ async function sendCustomerConfirmationEmail(input: {
 
 export async function POST(request: Request) {
   try {
+    const csrfResponse = requireCsrfOriginOnly(request)
+    if (csrfResponse) return csrfResponse
+
     const ip = getClientIp(request)
-    const rl = await rateLimit(`intake:${ip}`, 5, 60 * 60 * 1000)
+    const rl = await rateLimit(`intake:${ip}`, 5, 60 * 60 * 1000, { failClosed: true })
     if (!rl.allowed) return rateLimitResponse(rl.retryAfter!)
 
     const body = (await request.json()) as CustomOrderBody

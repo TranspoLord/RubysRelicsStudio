@@ -163,6 +163,12 @@ export default function CatalogDashboardPage() {
           <Link href="/admin/catalog/processes" style={{ textDecoration: 'none' }}>
             <Button variant="outlined">Manage Processes</Button>
           </Link>
+          <Link href="/admin/catalog/future-products" style={{ textDecoration: 'none' }}>
+            <Button variant="outlined">Manage Future Products</Button>
+          </Link>
+          <Link href="/admin/catalog/future-product-statuses" style={{ textDecoration: 'none' }}>
+            <Button variant="outlined">Manage Statuses</Button>
+          </Link>
           <Link href="/admin/catalog/pricing" style={{ textDecoration: 'none' }}>
             <Button variant="outlined">Manage Pricing & Deals</Button>
           </Link>

@@ -16,6 +16,8 @@ import { TestimonialsSection } from '@/components/home/TestimonialsSection'
 import { FaqPreview } from '@/components/home/FaqPreview'
 import { NewsletterBlock } from '@/components/home/NewsletterBlock'
 import { ResourcesTeaser } from '@/components/home/ResourcesTeaser'
+import { HomepageProductGrid } from '@/components/home/HomepageProductGrid'
+import { FutureProductsNotifyCard } from '@/components/home/FutureProductsNotifyCard'
 import {
   getHomepageSections,
   getActiveAnnouncement,
@@ -27,6 +29,7 @@ import {
   getMaterials,
   getHeroCollageConfig,
 } from '@/lib/supabase/queries/homepage'
+import { getAllActiveProducts } from '@/lib/supabase/queries/products'
 import type { HeroCollageConfig } from '@/components/home/HeroCollage'
 
 // Force dynamic rendering so admin CMS changes (sections, announcements, etc.)
@@ -42,7 +45,7 @@ export const metadata: Metadata = {
 
 export default async function HomePage() {
   // Fetch all CMS data in parallel
-  const [sections, announcement, categories, collections, gallery, testimonials, faq, materials, collageConfig] = await Promise.all([
+  const [sections, announcement, categories, collections, gallery, testimonials, faq, materials, collageConfig, products] = await Promise.all([
     getHomepageSections(),
     getActiveAnnouncement(),
     getCategories(),
@@ -52,6 +55,7 @@ export default async function HomePage() {
     getHomepageFaq(),
     getMaterials(),
     getHeroCollageConfig(),
+    getAllActiveProducts(),
   ])
   return (
     <>
@@ -103,6 +107,16 @@ export default async function HomePage() {
           <FeaturedCollections collections={collections} />
         )}
 
+        {/* 7a. Shop all preview */}
+        {sections['shop_all_preview']?.is_visible !== false && (
+          <HomepageProductGrid
+            products={products}
+            categories={categories}
+            content={sections['shop_all_preview']?.content}
+            sectionKey="shop_all_preview"
+          />
+        )}
+
         {/* 7. Fresh From the Forge — recent work */}
         {sections['fresh_from_forge']?.is_visible !== false && <FreshFromTheForge items={gallery} />}
 
@@ -130,10 +144,15 @@ export default async function HomePage() {
         {/* 10. FAQ preview */}
         {sections['faq_preview']?.is_visible !== false && <FaqPreview faqs={faq} />}
 
-        {/* 11. Newsletter */}
+        {/* 11. Future products notify card */}
+        {sections['future_products_notify']?.is_visible !== false && (
+          <FutureProductsNotifyCard content={sections['future_products_notify']?.content} sectionKey="future_products_notify" />
+        )}
+
+        {/* 12. Newsletter */}
         {sections['newsletter']?.is_visible !== false && <NewsletterBlock />}
 
-        {/* 12. Resources / policy hub teaser */}
+        {/* 13. Resources / policy hub teaser */}
         {sections['resources_teaser']?.is_visible !== false && <ResourcesTeaser />}
       </Box>
 

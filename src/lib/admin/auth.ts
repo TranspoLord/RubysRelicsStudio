@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 
 import { ADMIN_COOKIE_NAME, verifyAdminSessionToken } from '@/lib/admin/session'
 import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
+import { requireCsrf } from '@/lib/security/csrf'
 
 export interface AdminApiContext {
   adminKey: string
@@ -49,6 +50,17 @@ export async function requireAdminApiSession(
   rateLimitOptions?: AdminRateLimitOptions
 ): Promise<{ ok: true; context: AdminApiContext } | { ok: false; response: Response }> {
   try {
+    // Enforce full CSRF checks for all state-changing admin requests.
+    if (request.method !== 'GET' && request.method !== 'HEAD' && request.method !== 'OPTIONS') {
+      const csrfResponse = requireCsrf(request)
+      if (csrfResponse) {
+        return {
+          ok: false,
+          response: csrfResponse,
+        }
+      }
+    }
+
     const adminKey = getExpectedAdminKey()
     const sessionToken = extractAdminSessionToken(request.headers.get('cookie'))
 

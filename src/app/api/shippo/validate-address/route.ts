@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { validateAddress } from '@/lib/shippo/client'
 import { getShippoSettings } from '@/lib/shippo/settings'
 import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
+import { requireCsrfOriginOnly } from '@/lib/security/csrf'
 
 interface ValidateAddressRequest {
   address: {
@@ -17,6 +18,9 @@ interface ValidateAddressRequest {
 
 export async function POST(request: Request) {
   try {
+    const csrfResponse = requireCsrfOriginOnly(request)
+    if (csrfResponse) return csrfResponse
+
     // SEC-010: Rate limit Shippo validate-address endpoint — 20 requests/minute per IP
     const ip = getClientIp(request)
     const rl = await rateLimit(`shippo-validate:${ip}`, 20, 60_000)

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 
 import { requireAdminApiSession } from '@/lib/admin/auth'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
+import { sanitizeSearchQuery } from '@/lib/validate'
 
 function asString(value: unknown, maxLen: number): string {
   if (typeof value !== 'string') return ''
@@ -14,7 +15,7 @@ export async function GET(request: Request) {
     if (!auth.ok) return auth.response
 
     const url = new URL(request.url)
-    const q = asString(url.searchParams.get('q'), 120)
+    const q = sanitizeSearchQuery(asString(url.searchParams.get('q'), 120)) ?? ''
 
     if (q.length < 2) {
       return NextResponse.json({ results: [] }, { status: 200 })

@@ -29,7 +29,11 @@ interface InventoryRow {
 }
 
 function getUnsubscribeSecret(): string {
-  return process.env.BACK_IN_STOCK_UNSUBSCRIBE_SECRET || process.env.ADMIN_LOGIN_KEY || 'fallback-dev-secret'
+  const secret = process.env.BACK_IN_STOCK_UNSUBSCRIBE_SECRET
+  if (!secret || secret.trim().length < 32) {
+    throw new Error('BACK_IN_STOCK_UNSUBSCRIBE_SECRET must be set to a strong value (32+ chars).')
+  }
+  return secret
 }
 
 function toBase64Url(value: string): string {

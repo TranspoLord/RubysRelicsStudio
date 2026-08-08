@@ -1,6 +1,7 @@
 import { requireAdminPageSessionOrRedirect } from '@/lib/admin/auth'
 import { getUnreadNotificationCount, syncOperationalNotifications } from '@/lib/admin/notifications'
 import { AdminShell, type AdminModuleLink } from '@/components/admin/AdminShell'
+import { AdminCsrfFetchBridge } from '@/components/admin/AdminCsrfFetchBridge'
 
 const ADMIN_MODULES: AdminModuleLink[] = [
   {
@@ -80,11 +81,14 @@ export default async function AdminPanelLayout({
   const notificationCount = await loadUnreadNotificationCount()
 
   return (
-    <AdminShell
-      notificationCount={notificationCount}
-      moduleLinks={ADMIN_MODULES}
-    >
-      {children}
-    </AdminShell>
+    <>
+      <AdminCsrfFetchBridge />
+      <AdminShell
+        notificationCount={notificationCount}
+        moduleLinks={ADMIN_MODULES}
+      >
+        {children}
+      </AdminShell>
+    </>
   )
 }

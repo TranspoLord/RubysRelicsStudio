@@ -36,6 +36,7 @@ export interface DesignerElement {
   rotation?: number
   // Image-specific
   src?: string
+  uploadToken?: string
   // Text-specific
   text?: string
   fontSize?: number
@@ -114,7 +115,7 @@ export function ProductDesigner({ open, onClose, mockupUrl, options, onSave }: P
   const handleAddImage = useCallback(async () => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = 'image/jpeg,image/png,image/webp,image/gif,image/svg+xml'
+    input.accept = 'image/jpeg,image/png,image/webp,image/gif,application/pdf'
     input.onchange = async () => {
       const file = input.files?.[0]
       if (!file) return
@@ -126,7 +127,7 @@ export function ProductDesigner({ open, onClose, mockupUrl, options, onSave }: P
         method: 'POST',
         body: formData,
       })
-      const data = await res.json() as { url?: string; error?: string }
+      const data = await res.json() as { url?: string; uploadToken?: string; error?: string }
       if (!res.ok || !data.url) {
         setUploadError(data.error ?? 'Failed to upload image.')
         return
@@ -135,6 +136,7 @@ export function ProductDesigner({ open, onClose, mockupUrl, options, onSave }: P
         id: `img_${Date.now()}`,
         type: 'image',
         src: data.url,
+        uploadToken: data.uploadToken,
         x: 100,
         y: 100,
         width: Math.min(2 * INCH_TO_PX, 300),

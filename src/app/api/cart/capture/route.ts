@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createHash } from 'node:crypto'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
+import { requireCsrfOriginOnly } from '@/lib/security/csrf'
 
 // ---------------------------------------------------------------------------
 // POST /api/cart/capture
@@ -50,6 +51,9 @@ function normalizeCartItem(raw: unknown): CartItemInput | null {
 }
 
 export async function POST(request: Request) {
+  const csrfResponse = requireCsrfOriginOnly(request)
+  if (csrfResponse) return csrfResponse
+
   // SEC-015: Rate limit cart-capture — 10 requests/hour per IP
   const ip = getClientIp(request)
   const rl = await rateLimit(`cart-capture:${ip}`, 10, 60 * 60 * 1000)

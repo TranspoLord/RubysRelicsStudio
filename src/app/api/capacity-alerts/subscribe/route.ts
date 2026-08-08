@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { subscribeCapacityAlert } from '@/lib/capacity-alerts'
+import { requireCsrfOriginOnly } from '@/lib/security/csrf'
 
 interface SubscribeBody {
   categoryKey?: unknown
@@ -14,6 +15,9 @@ function asString(value: unknown, maxLen: number): string {
 
 export async function POST(request: Request) {
   try {
+    const csrfResponse = requireCsrfOriginOnly(request)
+    if (csrfResponse) return csrfResponse
+
     const body = (await request.json().catch(() => ({}))) as SubscribeBody
     const categoryKey = asString(body.categoryKey, 120)
     const email = asString(body.email, 200).toLowerCase()

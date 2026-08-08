@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { requireAdminApiSession } from '@/lib/admin/auth'
 import { writeAdminAuditLog } from '@/lib/admin/audit'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
+import { sanitizeSearchQuery } from '@/lib/validate'
 
 const DISCOUNT_TYPES = ['percent', 'fixed_amount', 'free_shipping'] as const
 
@@ -77,7 +78,7 @@ export async function GET(request: Request) {
     if (!auth.ok) return auth.response
 
     const url = new URL(request.url)
-    const query = asString(url.searchParams.get('q'), 80)
+    const query = sanitizeSearchQuery(asString(url.searchParams.get('q'), 80)) ?? ''
 
     const supabase = getSupabaseAdmin()
     let builder = supabase

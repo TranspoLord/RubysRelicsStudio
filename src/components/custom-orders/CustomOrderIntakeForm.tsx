@@ -225,7 +225,7 @@ export function CustomOrderIntakeForm({ categories }: CustomOrderIntakeFormProps
     void (async () => {
       try {
         // Step 1: Upload each file and collect storage paths
-        const uploadedFiles: Array<{ name: string; size: number; type: string; path: string }> = []
+        const uploadedFiles: Array<{ name: string; size: number; type: string; path: string; uploadToken: string }> = []
         for (const file of files) {
           const fd = new FormData()
           fd.append('file', file)
@@ -243,6 +243,7 @@ export function CustomOrderIntakeForm({ categories }: CustomOrderIntakeFormProps
             size: file.size,
             type: file.type,
             path: uploadPayload.path as string,
+            uploadToken: uploadPayload.uploadToken as string,
           })
         }
 

@@ -8,6 +8,7 @@ import {
   PricingContext,
   PricingSelectedOption,
 } from '@/lib/pricing/engine'
+import { requireCsrfOriginOnly } from '@/lib/security/csrf'
 import { safeLogError } from '@/lib/security/logger'
 
 /**
@@ -112,6 +113,9 @@ async function fetchPricingContext(productId: string): Promise<PricingContext | 
 
 export async function POST(request: Request) {
   try {
+    const csrfResponse = requireCsrfOriginOnly(request)
+    if (csrfResponse) return csrfResponse
+
     const body = (await request.json()) as SquareCheckoutRequest
 
     if (!Array.isArray(body.items) || body.items.length === 0) {

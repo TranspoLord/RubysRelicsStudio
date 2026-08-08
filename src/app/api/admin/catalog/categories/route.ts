@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { requireAdminApiSession } from '@/lib/admin/auth'
 import { writeAdminAuditLog } from '@/lib/admin/audit'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
+import { sanitizeSearchQuery } from '@/lib/validate'
 
 interface CategoryBody {
   key?: unknown
@@ -54,7 +55,7 @@ export async function GET(request: Request) {
 
     const supabase = getSupabaseAdmin()
     const url = new URL(request.url)
-    const query = asString(url.searchParams.get('q'), 80)
+    const query = sanitizeSearchQuery(asString(url.searchParams.get('q'), 80)) ?? ''
 
     let builder = supabase
       .from('exp_taxonomy')

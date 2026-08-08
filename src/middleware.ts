@@ -14,9 +14,30 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { CSRF_COOKIE_NAME } from '@/lib/security/csrf'
 
 // SEC-047: Updated to v2 to match the new token format (5 parts with mfaFlag)
 const SESSION_VERSION = 'v2'
+
+function isProd(): boolean {
+  return process.env.NODE_ENV === 'production' && process.env.VERCEL_ENV === 'production'
+}
+
+function ensureCsrfCookie(request: NextRequest, response: NextResponse): NextResponse {
+  const existing = request.cookies.get(CSRF_COOKIE_NAME)?.value
+  if (!existing || existing.length < 16) {
+    response.cookies.set({
+      name: CSRF_COOKIE_NAME,
+      value: crypto.randomUUID().replace(/-/g, ''),
+      httpOnly: false,
+      sameSite: 'strict',
+      secure: isProd(),
+      path: '/',
+      maxAge: 60 * 60 * 24 * 14, // 14 days
+    })
+  }
+  return response
+}
 
 /**
  * Edge-compatible HMAC-SHA256 verification using the Web Crypto API.
@@ -117,7 +138,7 @@ export async function middleware(request: NextRequest) {
       const response = NextResponse.next()
       response.headers.set('Content-Security-Policy', csp)
       response.headers.set('x-nonce', nonce)
-      return response
+      return ensureCsrfCookie(request, response)
     }
 
     // Check for valid admin session cookie
@@ -128,12 +149,18 @@ export async function middleware(request: NextRequest) {
       if (pathname.startsWith('/api/')) {
         const response = NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         response.headers.set('Content-Security-Policy', csp)
-        return response
+        return ensureCsrfCookie(request, response)
       }
       const response = NextResponse.redirect(new URL('/admin/login', request.url))
       response.headers.set('Content-Security-Policy', csp)
-      return response
+      return ensureCsrfCookie(request, response)
     }
+
+    // Ensure CSRF cookie exists for authenticated admin pages/API usage.
+    const response = NextResponse.next()
+    response.headers.set('Content-Security-Policy', csp)
+    response.headers.set('x-nonce', nonce)
+    return ensureCsrfCookie(request, response)
   }
 
   // SEC-047: Set CSP header on all responses

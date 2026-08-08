@@ -13,7 +13,7 @@
  * The table is `admin_mfa_codes` (not `exp_admin_mfa_codes`).
  */
 
-import { randomInt, randomUUID } from 'node:crypto'
+import { createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { safeLogError } from '@/lib/security/logger'
 
@@ -23,6 +23,47 @@ interface MFACodeEntry {
   createdAt: number
   expiresAt: number
   deviceFingerprint?: string
+}
+
+const MFA_CODE_HASH_PREFIX = 'h1$'
+
+function getMfaCodeHashKey(): string {
+  const key = process.env.MFA_CODE_HASH_KEY || process.env.ADMIN_LOGIN_KEY
+  if (!key) {
+    throw new Error('MFA_CODE_HASH_KEY or ADMIN_LOGIN_KEY must be set for MFA code hashing.')
+  }
+  return key
+}
+
+function hashMfaCode(challengeToken: string, code: string): string {
+  return createHmac('sha256', getMfaCodeHashKey())
+    .update(`${challengeToken}:${code}`)
+    .digest('hex')
+}
+
+function encodeStoredMfaCode(challengeToken: string, code: string): string {
+  return `${MFA_CODE_HASH_PREFIX}${hashMfaCode(challengeToken, code)}`
+}
+
+function safeEquals(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b))
+}
+
+function verifyStoredMfaCode(storedCode: string, challengeToken: string, providedCode: string): boolean {
+  if (!storedCode || !providedCode) return false
+
+  if (storedCode.startsWith(MFA_CODE_HASH_PREFIX)) {
+    try {
+      const expected = `${MFA_CODE_HASH_PREFIX}${hashMfaCode(challengeToken, providedCode)}`
+      return safeEquals(storedCode, expected)
+    } catch {
+      return false
+    }
+  }
+
+  // Backward compatibility: old rows store plaintext 6-digit codes.
+  return safeEquals(storedCode, providedCode)
 }
 
 /**
@@ -49,11 +90,12 @@ export async function createMFACode(deviceFingerprint?: string): Promise<{ code:
   const expiresAt = now + 10 * 60 * 1000 // 10 minutes
 
   const supabase = getSupabaseAdmin()
+  const storedCode = encodeStoredMfaCode(challengeToken, code)
 
   // Try new schema first: challenge_token + device_fingerprint columns
   const insertPayload: Record<string, any> = {
     challenge_token: challengeToken,
-    code,
+    code: storedCode,
     expires_at: new Date(expiresAt).toISOString(),
     ip: challengeToken, // Also populate ip for backward compat with migration 040
   }
@@ -74,7 +116,7 @@ export async function createMFACode(deviceFingerprint?: string): Promise<{ code:
   if (isColumnNotFound(error)) {
     const legacyPayload: Record<string, any> = {
       ip: challengeToken, // Store challenge token in the ip column
-      code,
+      code: storedCode,
       expires_at: new Date(expiresAt).toISOString(),
     }
 
@@ -161,16 +203,16 @@ async function tryVerifyWithColumn(
   try {
     const supabase = getSupabaseAdmin()
 
-    const selectFields = column === 'challenge_token' ? 'id, code, expires_at, device_fingerprint' : 'id, code, expires_at'
+    const selectFields = column === 'challenge_token'
+      ? 'id, code, expires_at, device_fingerprint'
+      : 'id, code, expires_at'
     const { data, error } = await supabase
       .from('admin_mfa_codes')
       .select(selectFields)
       .eq(column, challengeToken)
-      .eq('code', code)
       .eq('used', false)
       .gt('expires_at', new Date().toISOString())
-      .limit(1)
-      .maybeSingle()
+      .limit(5)
 
     if (error) {
       if (isColumnNotFound(error)) {
@@ -180,25 +222,32 @@ async function tryVerifyWithColumn(
       return false
     }
 
-    if (!data) {
+    const rows = Array.isArray(data) ? data : []
+    if (rows.length === 0) {
       return false
     }
 
-    // HARD CHECK: If a device fingerprint was stored with this code,
-    // the verify request MUST provide a matching fingerprint.
-    const storedFingerprint = (data as any).device_fingerprint
-    if (storedFingerprint) {
-      if (!deviceFingerprint) {
-        return false
+    for (const row of rows as Array<{ id: string; code: string; device_fingerprint?: string }>) {
+      if (!verifyStoredMfaCode(String(row.code ?? ''), challengeToken, code)) {
+        continue
       }
-      if (storedFingerprint !== deviceFingerprint) {
-        return false
+
+      // HARD CHECK: If a device fingerprint was stored with this code,
+      // the verify request MUST provide a matching fingerprint.
+      const storedFingerprint = row.device_fingerprint
+      if (storedFingerprint) {
+        if (!deviceFingerprint || storedFingerprint !== deviceFingerprint) {
+          continue
+        }
       }
+
+      // Mark as used (one-time use)
+      await supabase.from('admin_mfa_codes').update({ used: true }).eq('id', row.id)
+      return true
     }
 
-    // Mark as used (one-time use)
-    await supabase.from('admin_mfa_codes').update({ used: true }).eq('id', (data as any).id)
-    return true
+    // None of the active rows matched the provided code.
+    return false
   } catch (err) {
     safeLogError(`[MFA Store] Supabase connection error during verify (${column}):`, err)
     return false

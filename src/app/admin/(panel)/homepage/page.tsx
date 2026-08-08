@@ -35,6 +35,8 @@ const SECTION_ORDER = [
   'order_paths',
   'category_grid',
   'featured_collections',
+  'shop_all_preview',
+  'future_products_notify',
   'fresh_from_forge',
   'materials_teaser',
   'process_strip',
@@ -57,6 +59,8 @@ const SECTION_META: Record<SectionKey, { title: string; description: string }> =
   order_paths:          { title: 'Order Paths',             description: 'Three-column cards: Browse, Custom Order, and Standard Shop.' },
   category_grid:        { title: 'Category Grid',           description: 'Grid of product categories from the catalog.' },
   featured_collections: { title: 'Featured Collections',    description: 'Curated collections — managed in the Catalog module.' },
+  shop_all_preview:     { title: 'Shop All Preview',        description: 'Product grid card showing a configurable slice of the shop with filterable links to the full catalog.' },
+  future_products_notify: { title: 'Future Products Notify', description: 'Call-to-action card that collects interest for upcoming products and links to the roadmap.' },
   fresh_from_forge:     { title: 'Fresh From the Forge',    description: 'Recent gallery work — managed in the Gallery module.' },
   materials_teaser:     { title: 'Materials Showcase',      description: 'Material cards driven by catalog taxonomy.' },
   process_strip:        { title: 'Process Strip',           description: 'Horizontal overview of how products are made.' },
@@ -103,6 +107,21 @@ interface HeroCollageState {
   images: HeroCollageImage[]
 }
 
+interface ShopAllPreviewState {
+  is_visible: boolean
+  product_count: number
+  show_filters: boolean
+  heading: string
+  subheading: string
+}
+
+interface FutureProductsNotifyState {
+  is_visible: boolean
+  heading: string
+  subheading: string
+  cta_label: string
+}
+
 const BLANK_ITEM = (): ShortcutItem => ({
   key: `item_${Date.now()}`,
   label: '',
@@ -142,6 +161,23 @@ export default function AdminHomepagePage() {
   })
   const [savingCollage, setSavingCollage] = useState(false)
   const [collageMessage, setCollageMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [shopAllPreview, setShopAllPreview] = useState<ShopAllPreviewState>({
+    is_visible: true,
+    product_count: 6,
+    show_filters: true,
+    heading: 'Shop All Products',
+    subheading: '',
+  })
+  const [savingShopAllPreview, setSavingShopAllPreview] = useState(false)
+  const [shopAllPreviewMessage, setShopAllPreviewMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [futureProductsNotify, setFutureProductsNotify] = useState<FutureProductsNotifyState>({
+    is_visible: true,
+    heading: 'Want early access?',
+    subheading: 'Share your email and idea so we can keep you posted on future drops.',
+    cta_label: 'Notify me',
+  })
+  const [savingFutureProductsNotify, setSavingFutureProductsNotify] = useState(false)
+  const [futureProductsNotifyMessage, setFutureProductsNotifyMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
     void (async () => {
@@ -172,6 +208,29 @@ export default function AdminHomepagePage() {
             is_visible: collageRaw.is_visible !== false,
             image_count: typeof content.image_count === 'number' ? content.image_count : 4,
             images: paddedImages,
+          })
+        }
+
+        const shopAllRaw = raw['shop_all_preview']
+        if (shopAllRaw?.content) {
+          const content = shopAllRaw.content as Record<string, unknown>
+          setShopAllPreview({
+            is_visible: shopAllRaw.is_visible !== false,
+            product_count: typeof content.product_count === 'number' ? content.product_count : 6,
+            show_filters: content.show_filters !== false,
+            heading: typeof content.heading === 'string' ? content.heading : 'Shop All Products',
+            subheading: typeof content.subheading === 'string' ? content.subheading : '',
+          })
+        }
+
+        const futureProductsNotifyRaw = raw['future_products_notify']
+        if (futureProductsNotifyRaw?.content) {
+          const content = futureProductsNotifyRaw.content as Record<string, unknown>
+          setFutureProductsNotify({
+            is_visible: futureProductsNotifyRaw.is_visible !== false,
+            heading: typeof content.heading === 'string' ? content.heading : 'Want early access?',
+            subheading: typeof content.subheading === 'string' ? content.subheading : 'Share your email and idea so we can keep you posted on future drops.',
+            cta_label: typeof content.cta_label === 'string' ? content.cta_label : 'Notify me',
           })
         }
 
@@ -261,6 +320,59 @@ export default function AdminHomepagePage() {
       setCollageMessage({ type: 'error', text: err instanceof Error ? err.message : 'Save failed.' })
     } finally {
       setSavingCollage(false)
+    }
+  }
+
+  async function handleSaveShopAllPreview() {
+    setSavingShopAllPreview(true)
+    setShopAllPreviewMessage(null)
+    try {
+      const res = await fetch('/api/admin/homepage/sections/shop_all_preview', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          is_visible: shopAllPreview.is_visible,
+          product_count: shopAllPreview.product_count,
+          show_filters: shopAllPreview.show_filters,
+          heading: shopAllPreview.heading,
+          subheading: shopAllPreview.subheading,
+        }),
+      })
+      const data = await res.json() as { error?: string }
+      if (!res.ok) throw new Error(data.error ?? 'Save failed.')
+      setShopAllPreviewMessage({ type: 'success', text: 'Shop All Preview saved.' })
+      setVisibility((prev) => ({ ...prev, shop_all_preview: shopAllPreview.is_visible }))
+      setTimeout(() => setShopAllPreviewMessage(null), 3500)
+    } catch (err) {
+      setShopAllPreviewMessage({ type: 'error', text: err instanceof Error ? err.message : 'Save failed.' })
+    } finally {
+      setSavingShopAllPreview(false)
+    }
+  }
+
+  async function handleSaveFutureProductsNotify() {
+    setSavingFutureProductsNotify(true)
+    setFutureProductsNotifyMessage(null)
+    try {
+      const res = await fetch('/api/admin/homepage/sections/future_products_notify', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          is_visible: futureProductsNotify.is_visible,
+          heading: futureProductsNotify.heading,
+          subheading: futureProductsNotify.subheading,
+          cta_label: futureProductsNotify.cta_label,
+        }),
+      })
+      const data = await res.json() as { error?: string }
+      if (!res.ok) throw new Error(data.error ?? 'Save failed.')
+      setFutureProductsNotifyMessage({ type: 'success', text: 'Future Products Notify card saved.' })
+      setVisibility((prev) => ({ ...prev, future_products_notify: futureProductsNotify.is_visible }))
+      setTimeout(() => setFutureProductsNotifyMessage(null), 3500)
+    } catch (err) {
+      setFutureProductsNotifyMessage({ type: 'error', text: err instanceof Error ? err.message : 'Save failed.' })
+    } finally {
+      setSavingFutureProductsNotify(false)
     }
   }
 

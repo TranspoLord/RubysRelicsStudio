@@ -12,6 +12,7 @@ import { Footer } from '@/components/layout/Footer'
 import { Breadcrumb } from '@/components/layout/Breadcrumb'
 import { getAllActiveProducts } from '@/lib/supabase/queries/products'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
+import { filterProductsForShopAll } from '@/lib/catalog/filters'
 import { brandTokens } from '@/theme/theme'
 
 export const dynamic = 'force-dynamic'
@@ -22,25 +23,40 @@ export const metadata: Metadata = {
 }
 
 interface ShopAllPageProps {
-  searchParams: Promise<{ process?: string }>
+  searchParams: Promise<{ process?: string; category?: string; price_min?: string; price_max?: string; ready_made?: string; customizable?: string; search?: string }>
 }
 
 export default async function ShopAllPage({ searchParams }: ShopAllPageProps) {
-  const { process: processKey } = await searchParams
-  const safeProcessKey = processKey?.replace(/[^a-z0-9_]/gi, '') || undefined
+  const params = await searchParams
+  const processKey = params.process?.replace(/[^a-z0-9_]/gi, '') || undefined
+  const category = params.category?.replace(/[^a-z0-9_]/gi, '') || undefined
+  const priceMin = Number(params.price_min)
+  const priceMax = Number(params.price_max)
+  const showReadyMade = params.ready_made !== 'false'
+  const showCustomizable = params.customizable !== 'false'
+  const search = params.search?.trim() || undefined
 
   const [products, processLabel] = await Promise.all([
-    getAllActiveProducts(safeProcessKey),
-    safeProcessKey
+    getAllActiveProducts(processKey),
+    processKey
       ? getSupabaseAdmin()
           .from('exp_taxonomy')
           .select('display_name')
-          .eq('key', safeProcessKey)
+          .eq('key', processKey)
           .eq('type', 'process_type')
           .maybeSingle()
           .then((r) => r.data?.display_name ?? null)
       : Promise.resolve(null),
   ])
+
+  const filteredProducts = filterProductsForShopAll(products, {
+    category,
+    priceMin: Number.isFinite(priceMin) ? priceMin : undefined,
+    priceMax: Number.isFinite(priceMax) ? priceMax : undefined,
+    showReadyMade,
+    showCustomizable,
+    search,
+  })
 
   return (
     <>
@@ -114,8 +130,8 @@ export default async function ShopAllPage({ searchParams }: ShopAllPageProps) {
             )}
 
             <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.5), mb: { xs: 2.5, md: 3 } }}>
-              {products.length} product{products.length !== 1 ? 's' : ''} available
-              {safeProcessKey && products.length === 0 && ' — no products have been tagged with this process yet.'}
+              {filteredProducts.length} product{filteredProducts.length !== 1 ? 's' : ''} available
+              {processKey && filteredProducts.length === 0 && ' — no products have been tagged with this process yet.'}
             </Typography>
 
             <Box
@@ -129,7 +145,7 @@ export default async function ShopAllPage({ searchParams }: ShopAllPageProps) {
                 gap: { xs: 2.5, md: 3 },
               }}
             >
-              {products.map((product) => {
+              {filteredProducts.map((product) => {
                 const media = product.featured_media
                 const hasImage = Boolean(media?.url)
                 const cardGradient =

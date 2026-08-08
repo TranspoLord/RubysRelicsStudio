@@ -7,7 +7,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/client'
 const TILE_SECTION_KEYS = new Set(['quick_picks', 'process_picks'])
 
 // Sections that have content editors beyond simple visibility
-const CONTENT_SECTION_KEYS = new Set(['quick_picks', 'process_picks', 'hero_collage'])
+const CONTENT_SECTION_KEYS = new Set(['quick_picks', 'process_picks', 'hero_collage', 'shop_all_preview', 'future_products_notify'])
 
 // All sections that may be PATCH-ed through this route
 const ALL_SECTION_KEYS = new Set([
@@ -18,6 +18,8 @@ const ALL_SECTION_KEYS = new Set([
   'order_paths',
   'category_grid',
   'featured_collections',
+  'shop_all_preview',
+  'future_products_notify',
   'fresh_from_forge',
   'materials_teaser',
   'process_strip',
@@ -45,6 +47,55 @@ interface SectionContentPayload {
   subheading?: unknown
   is_visible?: unknown
   items?: unknown
+  product_count?: unknown
+  show_filters?: unknown
+  cta_label?: unknown
+}
+
+function validateShopAllPreviewPayload(body: unknown): {
+  valid: true
+  product_count: number
+  show_filters: boolean
+  heading: string
+  subheading: string
+  is_visible: boolean
+} | { valid: false; message: string } {
+  if (typeof body !== 'object' || body === null) {
+    return { valid: false, message: 'Request body must be a JSON object.' }
+  }
+
+  const b = body as SectionContentPayload
+  const productCount = typeof b.product_count === 'number' ? b.product_count : 6
+  const showFilters = b.show_filters !== false
+  const heading = typeof b.heading === 'string' && b.heading.trim() ? b.heading.trim() : 'Shop All Products'
+  const subheading = typeof b.subheading === 'string' ? b.subheading.trim() : ''
+  const is_visible = b.is_visible !== false
+
+  if (!Number.isInteger(productCount) || productCount < 1 || productCount > 50) {
+    return { valid: false, message: "'product_count' must be an integer between 1 and 50." }
+  }
+
+  return { valid: true, product_count: productCount, show_filters: showFilters, heading, subheading, is_visible }
+}
+
+function validateFutureProductsNotifyPayload(body: unknown): {
+  valid: true
+  heading: string
+  subheading: string
+  cta_label: string
+  is_visible: boolean
+} | { valid: false; message: string } {
+  if (typeof body !== 'object' || body === null) {
+    return { valid: false, message: 'Request body must be a JSON object.' }
+  }
+
+  const b = body as SectionContentPayload
+  const heading = typeof b.heading === 'string' && b.heading.trim() ? b.heading.trim() : 'Want early access?'
+  const subheading = typeof b.subheading === 'string' ? b.subheading.trim() : 'Share your email and idea so we can keep you posted on future drops.'
+  const ctaLabel = typeof b.cta_label === 'string' && b.cta_label.trim() ? b.cta_label.trim() : 'Notify me'
+  const is_visible = b.is_visible !== false
+
+  return { valid: true, heading, subheading, cta_label: ctaLabel, is_visible }
 }
 
 function validatePayload(body: unknown): {
@@ -166,6 +217,79 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       request,
       status: 'success',
       details: { sectionKey, is_visible },
+    })
+
+    return NextResponse.json({ ok: true })
+  }
+
+  if (sectionKey === 'shop_all_preview') {
+    const validation = validateShopAllPreviewPayload(body)
+    if (!validation.valid) {
+      return NextResponse.json({ error: validation.message }, { status: 400 })
+    }
+
+    const content = {
+      product_count: validation.product_count,
+      show_filters: validation.show_filters,
+      heading: validation.heading,
+      subheading: validation.subheading,
+    }
+
+    const supabase = getSupabaseAdmin()
+    const { error } = await supabase
+      .from('exp_homepage_sections')
+      .update({ content, is_visible: validation.is_visible, updated_at: new Date().toISOString() })
+      .eq('section_key', sectionKey)
+
+    if (error) {
+      console.error(`[admin:homepage:sections:patch:${sectionKey}]`, error.message)
+      return NextResponse.json({ error: 'Could not save section.' }, { status: 500 })
+    }
+
+    await writeAdminAuditLog({
+      action: 'homepage_section_update',
+      entityType: 'homepage_section',
+      entityId: sectionKey,
+      route: `/api/admin/homepage/sections/${sectionKey}`,
+      request,
+      status: 'success',
+      details: { sectionKey, product_count: validation.product_count, show_filters: validation.show_filters },
+    })
+
+    return NextResponse.json({ ok: true })
+  }
+
+  if (sectionKey === 'future_products_notify') {
+    const validation = validateFutureProductsNotifyPayload(body)
+    if (!validation.valid) {
+      return NextResponse.json({ error: validation.message }, { status: 400 })
+    }
+
+    const content = {
+      heading: validation.heading,
+      subheading: validation.subheading,
+      cta_label: validation.cta_label,
+    }
+
+    const supabase = getSupabaseAdmin()
+    const { error } = await supabase
+      .from('exp_homepage_sections')
+      .update({ content, is_visible: validation.is_visible, updated_at: new Date().toISOString() })
+      .eq('section_key', sectionKey)
+
+    if (error) {
+      console.error(`[admin:homepage:sections:patch:${sectionKey}]`, error.message)
+      return NextResponse.json({ error: 'Could not save section.' }, { status: 500 })
+    }
+
+    await writeAdminAuditLog({
+      action: 'homepage_section_update',
+      entityType: 'homepage_section',
+      entityId: sectionKey,
+      route: `/api/admin/homepage/sections/${sectionKey}`,
+      request,
+      status: 'success',
+      details: { sectionKey, cta_label: validation.cta_label },
     })
 
     return NextResponse.json({ ok: true })

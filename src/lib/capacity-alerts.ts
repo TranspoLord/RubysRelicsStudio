@@ -10,7 +10,11 @@ interface CapacityAlertRow {
 }
 
 function getSecret(): string {
-  return process.env.CAPACITY_ALERT_UNSUBSCRIBE_SECRET || process.env.ADMIN_LOGIN_KEY || 'fallback-dev-secret'
+  const secret = process.env.CAPACITY_ALERT_UNSUBSCRIBE_SECRET
+  if (!secret || secret.trim().length < 32) {
+    throw new Error('CAPACITY_ALERT_UNSUBSCRIBE_SECRET must be set to a strong value (32+ chars).')
+  }
+  return secret
 }
 
 function sign(encoded: string): string {

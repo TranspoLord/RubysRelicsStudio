@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
+import { requireCsrfOriginOnly } from '@/lib/security/csrf'
 import { sanitizeText, validateEmail } from '@/lib/validate'
 
 interface SubscribeBody {
@@ -11,6 +12,9 @@ interface SubscribeBody {
 
 export async function POST(request: Request) {
   try {
+    const csrfResponse = requireCsrfOriginOnly(request)
+    if (csrfResponse) return csrfResponse
+
     const ip = getClientIp(request)
 
     const rlIp = await rateLimit(`bis-ip:${ip}`, 8, 10 * 60 * 1000)

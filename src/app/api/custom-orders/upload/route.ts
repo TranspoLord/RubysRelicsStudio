@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { rateLimit, rateLimitResponse, getClientIp } from '@/lib/rate-limit'
+import { requireCsrfOriginOnly } from '@/lib/security/csrf'
 
 const BUCKET_NAME = 'customer-artwork'
 const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024 // 15 MB
@@ -67,8 +68,11 @@ async function verifyMagicBytes(file: File): Promise<boolean> {
  *  - Bucket is private — no public read policy
  */
 export async function POST(request: Request) {
+  const csrfResponse = requireCsrfOriginOnly(request)
+  if (csrfResponse) return csrfResponse
+
   const ip = getClientIp(request)
-  const rl = await rateLimit(`artwork-upload:${ip}`, 20, 60 * 60 * 1000)
+  const rl = await rateLimit(`artwork-upload:${ip}`, 20, 60 * 60 * 1000, { failClosed: true })
   if (!rl.allowed) return rateLimitResponse(rl.retryAfter!)
 
   let formData: FormData
@@ -146,8 +150,14 @@ export async function POST(request: Request) {
     console.error('[custom-orders:upload:token]', tokenError.message)
   }
 
+  const { data: signed, error: signedError } = await supabase.storage
+    .from(BUCKET_NAME)
+    .createSignedUrl(path, 60 * 60)
+
+  const previewUrl = signedError || !signed ? null : signed.signedUrl
+
   return NextResponse.json(
-    { path, uploadToken, name: file.name, size: file.size, type: file.type },
+    { path, uploadToken, url: previewUrl, name: file.name, size: file.size, type: file.type },
     { status: 201 }
   )
 }

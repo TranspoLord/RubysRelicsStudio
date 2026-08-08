@@ -30,6 +30,10 @@ export interface RecommendationSettings {
   pinned_by_category: Record<string, string[]>
 }
 
+export interface FutureProductNotifyFormSettings {
+  enabled: boolean
+}
+
 export interface BudgetRangeSetting {
   id: string
   label: string
@@ -69,6 +73,10 @@ const DEFAULT_RECOMMENDATION_SETTINGS: RecommendationSettings = {
   enabled: true,
   pinned_global: [],
   pinned_by_category: {},
+}
+
+const DEFAULT_FUTURE_PRODUCT_NOTIFY_SETTINGS: FutureProductNotifyFormSettings = {
+  enabled: true,
 }
 
 export async function getStorefrontSettings(settingKeys: string[]) {
@@ -191,6 +199,18 @@ export async function getBudgetRanges(): Promise<BudgetRangeSetting[]> {
   }
 
   return (data ?? []) as BudgetRangeSetting[]
+}
+
+export async function getFutureProductNotifySettings(): Promise<FutureProductNotifyFormSettings> {
+  const settings = await getStorefrontSettings(['future_products_notify_form'])
+  const value = settings.get('future_products_notify_form')
+
+  return {
+    enabled:
+      typeof value?.enabled === 'boolean'
+        ? value.enabled
+        : DEFAULT_FUTURE_PRODUCT_NOTIFY_SETTINGS.enabled,
+  }
 }
 
 export async function getRecommendationSettings(): Promise<RecommendationSettings> {

@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server'
 
+import { writeAdminAuditLog } from '@/lib/admin/audit'
 import { requireAdminApiSession } from '@/lib/admin/auth'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
+import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 
 const BUCKET_NAME = 'customer-artwork'
-const SIGNED_URL_EXPIRY_SECONDS = 3600 // 1 hour
+const SIGNED_URL_EXPIRY_SECONDS = 900 // 15 minutes
 
 interface RequestContext {
   params: Promise<{ id: string }>
@@ -29,9 +31,22 @@ export async function GET(request: Request, { params }: RequestContext) {
   const auth = await requireAdminApiSession(request)
   if (!auth.ok) return auth.response
 
+  const ip = getClientIp(request)
+  const rl = await rateLimit(`admin-artwork-retrieve:${ip}`, 50, 60 * 60 * 1000, { failClosed: true })
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfter ?? 60)
+
   const { id } = await params
 
   if (!id || typeof id !== 'string') {
+    await writeAdminAuditLog({
+      action: 'custom_request.artwork_retrieve',
+      entityType: 'custom_request',
+      entityId: null,
+      route: '/api/admin/custom-requests/[id]/artwork',
+      request,
+      status: 'failure',
+      details: { reason: 'missing_request_id' },
+    })
     return NextResponse.json({ error: 'Missing request ID.' }, { status: 400 })
   }
 
@@ -44,6 +59,15 @@ export async function GET(request: Request, { params }: RequestContext) {
     .maybeSingle()
 
   if (error || !data) {
+    await writeAdminAuditLog({
+      action: 'custom_request.artwork_retrieve',
+      entityType: 'custom_request',
+      entityId: id,
+      route: '/api/admin/custom-requests/[id]/artwork',
+      request,
+      status: 'failure',
+      details: { reason: 'request_not_found' },
+    })
     return NextResponse.json({ error: 'Custom request not found.' }, { status: 404 })
   }
 
@@ -70,8 +94,20 @@ export async function GET(request: Request, { params }: RequestContext) {
     })
   )
 
+  const filteredUrls = urls.filter((u): u is { name: string; url: string } => u.url !== null)
+
+  await writeAdminAuditLog({
+    action: 'custom_request.artwork_retrieve',
+    entityType: 'custom_request',
+    entityId: id,
+    route: '/api/admin/custom-requests/[id]/artwork',
+    request,
+    status: 'success',
+    details: { urls_returned: filteredUrls.length },
+  })
+
   return NextResponse.json(
-    { urls: urls.filter((u): u is { name: string; url: string } => u.url !== null) },
+    { urls: filteredUrls },
     { status: 200 }
   )
 }
