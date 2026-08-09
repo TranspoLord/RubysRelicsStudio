@@ -25,6 +25,7 @@ interface CustomRequestRow {
   item_type: string
   quantity: number
   description: string
+  design_id: string | null
   files: Array<{ name: string; size: number; type: string; path?: string }> | null
   quote_amount: number | null
   square_payment_link_url: string | null
@@ -36,6 +37,13 @@ interface CustomRequestRow {
   recovery_reminder_sent_at: string | null
   created_at: string
   updated_at: string
+}
+
+interface ExportSummary {
+  pending: number
+  succeeded: number
+  failed: number
+  latestPerFormat: Record<string, string>
 }
 
 type StatusFilter =
@@ -72,6 +80,7 @@ export default function AdminCustomRequestsPage() {
   const [artworkUrls, setArtworkUrls] = useState<
     Record<string, Array<{ name: string; url: string }> | 'loading' | 'error'>
   >({})
+  const [exportSummaryByDesignId, setExportSummaryByDesignId] = useState<Record<string, ExportSummary>>({})
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
   const [rejectingRowId, setRejectingRowId] = useState<string | null>(null)
   const [rejectionReason, setRejectionReason] = useState('')
@@ -90,6 +99,11 @@ export default function AdminCustomRequestsPage() {
         throw new Error(typeof payload?.error === 'string' ? payload.error : 'Failed to load custom requests.')
       }
       setRows(Array.isArray(payload?.requests) ? payload.requests : [])
+      setExportSummaryByDesignId(
+        payload && typeof payload.exportSummaryByDesignId === 'object' && payload.exportSummaryByDesignId !== null
+          ? (payload.exportSummaryByDesignId as Record<string, ExportSummary>)
+          : {}
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load custom requests.')
     } finally {
@@ -352,6 +366,52 @@ export default function AdminCustomRequestsPage() {
     }
   }
 
+  async function generateExports(row: CustomRequestRow) {
+    if (!row.design_id) {
+      setError('No design is linked to this request yet.')
+      return
+    }
+
+    setSubmittingId(row.id)
+    setError(null)
+    setSuccessMessage(null)
+
+    try {
+      const response = await fetch('/api/designs/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          designId: row.design_id,
+          formats: ['png', 'pdf'],
+          dpi: 300,
+        }),
+      })
+
+      const payload = await response.json().catch(() => ({})) as {
+        exports?: Array<{ status?: string }>
+        error?: string
+      }
+
+      if (!response.ok) {
+        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Could not generate exports.')
+      }
+
+      const successCount = Array.isArray(payload.exports)
+        ? payload.exports.filter((e) => e.status === 'succeeded').length
+        : 0
+      const failCount = Array.isArray(payload.exports)
+        ? payload.exports.filter((e) => e.status === 'failed').length
+        : 0
+
+      setSuccessMessage(`Export run completed: ${successCount} succeeded, ${failCount} failed.`)
+      await loadRows()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not generate exports.')
+    } finally {
+      setSubmittingId(null)
+    }
+  }
+
   const isRowCancelled = (row: CustomRequestRow) => row.status === 'cancelled'
 
   return (
@@ -450,6 +510,16 @@ export default function AdminCustomRequestsPage() {
                   </Typography>
                 )}
               </Typography>
+              {row.design_id && (
+                <Typography sx={{ color: alpha(brandTokens.parchment, 0.56), fontSize: '0.72rem', mt: 0.15 }}>
+                  Design: {row.design_id}
+                </Typography>
+              )}
+              {row.design_id && exportSummaryByDesignId[row.design_id] && (
+                <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.73rem', mt: 0.15 }}>
+                  Exports → ready: {exportSummaryByDesignId[row.design_id].succeeded}, pending: {exportSummaryByDesignId[row.design_id].pending}, failed: {exportSummaryByDesignId[row.design_id].failed}
+                </Typography>
+              )}
               {row.quote_expires_at && (
                 <Typography sx={{ color: alpha(brandTokens.parchment, 0.54), fontSize: '0.73rem' }}>
                   Quote expires: {new Date(row.quote_expires_at).toLocaleString()} · Resent {row.quote_resend_count}x
@@ -608,6 +678,14 @@ export default function AdminCustomRequestsPage() {
                     onClick={() => void openRejectDialog(row)}
                   >
                     Reject
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={submittingId === row.id || !row.design_id}
+                    onClick={() => void generateExports(row)}
+                  >
+                    Generate Exports
                   </Button>
                 </Box>
               )}

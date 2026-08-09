@@ -11,6 +11,8 @@ import CloseIcon from '@mui/icons-material/Close'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import { alpha } from '@mui/material/styles'
 import { useRouter } from 'next/navigation'
+import type { DesignDocumentV1 } from '@/lib/design/schema'
+import { parseDesignDocument } from '@/lib/design/schema'
 
 import { brandTokens } from '@/theme/theme'
 
@@ -41,6 +43,7 @@ export interface CartItem {
   imageUrl?: string | null
   imageEmoji?: string | null
   weight?: number | null
+  designDocument?: DesignDocumentV1 | null
 }
 
 function asFiniteMoney(value: unknown): number {
@@ -89,6 +92,10 @@ function normalizeCartItem(input: unknown): CartItem | null {
   const lineDiscount = asFiniteMoney(row.lineDiscount)
   const lineTotal = asFiniteMoney(row.lineTotal)
   const unitPrice = asFiniteMoney(row.unitPrice)
+  const designDocument = parseDesignDocument((row as { designDocument?: unknown }).designDocument)
+  if ((row as { designDocument?: unknown }).designDocument && !designDocument) {
+    return null
+  }
 
   return {
     key: row.key,
@@ -108,6 +115,7 @@ function normalizeCartItem(input: unknown): CartItem | null {
     imageUrl: typeof row.imageUrl === 'string' ? row.imageUrl : null,
     imageEmoji: typeof row.imageEmoji === 'string' ? row.imageEmoji : null,
     weight: typeof row.weight === 'number' ? row.weight : null,
+    designDocument,
   }
 }
 
@@ -240,6 +248,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           imageUrl: next.imageUrl ?? item.imageUrl,
           imageEmoji: next.imageEmoji ?? item.imageEmoji,
           selectedProcessKeys: next.selectedProcessKeys ?? item.selectedProcessKeys,
+          designDocument: next.designDocument ?? item.designDocument ?? null,
         }
       })
     })

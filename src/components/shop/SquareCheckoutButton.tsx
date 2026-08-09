@@ -2,13 +2,17 @@
 
 import Button from '@mui/material/Button'
 import { useState } from 'react'
+import type { DesignDocumentV1 } from '@/lib/design/schema'
 
 interface CartItemForSquare {
   productId: string
   title: string
   quantity: number
   unitPrice: number
+  variantId?: string | null
+  selectedOptions?: Array<{ key: string; value: string }>
   selectedProcessKeys?: string[]
+  designDocument?: DesignDocumentV1 | null
 }
 
 interface SquareCheckoutButtonProps {

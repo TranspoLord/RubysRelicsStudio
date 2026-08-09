@@ -36,6 +36,7 @@ export interface DesignerElement {
   rotation?: number
   // Image-specific
   src?: string
+  assetPath?: string
   uploadToken?: string
   // Text-specific
   text?: string
@@ -52,12 +53,13 @@ export interface ProductDesignerProps {
   onClose: () => void
   mockupUrl: string
   options: DbProductOption[]
+  initialElements?: DesignerElement[]
   onSave: (elements: DesignerElement[]) => void
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function ProductDesigner({ open, onClose, mockupUrl, options, onSave }: ProductDesignerProps) {
+export function ProductDesigner({ open, onClose, mockupUrl, options, initialElements, onSave }: ProductDesignerProps) {
   const [elements, setElements] = useState<DesignerElement[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [mockupImg, setMockupImg] = useState<HTMLImageElement | null>(null)
@@ -89,15 +91,15 @@ export function ProductDesigner({ open, onClose, mockupUrl, options, onSave }: P
     })
   }, [elements, elementImages])
 
-  // Reset on close - intentional cleanup when modal closes
+  // Rehydrate the modal state from parent-provided design data when opened.
   useEffect(() => {
-    if (!open) {
-      setElements([])
+    if (open) {
+      setElements(Array.isArray(initialElements) ? initialElements : [])
       setSelectedId(null)
       setElementImages({})
       setUploadError(null)
     }
-  }, [open])
+  }, [open, initialElements])
 
   // Attach Transformer to the selected shape whenever selection changes
   useEffect(() => {
@@ -115,7 +117,7 @@ export function ProductDesigner({ open, onClose, mockupUrl, options, onSave }: P
   const handleAddImage = useCallback(async () => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = 'image/jpeg,image/png,image/webp,image/gif,application/pdf'
+    input.accept = 'image/jpeg,image/png,image/webp,image/gif'
     input.onchange = async () => {
       const file = input.files?.[0]
       if (!file) return
@@ -123,19 +125,24 @@ export function ProductDesigner({ open, onClose, mockupUrl, options, onSave }: P
       setUploadError(null)
       const formData = new FormData()
       formData.set('file', file)
-      const res = await fetch('/api/admin/homepage/upload', {
+      const res = await fetch('/api/custom-orders/upload', {
         method: 'POST',
         body: formData,
       })
-      const data = await res.json() as { url?: string; uploadToken?: string; error?: string }
+      const data = await res.json() as { url?: string; path?: string; uploadToken?: string; error?: string }
       if (!res.ok || !data.url) {
         setUploadError(data.error ?? 'Failed to upload image.')
+        return
+      }
+      if (!data.path || !data.uploadToken) {
+        setUploadError('Upload token was not returned. Please retry.')
         return
       }
       const newElement: DesignerElement = {
         id: `img_${Date.now()}`,
         type: 'image',
         src: data.url,
+        assetPath: data.path,
         uploadToken: data.uploadToken,
         x: 100,
         y: 100,

@@ -9,6 +9,11 @@ import {
   getOperationalNotificationSettings,
 } from '@/lib/storefront-settings'
 import { safeHtmlEscape, validateEmail } from '@/lib/validate'
+import { parseDesignDocument } from '@/lib/design/schema'
+import {
+  persistDesignDocument,
+  verifyDesignAssetOwnership,
+} from '@/lib/design/persistence'
 
 interface FileMeta {
   name?: unknown
@@ -20,6 +25,7 @@ interface FileMeta {
 
 const MAX_SINGLE_FILE_BYTES = 15 * 1024 * 1024
 const MAX_TOTAL_FILE_BYTES = 40 * 1024 * 1024
+const MAX_DESIGN_SOURCE_BYTES = 60 * 1024 * 1024
 const ALLOWED_FILE_MIME_PREFIXES = ['image/', 'application/pdf']
 const ALLOWED_FILE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf']
 
@@ -33,6 +39,7 @@ interface CustomOrderBody {
   description?: unknown
   designHelpNeeded?: unknown
   files?: unknown
+  designDocument?: unknown
   ipRightsConfirmed?: unknown
   ageConfirmed?: unknown
   tosAccepted?: unknown
@@ -235,6 +242,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: parsedFiles.error }, { status: 400 })
     }
     const files = parsedFiles.files
+    const parsedDesignDocument =
+      body.designDocument == null ? null : parseDesignDocument(body.designDocument)
+    if (body.designDocument != null && !parsedDesignDocument) {
+      return NextResponse.json(
+        { error: 'Design document is invalid.' },
+        { status: 400 }
+      )
+    }
+    if (parsedDesignDocument && parsedDesignDocument.metadata.source !== 'custom_order') {
+      return NextResponse.json(
+        { error: 'Design document source must be custom_order for this endpoint.' },
+        { status: 400 }
+      )
+    }
     const customerAccessToken = createCustomerAccessToken()
     const customerAccessExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 60).toISOString()
 
@@ -289,6 +310,40 @@ export async function POST(request: Request) {
       }
     }
 
+    let designId: string | null = null
+    if (parsedDesignDocument) {
+      const assetVerification = await verifyDesignAssetOwnership(supabase, parsedDesignDocument)
+      if (!assetVerification.ok) {
+        return NextResponse.json(
+          { error: assetVerification.message ?? 'Design asset ownership verification failed.' },
+          { status: assetVerification.code === 'LIMIT_EXCEEDED' ? 400 : 403 }
+        )
+      }
+
+      if (assetVerification.totalSourceBytes > MAX_DESIGN_SOURCE_BYTES) {
+        return NextResponse.json(
+          { error: 'Design source assets exceed the 60MB aggregate limit.' },
+          { status: 400 }
+        )
+      }
+
+      const persisted = await persistDesignDocument({
+        supabase,
+        document: parsedDesignDocument,
+        source: 'custom_order',
+        verifiedAssets: assetVerification.assets,
+      })
+
+      if (!persisted) {
+        return NextResponse.json(
+          { error: 'Could not persist design document.' },
+          { status: 500 }
+        )
+      }
+
+      designId = persisted.designId
+    }
+
     const { data, error } = await supabase
       .from('exp_custom_requests')
       .insert({
@@ -301,6 +356,8 @@ export async function POST(request: Request) {
         budget_range: budgetRange || null,
         description,
         files,
+        design_id: designId,
+        design_document: parsedDesignDocument,
         design_help_needed: designHelpNeeded,
         ip_rights_confirmed: ipRightsConfirmed,
         age_confirmed: ageConfirmed,

@@ -20,6 +20,7 @@ import { brandTokens } from '@/theme/theme'
 import { useCart } from '@/components/cart/CartProvider'
 import { SquareCheckoutButton } from './SquareCheckoutButton'
 import { ProductDesigner, type DesignerElement } from './ProductDesigner'
+import type { DesignDocumentV1, DesignLayer } from '@/lib/design/schema'
 import type {
   DbProductDetail,
   DbProductVariant,
@@ -43,6 +44,93 @@ interface ConfiguratorState {
 
 interface ProductConfiguratorProps {
   product: DbProductDetail
+}
+
+const DESIGN_STAGE_SIZE_PX = 500
+const DESIGN_DPI = 96
+
+function roundTo(value: number, decimals: number): number {
+  const factor = 10 ** decimals
+  return Math.round(value * factor) / factor
+}
+
+function pxToIn(value: number): number {
+  return roundTo(value / DESIGN_DPI, 4)
+}
+
+function toDesignLayers(elements: DesignerElement[]): DesignLayer[] {
+  return elements
+    .slice(0, 40)
+    .map((el, index): DesignLayer | null => {
+      const zIndex = Math.max(0, Math.floor(el.zIndex ?? index))
+      const rotation = Number.isFinite(el.rotation) ? Number(el.rotation) : 0
+
+      if (el.type === 'image') {
+        if (!el.assetPath || !el.uploadToken) return null
+        const width = Math.max(1, Number(el.width ?? 1))
+        const height = Math.max(1, Number(el.height ?? 1))
+        return {
+          id: el.id,
+          kind: 'image',
+          asset_path: el.assetPath,
+          upload_token: el.uploadToken,
+          x_in: pxToIn(Number(el.x ?? 0)),
+          y_in: pxToIn(Number(el.y ?? 0)),
+          width_in: pxToIn(width),
+          height_in: pxToIn(height),
+          rotation_deg: roundTo(rotation, 2),
+          opacity: 1,
+          z_index: zIndex,
+        }
+      }
+
+      const textValue = typeof el.text === 'string' ? el.text.trim() : ''
+      if (!textValue) return null
+
+      return {
+        id: el.id,
+        kind: 'text',
+        text: textValue.slice(0, 800),
+        font_family: (el.fontFamily || 'sans-serif').slice(0, 120),
+        font_size_pt: Math.max(6, Math.min(400, Number(el.fontSize ?? 24))),
+        color_hex: (el.fill || '#000000').slice(0, 16),
+        x_in: pxToIn(Number(el.x ?? 0)),
+        y_in: pxToIn(Number(el.y ?? 0)),
+        rotation_deg: roundTo(rotation, 2),
+        opacity: 1,
+        z_index: zIndex,
+      }
+    })
+    .filter((layer): layer is DesignLayer => layer !== null)
+}
+
+function buildDesignDocument(productId: string, elements: DesignerElement[]): DesignDocumentV1 | null {
+  if (!elements.length) return null
+
+  const layers = toDesignLayers(elements)
+  if (!layers.length) return null
+
+  const now = new Date().toISOString()
+  return {
+    schema_version: '1.0',
+    design_id: `design_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    product_id: productId,
+    template_id: `product:${productId}:default`,
+    units: 'in',
+    canvas: {
+      width_in: pxToIn(DESIGN_STAGE_SIZE_PX),
+      height_in: pxToIn(DESIGN_STAGE_SIZE_PX),
+      dpi: DESIGN_DPI,
+      bleed_in: 0,
+      safe_inset_in: 0,
+    },
+    layers,
+    metadata: {
+      created_at: now,
+      updated_at: now,
+      source: 'shop',
+    },
+  }
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -179,20 +267,38 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
       })
       .filter((entry): entry is { key: string; label: string; value: string; valueLabel: string } => entry !== null)
 
-    const cartKey = buildCartKey(product.id, state.variantId, selectedOptions, state.selectedProcessKeys)
+    const designDocument = buildDesignDocument(product.id, designElements)
+
+    const cartKey = buildCartKey(product.id, state.variantId, selectedOptions, state.selectedProcessKeys, designDocument?.design_id)
     addItem({
       key: cartKey, productId: product.id, productSlug: product.slug, categorySlug: product.category_slug,
       title: product.title, quantity: state.quantity, variantId: state.variantId,
       variantLabel: selectedVariant?.label ?? null, options: selectedOptions, selectedProcessKeys: state.selectedProcessKeys,
       unitPrice: pricing.unitPrice, lineSubtotal: pricing.subtotal, lineDiscount: pricing.discount, lineTotal: pricing.total,
       imageUrl: product.featured_media?.url ?? null, imageEmoji: product.featured_media?.emoji ?? product.category_emoji ?? null,
+      designDocument,
     })
     setAddedToCart(true)
     setTimeout(() => setAddedToCart(false), 2000)
   }
 
   const squareItems = isValid && isSquareEnabled
-    ? [{ productId: product.id, title: product.title, quantity: state.quantity, unitPrice: pricing.unitPrice, selectedProcessKeys: state.selectedProcessKeys }]
+    ? [{
+        productId: product.id,
+        title: product.title,
+        quantity: state.quantity,
+        unitPrice: pricing.unitPrice,
+        variantId: state.variantId,
+        selectedOptions: options
+          .map((opt) => {
+            const selectedVal = state.optionValues[opt.option_key]
+            if (!selectedVal) return null
+            return { key: opt.option_key, value: selectedVal }
+          })
+          .filter((entry): entry is { key: string; value: string } => entry !== null),
+        selectedProcessKeys: state.selectedProcessKeys,
+        designDocument: buildDesignDocument(product.id, designElements),
+      }]
     : []
 
   const nfcPriceDelta = product.nfc_price_delta ?? 1
@@ -332,6 +438,7 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
             Customize Design
           </Button>
           <ProductDesigner open={designerOpen} onClose={() => setDesignerOpen(false)} mockupUrl={product.designer_mockup_url}
+            initialElements={designElements}
             options={options} onSave={(elements) => { setDesignElements(elements); setDesignerOpen(false) }} />
         </>
       )}
@@ -366,10 +473,10 @@ function formatBulkTierLabel(tier: DbProductBulkDiscount): string {
   return `${range}: $${tier.discount_value.toFixed(2)} each`
 }
 
-function buildCartKey(productId: string, variantId: string | null, options: Array<{ key: string; value: string }>, processKeys: string[]): string {
+function buildCartKey(productId: string, variantId: string | null, options: Array<{ key: string; value: string }>, processKeys: string[], designId?: string): string {
   const sorted = [...options].sort((a, b) => a.key.localeCompare(b.key))
   const sortedProcesses = [...processKeys].sort()
-  return `${productId}::${variantId ?? 'no_variant'}::${JSON.stringify(sorted)}::processes:${JSON.stringify(sortedProcesses)}`
+  return `${productId}::${variantId ?? 'no_variant'}::${JSON.stringify(sorted)}::processes:${JSON.stringify(sortedProcesses)}::design:${designId ?? 'none'}`
 }
 
 function findMatchingComboDiscount(tiers: DbProductComboDiscount[], selectedCount: number): DbProductComboDiscount | null {

@@ -146,7 +146,13 @@ export function CheckoutPageView() {
             title: item.title,
             quantity: item.quantity,
             unitPrice: item.lineTotal / item.quantity,
+            variantId: item.variantId ?? null,
+            selectedOptions: item.options.map((opt) => ({
+              key: opt.key,
+              value: opt.value,
+            })),
             selectedProcessKeys: item.selectedProcessKeys,
+            designDocument: item.designDocument ?? null,
           })),
           buyerEmail: normalizedEmail || undefined,
           shippingAddress: shippingAddress || undefined,

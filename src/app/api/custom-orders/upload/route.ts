@@ -143,6 +143,8 @@ export async function POST(request: Request) {
     .insert({
       upload_token: uploadToken,
       file_path: path,
+      file_size_bytes: file.size,
+      content_type: file.type,
     })
 
   if (tokenError) {

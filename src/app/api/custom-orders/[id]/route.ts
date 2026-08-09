@@ -122,7 +122,7 @@ export async function GET(request: Request, context: RequestContext) {
     const supabase = getSupabaseAdmin()
     const { data, error } = await supabase
       .from('exp_custom_requests')
-      .select('id, status, item_type, quantity, description, quote_amount, square_payment_link_url, admin_notes, created_at, updated_at, customer_access_expires_at, quote_expires_at')
+      .select('id, status, item_type, quantity, description, design_id, design_document, quote_amount, square_payment_link_url, admin_notes, created_at, updated_at, customer_access_expires_at, quote_expires_at')
       .eq('id', requestId)
       .eq('customer_access_token', accessToken)
       .single()
@@ -150,7 +150,35 @@ export async function GET(request: Request, context: RequestContext) {
       }
     }
 
-    return NextResponse.json({ request: data }, { status: 200 })
+    let exports: Array<{
+      id: string
+      format: string
+      status: string
+      error_code: string | null
+      error_message: string | null
+      created_at: string
+    }> = []
+    if (data.design_id) {
+      const { data: exportRows } = await supabase
+        .from('exp_product_design_exports')
+        .select('id, format, status, error_code, error_message, created_at')
+        .eq('design_id', data.design_id)
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      exports = Array.isArray(exportRows)
+        ? exportRows.map((row) => ({
+            id: String(row.id),
+            format: String(row.format),
+            status: String(row.status ?? ''),
+            error_code: typeof row.error_code === 'string' ? row.error_code : null,
+            error_message: typeof row.error_message === 'string' ? row.error_message : null,
+            created_at: String(row.created_at),
+          }))
+        : []
+    }
+
+    return NextResponse.json({ request: data, exports }, { status: 200 })
   } catch (error) {
     console.error('[custom-orders:id:get]', error)
     return NextResponse.json({ error: 'Could not load request status.' }, { status: 500 })

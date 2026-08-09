@@ -16,12 +16,22 @@ interface RequestRow {
   item_type: string
   quantity: number
   description: string
+  design_id: string | null
   quote_amount: number | null
   square_payment_link_url: string | null
   admin_notes: string | null
   created_at: string
   updated_at: string
   customer_access_expires_at: string | null
+}
+
+interface ExportRow {
+  id: string
+  format: string
+  status: string
+  error_code: string | null
+  error_message: string | null
+  created_at: string
 }
 
 async function getCustomRequest(id: string, access: string) {
@@ -31,7 +41,7 @@ async function getCustomRequest(id: string, access: string) {
 
   const { data, error } = await supabase
     .from('exp_custom_requests')
-    .select('id, status, item_type, quantity, description, quote_amount, square_payment_link_url, admin_notes, created_at, updated_at, customer_access_expires_at')
+    .select('id, status, item_type, quantity, description, design_id, quote_amount, square_payment_link_url, admin_notes, created_at, updated_at, customer_access_expires_at')
     .eq('id', id)
     .eq('customer_access_token', access)
     .single()
@@ -45,7 +55,31 @@ async function getCustomRequest(id: string, access: string) {
     }
   }
 
-  return data as RequestRow
+  let exports: ExportRow[] = []
+  if (data.design_id) {
+    const { data: exportRows } = await supabase
+      .from('exp_product_design_exports')
+      .select('id, format, status, error_code, error_message, created_at')
+      .eq('design_id', data.design_id)
+      .order('created_at', { ascending: false })
+      .limit(20)
+
+    exports = Array.isArray(exportRows)
+      ? exportRows.map((row) => ({
+          id: String(row.id),
+          format: String(row.format).toUpperCase(),
+          status: String(row.status ?? ''),
+          error_code: typeof row.error_code === 'string' ? row.error_code : null,
+          error_message: typeof row.error_message === 'string' ? row.error_message : null,
+          created_at: String(row.created_at),
+        }))
+      : []
+  }
+
+  return {
+    request: data as RequestRow,
+    exports,
+  }
 }
 
 function formatTimestamp(value: string): string {
@@ -80,7 +114,9 @@ export default async function CustomOrderStatusPage({
   const requestId = typeof routeParams.id === 'string' ? routeParams.id : ''
   const access = typeof query.access === 'string' ? query.access : ''
 
-  const request = await getCustomRequest(requestId, access)
+  const requestData = await getCustomRequest(requestId, access)
+  const request = requestData?.request ?? null
+  const exports = requestData?.exports ?? []
 
   return (
     <>
@@ -207,6 +243,58 @@ export default async function CustomOrderStatusPage({
                     <Typography sx={{ color: alpha(brandTokens.parchment, 0.7), whiteSpace: 'pre-wrap' }}>
                       {request.admin_notes}
                     </Typography>
+                  </Box>
+                )}
+
+                {exports.length > 0 && (
+                  <Box
+                    sx={{
+                      p: 1.1,
+                      borderRadius: 1.2,
+                      border: `1px solid ${alpha(brandTokens.parchment, 0.1)}`,
+                      backgroundColor: alpha(brandTokens.bgSurface, 0.45),
+                    }}
+                  >
+                    <Typography sx={{ fontWeight: 700, mb: 0.8 }}>Download Artifacts</Typography>
+                    <Box sx={{ display: 'grid', gap: 0.8 }}>
+                      {exports.map((artifact) => (
+                        <Box
+                          key={artifact.id}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 1,
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <Typography sx={{ color: alpha(brandTokens.parchment, 0.72), fontSize: '0.85rem' }}>
+                            {artifact.format} export • {formatTimestamp(artifact.created_at)} • {prettyStatus(artifact.status)}
+                          </Typography>
+                          {artifact.status === 'succeeded' ? (
+                            <Button
+                              component="a"
+                              href={`/api/designs/exports/${artifact.id}/download?requestId=${encodeURIComponent(request.id)}&access=${encodeURIComponent(access)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              variant="outlined"
+                              size="small"
+                            >
+                              Download
+                            </Button>
+                          ) : artifact.status === 'pending' ? (
+                            <Typography sx={{ color: alpha(brandTokens.parchment, 0.6), fontSize: '0.77rem' }}>
+                              Export in progress
+                            </Typography>
+                          ) : (
+                            <Typography sx={{ color: '#F1B4B4', fontSize: '0.77rem' }}>
+                              Failed{artifact.error_code ? ` (${artifact.error_code})` : ''}
+                              {artifact.error_message ? `: ${artifact.error_message}` : ''}
+                            </Typography>
+                          )}
+                        </Box>
+                      ))}
+                    </Box>
                   </Box>
                 )}
               </Box>

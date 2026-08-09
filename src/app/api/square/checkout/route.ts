@@ -8,8 +8,16 @@ import {
   PricingContext,
   PricingSelectedOption,
 } from '@/lib/pricing/engine'
+import { parseDesignDocument } from '@/lib/design/schema'
+import type { DesignDocumentV1 } from '@/lib/design/schema'
+import {
+  persistDesignDocument,
+  verifyDesignAssetOwnership,
+} from '@/lib/design/persistence'
 import { requireCsrfOriginOnly } from '@/lib/security/csrf'
 import { safeLogError } from '@/lib/security/logger'
+
+const MAX_DESIGN_SOURCE_BYTES = 60 * 1024 * 1024
 
 /**
  * SEC-001: The client MUST NOT supply prices. The request body contains only
@@ -22,6 +30,7 @@ interface CheckoutItemRequest {
   selectedOptions?: PricingSelectedOption[]
   quantity: number
   selectedProcessKeys?: string[]
+  designDocument?: DesignDocumentV1 | null
 }
 
 interface SquareCheckoutRequest {
@@ -135,6 +144,56 @@ export async function POST(request: Request) {
     const orderItemsSnapshot = []
 
     for (const item of body.items) {
+      const parsedDesign = item.designDocument ? parseDesignDocument(item.designDocument) : null
+      if (item.designDocument && !parsedDesign) {
+        return NextResponse.json(
+          { error: `Design document is invalid for product ${item.productId}.` },
+          { status: 400 }
+        )
+      }
+      if (parsedDesign && parsedDesign.product_id !== item.productId) {
+        return NextResponse.json(
+          { error: `Design document product mismatch for ${item.productId}.` },
+          { status: 400 }
+        )
+      }
+
+      let designId: string | null = null
+      let designSnapshot: DesignDocumentV1 | null = null
+      if (parsedDesign) {
+        const assetVerification = await verifyDesignAssetOwnership(supabase, parsedDesign)
+        if (!assetVerification.ok) {
+          return NextResponse.json(
+            { error: assetVerification.message ?? 'Design asset ownership verification failed.' },
+            { status: assetVerification.code === 'LIMIT_EXCEEDED' ? 400 : 403 }
+          )
+        }
+
+        if (assetVerification.totalSourceBytes > MAX_DESIGN_SOURCE_BYTES) {
+          return NextResponse.json(
+            { error: 'Design source assets exceed the 60MB aggregate limit.' },
+            { status: 400 }
+          )
+        }
+
+        const persisted = await persistDesignDocument({
+          supabase,
+          document: parsedDesign,
+          source: 'shop',
+          verifiedAssets: assetVerification.assets,
+        })
+
+        if (!persisted) {
+          return NextResponse.json(
+            { error: 'Could not persist design document for checkout.' },
+            { status: 500 }
+          )
+        }
+
+        designId = persisted.designId
+        designSnapshot = parsedDesign
+      }
+
       // Fetch product data from DB
       const pricingContext = await fetchPricingContext(item.productId)
       if (!pricingContext) {
@@ -177,6 +236,8 @@ export async function POST(request: Request) {
         product_title: canonical.name,
         variant_label: canonical.variantLabel,
         selected_options: canonical.selectedOptions,
+        design_id: designId,
+        design_snapshot: designSnapshot,
         unit_price: canonical.unitAmountCents / 100,
         quantity: canonical.quantity,
         line_subtotal: canonical.lineSubtotal,
@@ -245,7 +306,7 @@ export async function POST(request: Request) {
     const guestTrackingToken = randomUUID()
     const orderTotalDollars = totalAmountCents / 100
 
-    const { error: orderError } = await supabase
+    const { data: orderRow, error: orderError } = await supabase
       .from('exp_orders')
       .insert({
         square_order_id: checkoutResponse.payment_link.order_id,
@@ -264,11 +325,37 @@ export async function POST(request: Request) {
         guest_tracking_token: guestTrackingToken,
         branch: process.env.NEXT_PUBLIC_APP_ENV === 'production' ? 'PROD' : 'DEV',
       })
+      .select('id')
+      .single()
 
     if (orderError) {
       safeLogError('[square:checkout:order-insert]', orderError)
       // Don't fail the checkout — the Square link is already created.
       // The webhook will still work, but reconciliation may fail.
+    } else if (orderRow?.id) {
+      const orderItemsRows = orderItemsSnapshot.map((item) => ({
+        order_id: orderRow.id,
+        product_id: item.product_id,
+        product_title: item.product_title,
+        variant_label: item.variant_label,
+        selected_options: item.selected_options,
+        option_snapshot: item.selected_options,
+        design_id: item.design_id,
+        design_snapshot: item.design_snapshot,
+        unit_price: item.unit_price,
+        quantity: item.quantity,
+        line_subtotal: item.line_subtotal,
+        line_discount: item.line_discount,
+        line_total: item.line_total,
+      }))
+
+      const { error: orderItemsError } = await supabase
+        .from('exp_order_items')
+        .insert(orderItemsRows)
+
+      if (orderItemsError) {
+        safeLogError('[square:checkout:order-items-insert]', orderItemsError)
+      }
     }
 
     return NextResponse.json({

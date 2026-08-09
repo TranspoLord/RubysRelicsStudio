@@ -1117,6 +1117,131 @@ All three features are controlled by database values:
 
 ---
 
+## 14. Execution Status (Triple-Checked)
+
+Status snapshot date: **2026-08-08**
+
+This section reflects an explicit cross-check between this plan and the current repository state.
+
+### 14.1 Completed (Implemented)
+
+#### A) Homepage + Future Products Foundation
+
+1. Homepage section keys and visibility plumbing are implemented for:
+  - `shop_all_preview`
+  - `future_products_notify`
+2. Homepage renders both sections:
+  - `HomepageProductGrid` in [src/app/page.tsx](src/app/page.tsx)
+  - `FutureProductsNotifyCard` in [src/app/page.tsx](src/app/page.tsx)
+3. `shop_all_preview` content editing is implemented in admin homepage settings:
+  - API validation and persistence in [src/app/api/admin/homepage/sections/[key]/route.ts](src/app/api/admin/homepage/sections/[key]/route.ts)
+  - UI editor controls in [src/app/admin/(panel)/homepage/page.tsx](src/app/admin/(panel)/homepage/page.tsx)
+4. `/shop/all` query support exists for the new filter params:
+  - `category`, `price_min`, `price_max`, `ready_made`, `customizable`, `search`
+  - Implemented in [src/app/shop/all/page.tsx](src/app/shop/all/page.tsx)
+5. Future products data model migration is present:
+  - [supabase/migrations/055_future_products_roadmap.sql](supabase/migrations/055_future_products_roadmap.sql)
+6. Future products seed file is present:
+  - [supabase/seed/006_future_products_seed.sql](supabase/seed/006_future_products_seed.sql)
+7. Public future products page exists:
+  - [src/app/future-products/page.tsx](src/app/future-products/page.tsx)
+8. Storefront notify-form toggle accessor exists:
+  - [src/lib/storefront-settings.ts](src/lib/storefront-settings.ts)
+9. Admin catalog page for future products exists (basic create/list path):
+  - [src/app/admin/(panel)/catalog/future-products/page.tsx](src/app/admin/(panel)/catalog/future-products/page.tsx)
+10. Admin API for future products create/list exists:
+  - [src/app/api/admin/catalog/future-products/route.ts](src/app/api/admin/catalog/future-products/route.ts)
+
+#### B) Product Designer Addendum (Section 13) — Major Progress
+
+1. Canonical design schema (`DesignDocumentV1`) implemented:
+  - [src/lib/design/schema.ts](src/lib/design/schema.ts)
+2. Cart + checkout design propagation implemented:
+  - [src/components/cart/CartProvider.tsx](src/components/cart/CartProvider.tsx)
+  - [src/components/checkout/CheckoutPageView.tsx](src/components/checkout/CheckoutPageView.tsx)
+  - [src/components/shop/ProductConfigurator.tsx](src/components/shop/ProductConfigurator.tsx)
+  - [src/components/shop/SquareCheckoutButton.tsx](src/components/shop/SquareCheckoutButton.tsx)
+3. Server checkout validation and persistence for design docs implemented:
+  - [src/app/api/square/checkout/route.ts](src/app/api/square/checkout/route.ts)
+4. Customer-safe upload flow and upload-token persistence implemented:
+  - [src/app/api/custom-orders/upload/route.ts](src/app/api/custom-orders/upload/route.ts)
+5. Custom-order design persistence and verification implemented:
+  - [src/app/api/custom-orders/route.ts](src/app/api/custom-orders/route.ts)
+6. Design persistence/export DB model migration implemented:
+  - [supabase/migrations/057_product_design_persistence_and_exports.sql](supabase/migrations/057_product_design_persistence_and_exports.sql)
+7. Private export artifact bucket migration implemented:
+  - [supabase/migrations/058_design_artifacts_bucket.sql](supabase/migrations/058_design_artifacts_bucket.sql)
+8. Export API with limits, failure codes, idempotent reuse, and storage write implemented:
+  - [src/app/api/designs/export/route.ts](src/app/api/designs/export/route.ts)
+9. Real image compositing renderer implemented (PNG + PDF):
+  - [src/lib/design/export-renderer.ts](src/lib/design/export-renderer.ts)
+10. Secure signed download endpoint (10 min URLs) implemented:
+   - [src/app/api/designs/exports/[id]/download/route.ts](src/app/api/designs/exports/[id]/download/route.ts)
+11. Export status and download UX surfaced for admin/custom-order views:
+   - [src/app/admin/(panel)/custom-requests/page.tsx](src/app/admin/(panel)/custom-requests/page.tsx)
+   - [src/app/custom-orders/[id]/page.tsx](src/app/custom-orders/[id]/page.tsx)
+12. Audit logging added to export generation and download flows:
+   - [src/app/api/designs/export/route.ts](src/app/api/designs/export/route.ts)
+   - [src/app/api/designs/exports/[id]/download/route.ts](src/app/api/designs/exports/[id]/download/route.ts)
+13. Tests exist and are passing for schema/persistence/export/download paths:
+   - [src/lib/design/schema.test.ts](src/lib/design/schema.test.ts)
+   - [src/lib/design/persistence.test.ts](src/lib/design/persistence.test.ts)
+   - [src/lib/design/export-renderer.test.ts](src/lib/design/export-renderer.test.ts)
+   - [src/app/api/designs/export/route.test.ts](src/app/api/designs/export/route.test.ts)
+   - [src/app/api/designs/exports/[id]/download/route.test.ts](src/app/api/designs/exports/[id]/download/route.test.ts)
+
+### 14.2 Remaining (Still Needs To Be Done)
+
+#### A) Future Products Scope (Sections 2–6) — Partial/Incomplete
+
+1. **Header nav is missing "Future Products" link**
+  - Current nav in [src/components/layout/Header.tsx](src/components/layout/Header.tsx) does not include `/future-products`.
+2. **Reusable notify form component from plan is not present as specified**
+  - Planned: `NotifyForFutureProductsForm`.
+  - Current implementation uses [src/components/home/FutureProductsNotifyCard.tsx](src/components/home/FutureProductsNotifyCard.tsx).
+3. **Notify endpoint path differs from plan**
+  - Planned: `/api/future-products/notify`.
+  - Current: `/api/future-products` in [src/app/api/future-products/route.ts](src/app/api/future-products/route.ts).
+4. **Future products public page does not yet implement plan-grade rich-text sanitization flow**
+  - Plan called for server-side sanitization of rich HTML (e.g., `sanitize-html`) before render.
+  - Current page renders simple text descriptions in [src/app/future-products/page.tsx](src/app/future-products/page.tsx).
+5. **Dedicated query module is missing**
+  - Planned: [src/lib/supabase/queries/future-products.ts](src/lib/supabase/queries/future-products.ts)
+  - Not found.
+6. **Future product status CRUD API routes are missing**
+  - Planned `statuses` routes under admin API are not present.
+7. **Future product responses admin API routes are missing**
+  - Planned `responses` routes under admin API are not present.
+8. **Admin Future Products page is not yet plan-complete**
+  - Current page is basic create/list and does not include the full tabbed model (Products, Statuses, Responses) described in the plan.
+9. **Analytics events from Section 9 are not yet added**
+  - [src/lib/analytics/events.ts](src/lib/analytics/events.ts) lacks the specified future-products/homepage-grid event set.
+10. **RLS lockdown script not yet extended for future-products tables as planned**
+   - [scripts/test-rls-lockdown.mjs](scripts/test-rls-lockdown.mjs) does not include explicit checks for `exp_future_products` / `exp_future_product_statuses`.
+
+#### B) Product Designer Addendum — Remaining Gaps To Reach Full “Done”
+
+1. **Template-accurate rendering contract is only partially implemented**
+  - Design canvas dimensions and DPI are enforced, but full per-product template governance (bleed/safe-area from admin builder contract) still needs formal end-to-end enforcement in export and preview.
+2. **Recovery/rebind UX for expired upload tokens is not complete**
+  - Server rejects invalid/expired token pairs correctly, but user-facing rebind/refresh workflow is not fully implemented.
+3. **Comprehensive integration/security tests listed in 13.13 are not all complete**
+  - Core tests exist for schema/export/download.
+  - Remaining integration tests from the checklist (close/reopen persistence, immutable order snapshot verification path, expired token recovery flow, abuse edge matrix) still need dedicated coverage.
+4. **3D remains deferred (intentional)**
+  - Boundary contract is present, but interactive 3D renderer is intentionally not production-ready.
+
+### 14.3 Recommended Next Execution Order
+
+1. Finish Future Products admin/status/response APIs and wire tabbed admin UI.
+2. Add `/future-products` navigation link and align endpoint naming to the plan (`/api/future-products/notify`) or update plan to ratify current route shape.
+3. Implement or ratify rich-text sanitization strategy for roadmap descriptions.
+4. Add missing analytics events from Section 9.
+5. Extend `scripts/test-rls-lockdown.mjs` with explicit future-products table checks.
+6. Close remaining builder integration tests and token-rebind UX.
+
+---
+
 ## 13. Addendum: WYSIWYG Product Designer Popup
 
 This addendum captures the separate art-placement popup effort discussed after the future-products plan. It does not replace the plan above. It extends the storefront with a secure, print-accurate design editor for custom product artwork.
@@ -1161,7 +1286,7 @@ This addendum captures the separate art-placement popup effort discussed after t
 ### 13.5 Known Concerns And Required Fixes
 
 1. ProductDesigner currently uses an admin upload endpoint and must be switched to a customer-safe route.
-2. ArtUploadPortal is unused and should be removed instead of left as a risk.
+2. Verify no unused direct-browser uploader remains in the codebase; if one is found, remove it instead of hardening dead code.
 3. Custom-order submission currently needs the uploadToken carried through the submit payload.
 4. Artwork retrieval should use shorter signed URL lifetimes and log access events.
 5. Upload and export routes should use fail-closed rate limiting.
@@ -1172,18 +1297,17 @@ This addendum captures the separate art-placement popup effort discussed after t
 1. [src/components/shop/ProductDesigner.tsx](src/components/shop/ProductDesigner.tsx)
 2. [src/components/shop/ProductConfigurator.tsx](src/components/shop/ProductConfigurator.tsx)
 3. [src/components/custom-orders/CustomOrderIntakeForm.tsx](src/components/custom-orders/CustomOrderIntakeForm.tsx)
-4. [src/components/shop/ArtUploadPortal.tsx](src/components/shop/ArtUploadPortal.tsx)
-5. [src/app/api/custom-orders/upload/route.ts](src/app/api/custom-orders/upload/route.ts)
-6. [src/app/api/custom-orders/route.ts](src/app/api/custom-orders/route.ts)
-7. [src/app/api/admin/custom-requests/[id]/artwork/route.ts](src/app/api/admin/custom-requests/[id]/artwork/route.ts)
-8. [src/lib/rate-limit.ts](src/lib/rate-limit.ts)
-9. [src/lib/storefront-settings.ts](src/lib/storefront-settings.ts)
-10. [src/app/api/admin/settings/route.ts](src/app/api/admin/settings/route.ts)
-11. [src/app/admin/(panel)/settings/page.tsx](src/app/admin/(panel)/settings/page.tsx)
-12. [src/lib/supabase/queries/products.ts](src/lib/supabase/queries/products.ts)
-13. [src/app/admin/(panel)/catalog/products/[id]/builder/page.tsx](src/app/admin/(panel)/catalog/products/[id]/builder/page.tsx)
-14. [supabase/migrations/006_orders_foundation.sql](supabase/migrations/006_orders_foundation.sql)
-15. [supabase/migrations/046_artwork_uploads.sql](supabase/migrations/046_artwork_uploads.sql)
+4. [src/app/api/custom-orders/upload/route.ts](src/app/api/custom-orders/upload/route.ts)
+5. [src/app/api/custom-orders/route.ts](src/app/api/custom-orders/route.ts)
+6. [src/app/api/admin/custom-requests/[id]/artwork/route.ts](src/app/api/admin/custom-requests/[id]/artwork/route.ts)
+7. [src/lib/rate-limit.ts](src/lib/rate-limit.ts)
+8. [src/lib/storefront-settings.ts](src/lib/storefront-settings.ts)
+9. [src/app/api/admin/settings/route.ts](src/app/api/admin/settings/route.ts)
+10. [src/app/admin/(panel)/settings/page.tsx](src/app/admin/(panel)/settings/page.tsx)
+11. [src/lib/supabase/queries/products.ts](src/lib/supabase/queries/products.ts)
+12. [src/app/admin/(panel)/catalog/products/[id]/builder/page.tsx](src/app/admin/(panel)/catalog/products/[id]/builder/page.tsx)
+13. [supabase/migrations/006_orders_foundation.sql](supabase/migrations/006_orders_foundation.sql)
+14. [supabase/migrations/046_artwork_uploads.sql](supabase/migrations/046_artwork_uploads.sql)
 
 ### 13.7 Verification Checklist
 
@@ -1193,3 +1317,134 @@ This addendum captures the separate art-placement popup effort discussed after t
 4. Designer exports are limited, deterministic, and print-size accurate.
 5. Mobile touch interactions remain usable on small screens.
 6. 2D remains the production path; 3D stays deferred behind a feature boundary.
+
+### 13.8 Definition Of Done: 2D MVP Release Gate
+
+The 2D builder is not releasable unless all of the following are true:
+
+1. **Customer-safe uploads only**: the designer uses a non-admin upload route and cannot call admin upload APIs.
+2. **Durable design persistence**: design state survives popup close/reopen, page refresh, add-to-cart, checkout submission, and order creation.
+3. **Cart and order propagation**: each line item carries a `design_document` reference or embedded snapshot through checkout to persisted order records.
+4. **Template-accurate rendering**: product template dimensions, bleed, safe area, and DPI mapping are enforced in preview and export.
+5. **Artifact generation**: server produces deterministic PNG and PDF artifacts per design version.
+6. **Security controls**: strict schema validation, fail-closed throttling on upload/export, short-lived signed downloads, and audit events.
+7. **Operational constraints**: export limits (layer count, input bytes, render size, render time) are enforced and tested.
+8. **Recovery behavior**: if upload tokens expire, users can rebind/refresh assets without losing the full design.
+
+### 13.9 Canonical DesignDocument Contract (v1)
+
+All renderer logic (2D now, 3D later) must consume a versioned document schema.
+
+```ts
+interface DesignDocumentV1 {
+  schema_version: '1.0'
+  design_id: string
+  product_id: string
+  template_id: string
+  units: 'in'
+  canvas: {
+   width_in: number
+   height_in: number
+   dpi: number
+   bleed_in: number
+   safe_inset_in: number
+  }
+  layers: Array<
+   | {
+      id: string
+      kind: 'image'
+      asset_path: string
+      upload_token: string
+      x_in: number
+      y_in: number
+      width_in: number
+      height_in: number
+      rotation_deg: number
+      opacity: number
+      z_index: number
+    }
+   | {
+      id: string
+      kind: 'text'
+      text: string
+      font_family: string
+      font_size_pt: number
+      color_hex: string
+      x_in: number
+      y_in: number
+      rotation_deg: number
+      opacity: number
+      z_index: number
+    }
+  >
+  metadata: {
+   created_at: string
+   updated_at: string
+   source: 'shop' | 'custom_order'
+  }
+}
+```
+
+Validation requirements:
+
+1. Reject unknown top-level keys and unknown per-layer keys.
+2. Clamp numeric ranges and reject NaN/Infinity.
+3. Enforce layer count and text length limits.
+4. Enforce color and font allowlists where configured.
+5. Verify every `asset_path` + `upload_token` pairing server-side before export.
+
+### 13.10 Persistence And Data Model Additions
+
+Add explicit storage entities for designs and generated artifacts.
+
+1. `exp_product_designs`
+  - `id` (uuid pk), `product_id`, `template_id`, `design_document` (jsonb), `document_hash` (text), `source`, `created_at`, `updated_at`.
+2. `exp_product_design_assets`
+  - `id` (uuid pk), `design_id`, `asset_path`, `upload_token_hash`, `expires_at`, `created_at`.
+3. `exp_product_design_exports`
+  - `id` (uuid pk), `design_id`, `format` (`png`/`pdf`), `artifact_path`, `artifact_sha256`, `dpi`, `render_ms`, `status`, `error_message`, `created_at`.
+
+Order integration:
+
+1. Add `design_id` (nullable) to line-item snapshots and order-item rows.
+2. Store immutable `design_snapshot` in order context to prevent post-purchase drift.
+
+### 13.11 Export Pipeline Specification (PNG/PDF)
+
+1. **Endpoint**: server-only export endpoint accepts `{ design_id, formats[] }`.
+2. **Idempotency**: require idempotency key; same `design_hash + format` returns existing artifact.
+3. **Renderer**: 2D renderer consumes canonical `DesignDocumentV1` and template config.
+4. **Formats**:
+  - PNG: exact pixel dimensions from `width_in * dpi` and `height_in * dpi`.
+  - PDF: page size in physical inches with embedded raster/vector content from the same render graph.
+5. **Limits**:
+  - max layers: 40
+  - max per-asset size: 15MB
+  - max aggregate source bytes: 60MB
+  - max output pixels: 10000 x 10000
+  - max render time: 15s hard timeout
+6. **Failure model**: deterministic error codes (`INVALID_SCHEMA`, `ASSET_UNAUTHORIZED`, `LIMIT_EXCEEDED`, `RENDER_TIMEOUT`, `INTERNAL_RENDER_ERROR`).
+7. **Storage**: write artifacts to private bucket; serve with signed URLs <= 10 minutes for customer download.
+
+### 13.12 2D/3D Renderer Boundary Contract
+
+To keep 3D deferred without blocking v1, define an adapter boundary now:
+
+1. `PreviewRenderer` interface
+  - `load(document)`
+  - `renderPreview(target)`
+  - `export(document, format)`
+2. `Renderer2DKonva` implements production path for v1.
+3. `Renderer3D` is feature-flagged and non-production until dedicated performance/security validation is complete.
+4. No 3D-specific fields are allowed in `DesignDocumentV1`; future 3D schema is versioned (`2.x`) with explicit migration.
+
+### 13.13 Additional Test Requirements (Builder)
+
+1. Integration test: design survives close/reopen and refresh.
+2. Integration test: cart checkout payload includes design reference/snapshot.
+3. Integration test: order persistence retains immutable design snapshot.
+4. Security test: designer cannot call admin upload route.
+5. Security test: mismatched `asset_path`/`upload_token` is rejected.
+6. Security test: expired upload tokens trigger recoverable rebind flow.
+7. Export test: PNG and PDF dimensions match template inches at target DPI.
+8. Abuse test: oversized/layer-heavy documents fail with expected error codes.

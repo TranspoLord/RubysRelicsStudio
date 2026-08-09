@@ -131,6 +131,8 @@ export interface OrderItem {
   product_id: string
   product_title: string
   selected_options: Record<string, string>
+  design_id?: string | null
+  design_snapshot?: Record<string, unknown> | null
   unit_price: number
   quantity: number
   line_total: number
@@ -161,6 +163,8 @@ export interface CustomRequest {
   deadline?: string
   budget_range?: string
   files: string[]
+  design_id?: string | null
+  design_document?: Record<string, unknown> | null
   quoted_amount?: number
   stripe_payment_link_id?: string
   stripe_payment_link_url?: string
