@@ -2,15 +2,17 @@ import { NextResponse } from 'next/server'
 import {
   ADMIN_COOKIE_NAME,
   createAdminSessionToken,
+  extractMfaFlagFromToken,
   getAdminSessionMaxAgeSeconds,
   verifyAdminSessionToken,
 } from '@/lib/admin/session'
 import { extractAdminSessionToken, getExpectedAdminKey, hasValidAdminKey } from '@/lib/admin/auth'
 import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 import { isProd } from '@/lib/security/env'
-import { validateCsrfOrigin } from '@/lib/security/csrf'
+import { validateCsrfOrigin, validateCsrfOriginLenient } from '@/lib/security/csrf'
 
 interface SessionBody {
+
   key?: unknown
 }
 
@@ -38,16 +40,30 @@ export async function GET(request: Request) {
   // SEC-047: Use requireMfa=false for the GET status check — we just want to
   // know if the session is valid, not whether MFA is completed.
   const authenticated = await verifyAdminSessionToken(sessionToken, expectedKey, false)
-  return NextResponse.json({ authenticated }, { status: 200 })
+
+  // SEC-047-FIX: Also return mfaVerified so client-side guards (e.g. the
+  // deprecated AALGuard) can determine whether to redirect to the MFA
+  // challenge page. The mfaFlag is extracted from the token without a DB
+  // lookup — the signature was already verified above.
+  const mfaVerified = authenticated && extractMfaFlagFromToken(sessionToken) === '1'
+
+  return NextResponse.json({ authenticated, mfaVerified }, { status: 200 })
 }
 
 export async function POST(request: Request) {
-  // Require same-origin on auth mutations to prevent cross-site abuse.
-  if (!validateCsrfOrigin(request)) {
+  // SEC-047-FIX (permanent): Pre-authentication login endpoint. We still
+  // enforce a *lenient* same-origin check — reject only requests whose
+  // Origin/Referer is present AND cross-origin (the real login-CSRF signal),
+  // tolerating same-origin fetch() that omits Origin. This restores the CSRF
+  // protection that a blanket removal discarded, without re-breaking legit
+  // same-origin logins. Brute force is gated by fail-closed rate limiting;
+  // SameSite=Strict on the session cookie mitigates post-auth CSRF.
+  if (!validateCsrfOriginLenient(request)) {
     return NextResponse.json({ error: 'Cross-origin request blocked.' }, { status: 403 })
   }
 
   let expectedKey: string
+
   try {
     expectedKey = getExpectedAdminKey()
   } catch {
@@ -108,7 +124,11 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  if (!validateCsrfOrigin(request)) {
+  // SEC-047-FIX (permanent): Logout is gated by the SameSite=Strict session
+  // cookie, but we still apply a lenient same-origin check so a cross-site
+  // logout-CSRF cannot clear the victim's session cookie via a cross-origin
+  // response (SameSite governs *sending*, not *Set-Cookie*).
+  if (!validateCsrfOriginLenient(request)) {
     return NextResponse.json({ error: 'Cross-origin request blocked.' }, { status: 403 })
   }
 
@@ -116,6 +136,7 @@ export async function DELETE(request: Request) {
   response.cookies.set({
     name: ADMIN_COOKIE_NAME,
     value: '',
+
     httpOnly: true,
     sameSite: 'strict', // SEC-020: strict, not lax
     secure: isProd(),   // SEC-019: shared isProd() helper

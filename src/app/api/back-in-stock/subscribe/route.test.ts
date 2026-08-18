@@ -31,6 +31,10 @@ vi.mock('@/lib/validate', () => ({
   }),
 }))
 
+vi.mock('@/lib/security/csrf', () => ({
+  requireCsrfOriginOnly: vi.fn(() => null),
+}))
+
 import { POST } from './route'
 
 describe('POST /api/back-in-stock/subscribe', () => {

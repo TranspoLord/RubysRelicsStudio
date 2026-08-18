@@ -1,3 +1,12 @@
+/**
+ * @deprecated This component is not imported anywhere in the codebase.
+ * Use requireAdminPageSessionOrRedirect() in Server Components or
+ * requireAdminApiSession() in API routes for auth checks instead.
+ *
+ * This component has been updated to remove all insecure sessionStorage
+ * usage. Session state is now exclusively managed via the httpOnly
+ * rr_admin_session cookie, verified server-side via HMAC + DB lookup.
+ */
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -11,10 +20,14 @@ interface AALGuardProps {
   requireMFA?: boolean
 }
 
-// Session key for MFA verification state
-const MFA_SESSION_KEY = 'admin_mfa_verified'
-
-// Admin route guard that checks session-based MFA
+/**
+ * Admin route guard that checks session-based MFA.
+ *
+ * SEC-047-FIX: Replaced sessionStorage checks (which were forgeable by XSS)
+ * with server-side verification via /api/admin/session GET endpoint.
+ *
+ * @deprecated Use requireAdminPageSessionOrRedirect() instead.
+ */
 export function AALGuard({ children, requireMFA = true }: AALGuardProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -28,23 +41,30 @@ export function AALGuard({ children, requireMFA = true }: AALGuardProps) {
       return
     }
 
-    // Check if admin has completed password login
-    const isLoggedIn = sessionStorage.getItem('admin_authenticated') === 'true'
-    if (!isLoggedIn) {
-      router.push('/admin/login')
-      return
-    }
+    // SEC-047-FIX: Check session validity via the server endpoint instead of
+    // sessionStorage. This is a defense-in-depth check — the middleware
+    // already blocks unauthenticated requests server-side.
+    fetch('/api/admin/session', { method: 'GET' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.authenticated) {
+          router.push('/admin/login')
+          return
+        }
 
-    // Check if MFA has been verified in this session
-    const mfaVerified = sessionStorage.getItem(MFA_SESSION_KEY) === 'true'
-
-    if (requireMFA && !mfaVerified) {
-      setNeedsMFA(true)
-    } else {
-      setNeedsMFA(false)
-    }
-
-    setIsLoading(false)
+        // If MFA is required and the session isn't MFA-verified,
+        // redirect to the challenge page.
+        if (requireMFA && !data.mfaVerified) {
+          setNeedsMFA(true)
+        } else {
+          setNeedsMFA(false)
+        }
+        setIsLoading(false)
+      })
+      .catch(() => {
+        // If the session check fails, redirect to login.
+        router.push('/admin/login')
+      })
   }, [pathname, requireMFA, router])
 
   if (isLoading) {
@@ -76,18 +96,4 @@ export function AALGuard({ children, requireMFA = true }: AALGuardProps) {
   }
 
   return <>{children}</>
-}
-
-// Helper to mark MFA as verified (call from mfa-challenge on success)
-export function setMFAVerified(verified: boolean) {
-  if (verified) {
-    sessionStorage.setItem(MFA_SESSION_KEY, 'true')
-  } else {
-    sessionStorage.removeItem(MFA_SESSION_KEY)
-  }
-}
-
-// Helper to check MFA status
-export function isMFAVerified(): boolean {
-  return sessionStorage.getItem(MFA_SESSION_KEY) === 'true'
 }

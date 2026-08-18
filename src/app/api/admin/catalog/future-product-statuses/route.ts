@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 
 import { requireAdminApiSession } from '@/lib/admin/auth'
 import { writeAdminAuditLog } from '@/lib/admin/audit'
+import { safeLogError } from '@/lib/security/logger'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 
 function asString(value: unknown, maxLen: number): string {
@@ -30,13 +31,13 @@ export async function GET(request: Request) {
       .order('sort_order', { ascending: true })
 
     if (error) {
-      console.error('[admin:catalog:future-product-statuses:get]', error.message)
+      safeLogError('[admin:catalog:future-product-statuses:get]', error)
       return NextResponse.json({ error: 'Could not load future product statuses.' }, { status: 500 })
     }
 
     return NextResponse.json({ statuses: data ?? [] })
   } catch (error) {
-    console.error('[admin:catalog:future-product-statuses:get]', error)
+    safeLogError('[admin:catalog:future-product-statuses:get]', error)
     return NextResponse.json({ error: 'Could not load future product statuses.' }, { status: 500 })
   }
 }
@@ -75,7 +76,7 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      console.error('[admin:catalog:future-product-statuses:post]', error.message)
+      safeLogError('[admin:catalog:future-product-statuses:post]', error)
       await writeAdminAuditLog({
         action: 'catalog.future_product_status.create',
         entityType: 'future_product_status',
@@ -99,7 +100,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ status: data }, { status: 201 })
   } catch (error) {
-    console.error('[admin:catalog:future-product-statuses:post]', error)
+    safeLogError('[admin:catalog:future-product-statuses:post]', error)
     return NextResponse.json({ error: 'Could not create status.' }, { status: 500 })
   }
 }

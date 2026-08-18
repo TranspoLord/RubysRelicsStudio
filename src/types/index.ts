@@ -68,6 +68,38 @@ export interface ProductMedia {
   created_at: string
 }
 
+// ─── Future Products ──────────────────────────────────────────────────────────
+
+export interface FutureProductStatus {
+  id: string
+  label: string
+  color: string
+  sort_order: number
+  is_default: boolean
+  is_visible: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface FutureProduct {
+  id: string
+  title: string
+  description: string | null
+  estimated_release: string | null
+  category_key: string | null
+  media_url: string | null
+  media_alt: string | null
+  status_id: string | null
+  is_visible: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
+  status_label?: string | null
+  status_color?: string | null
+  category_display_name?: string | null
+  category_slug?: string | null
+}
+
 // ─── Orders ───────────────────────────────────────────────────────────────────
 
 export type OrderStatus =

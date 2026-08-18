@@ -1,9 +1,10 @@
 /**
  * Admin auth middleware (SEC-012) + CSP nonce generation (SEC-047).
  *
- * Blocks all /admin/* and /api/admin/* routes (except /admin/login and
- * /api/admin/session) unless a valid rr_admin_session cookie is present.
- * Per-route requireAdminApiSession() calls remain as defense-in-depth.
+ * Blocks all /admin/* and /api/admin/* routes (except /admin/login,
+ * /admin/mfa-challenge, and /api/admin/* auth endpoints) unless a valid
+ * rr_admin_session cookie is present. Per-route requireAdminApiSession()
+ * calls remain as defense-in-depth.
  *
  * SEC-047: Also generates a per-request CSP nonce for all routes and sets
  * the Content-Security-Policy header dynamically (replacing the static
@@ -89,6 +90,11 @@ async function verifyTokenEdge(
 }
 
 /**
+ * SEC-047-FIX: The nonce is generated here in middleware and set as both
+ * a response header (x-nonce) AND as a response cookie (rrs_csp_nonce) so
+ * the root layout can reliably read it via cookies(). The x-nonce header
+ * approach works in most Next.js versions but cookies() is more portable.
+ *
  * SEC-047: Generate a per-request CSP nonce and build the CSP header.
  * The nonce is passed to the app via the x-nonce response header so
  * Server Components can include it in script tags.
@@ -114,6 +120,9 @@ function buildCspHeader(nonce: string): string {
   ].join('; ')
 }
 
+// SEC-047-FIX: Cookie name for CSP nonce, readable by the root layout
+const CSP_NONCE_COOKIE = 'rrs_csp_nonce'
+
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
@@ -125,16 +134,29 @@ export async function middleware(request: NextRequest) {
   const isAdminRoute = pathname.startsWith('/admin') || pathname.startsWith('/api/admin')
 
   if (isAdminRoute) {
-    // Allow login page and session-creation endpoint
-    if (
+    // SEC-047-FIX: Allow MFA challenge page (uses a pre-MFA session token)
+    // Allow login page, MFA challenge page, and auth API endpoints
+    const isAuthEndpoint =
       pathname === '/admin/login' ||
+      pathname === '/admin/mfa-challenge' ||
       pathname === '/api/admin/session' ||
       pathname === '/api/admin/send-mfa' ||
       pathname === '/api/admin/verify-mfa'
-    ) {
+
+    if (isAuthEndpoint) {
       const response = NextResponse.next()
       response.headers.set('Content-Security-Policy', csp)
       response.headers.set('x-nonce', nonce)
+      // SEC-047-FIX: Also set nonce as a cookie so the root layout can read it
+      // via cookies() — more reliable than relying on headers() seeing the
+      // response header set by middleware.
+      response.cookies.set(CSP_NONCE_COOKIE, nonce, {
+        httpOnly: true,
+        sameSite: 'strict',
+        secure: isProd(),
+        path: '/',
+        maxAge: 60, // short-lived, matches request lifecycle
+      })
       return ensureCsrfCookie(request, response)
     }
 
@@ -146,10 +168,24 @@ export async function middleware(request: NextRequest) {
       if (pathname.startsWith('/api/')) {
         const response = NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         response.headers.set('Content-Security-Policy', csp)
+        response.cookies.set(CSP_NONCE_COOKIE, nonce, {
+          httpOnly: true,
+          sameSite: 'strict',
+          secure: isProd(),
+          path: '/',
+          maxAge: 60,
+        })
         return ensureCsrfCookie(request, response)
       }
       const response = NextResponse.redirect(new URL('/admin/login', request.url))
       response.headers.set('Content-Security-Policy', csp)
+      response.cookies.set(CSP_NONCE_COOKIE, nonce, {
+        httpOnly: true,
+        sameSite: 'strict',
+        secure: isProd(),
+        path: '/',
+        maxAge: 60,
+      })
       return ensureCsrfCookie(request, response)
     }
 
@@ -157,13 +193,27 @@ export async function middleware(request: NextRequest) {
     const response = NextResponse.next()
     response.headers.set('Content-Security-Policy', csp)
     response.headers.set('x-nonce', nonce)
+    response.cookies.set(CSP_NONCE_COOKIE, nonce, {
+      httpOnly: true,
+      sameSite: 'strict',
+      secure: isProd(),
+      path: '/',
+      maxAge: 60,
+    })
     return ensureCsrfCookie(request, response)
   }
 
-  // SEC-047: Set CSP header on all responses
+  // SEC-047: Set CSP header on all responses (non-admin)
   const response = NextResponse.next()
   response.headers.set('Content-Security-Policy', csp)
   response.headers.set('x-nonce', nonce)
+  response.cookies.set(CSP_NONCE_COOKIE, nonce, {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: isProd(),
+    path: '/',
+    maxAge: 60,
+  })
   return response
 }
 
@@ -171,3 +221,5 @@ export const config = {
   // SEC-047: Apply to all routes so CSP nonce is set everywhere
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }
+
+export { CSP_NONCE_COOKIE }

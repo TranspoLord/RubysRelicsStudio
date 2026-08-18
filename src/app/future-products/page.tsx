@@ -12,6 +12,7 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { getFutureProductNotifySettings } from '@/lib/storefront-settings'
+import { safeLogError } from '@/lib/security/logger'
 import { brandTokens } from '@/theme/theme'
 
 export const metadata: Metadata = {
@@ -27,7 +28,9 @@ interface FutureProductItem {
   description: string | null
   estimated_release: string | null
   category_key: string | null
-  status: unknown
+  status_id: string | null
+  status_label?: string | null
+  status_color?: string | null
   media_url: string | null
   media_alt: string | null
   is_visible: boolean
@@ -39,16 +42,36 @@ async function getFutureProducts() {
     const supabase = getSupabaseAdmin()
     const { data, error } = await supabase
       .from('exp_future_products')
-      .select('id, title, description, estimated_release, category_key, status, media_url, media_alt, is_visible, sort_order')
+      .select('id, title, description, estimated_release, category_key, status_id, media_url, media_alt, is_visible, sort_order, exp_future_product_statuses(label, color)')
       .eq('is_visible', true)
       .order('sort_order', { ascending: true })
 
     if (error) {
-      console.error('[future-products:page]', error.message)
+      safeLogError('[future-products:page]', error)
       return [] as FutureProductItem[]
     }
 
-    return ((data ?? []) as FutureProductItem[])
+    return ((data ?? []) as Array<Record<string, unknown>>)
+      .map((row): FutureProductItem => {
+        const status = Array.isArray(row.exp_future_product_statuses)
+          ? row.exp_future_product_statuses[0]
+          : row.exp_future_product_statuses
+        const statusObj = status as { label?: string; color?: string } | null | undefined
+        return {
+          id: row.id as string,
+          title: row.title as string,
+          description: row.description as string | null,
+          estimated_release: row.estimated_release as string | null,
+          category_key: row.category_key as string | null,
+          status_id: row.status_id as string | null,
+          status_label: statusObj?.label ?? null,
+          status_color: statusObj?.color ?? null,
+          media_url: row.media_url as string | null,
+          media_alt: row.media_alt as string | null,
+          is_visible: row.is_visible as boolean,
+          sort_order: row.sort_order as number | null,
+        }
+      })
       .slice()
       .sort((left, right) => {
         const leftOrder = Number(left.sort_order ?? 0)
@@ -59,7 +82,7 @@ async function getFutureProducts() {
         return leftRelease.localeCompare(rightRelease)
       })
   } catch (error) {
-    console.error('[future-products:page]', error)
+    safeLogError('[future-products:page]', error)
     return [] as FutureProductItem[]
   }
 }
@@ -112,6 +135,17 @@ export default async function FutureProductsPage() {
                           )}
                         </Box>
                         <Stack direction="row" spacing={1} flexWrap="wrap">
+                          {product.status_label && (
+                            <Chip
+                              label={product.status_label}
+                              size="small"
+                              sx={{
+                                backgroundColor: product.status_color ?? 'transparent',
+                                color: '#FFFFFF',
+                                fontWeight: 600,
+                              }}
+                            />
+                          )}
                           {product.estimated_release && <Chip label={product.estimated_release} size="small" />}
                           {product.category_key && <Chip label={product.category_key.replace(/_/g, ' ')} size="small" variant="outlined" />}
                         </Stack>

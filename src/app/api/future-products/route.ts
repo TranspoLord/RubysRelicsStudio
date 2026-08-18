@@ -3,18 +3,19 @@ import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { sanitizeText, validateEmail } from '@/lib/validate'
 import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 import { requireCsrfOriginOnly } from '@/lib/security/csrf'
+import { safeLogError } from '@/lib/security/logger'
 
 export async function GET(_request?: Request) {
   try {
     const supabase = getSupabaseAdmin()
     const { data, error } = await supabase
       .from('exp_future_products')
-      .select('id, title, description, estimated_release, category_key, status, media_url, media_alt, is_visible, sort_order')
+      .select('id, title, description, estimated_release, category_key, status_id, media_url, media_alt, is_visible, sort_order, exp_future_product_statuses(label, color)')
       .eq('is_visible', true)
       .order('sort_order', { ascending: true })
 
     if (error) {
-      console.error('[future-products:get]', error.message)
+      safeLogError('[future-products:get]', error)
       return NextResponse.json({ products: [] })
     }
 
@@ -30,21 +31,29 @@ export async function GET(_request?: Request) {
       })
 
     return NextResponse.json({
-      products: products.map((row) => ({
-        id: row.id,
-        title: row.title,
-        description: row.description,
-        estimatedRelease: row.estimated_release,
-        categoryKey: row.category_key,
-        status: row.status,
-        mediaUrl: row.media_url,
-        mediaAlt: row.media_alt,
-        isVisible: row.is_visible,
-        sortOrder: row.sort_order,
-      })),
+      products: products.map((row) => {
+        const status = Array.isArray(row.exp_future_product_statuses)
+          ? row.exp_future_product_statuses[0]
+          : row.exp_future_product_statuses
+        const statusObj = status as { label?: string; color?: string } | null | undefined
+        return {
+          id: row.id,
+          title: row.title,
+          description: row.description,
+          estimatedRelease: row.estimated_release,
+          categoryKey: row.category_key,
+          statusId: row.status_id,
+          statusLabel: statusObj?.label ?? null,
+          statusColor: statusObj?.color ?? null,
+          mediaUrl: row.media_url,
+          mediaAlt: row.media_alt,
+          isVisible: row.is_visible,
+          sortOrder: row.sort_order,
+        }
+      }),
     })
   } catch (error) {
-    console.error('[future-products:get]', error)
+    safeLogError('[future-products:get]', error)
     return NextResponse.json({ products: [] })
   }
 }
@@ -60,12 +69,22 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => ({}))
     const email = validateEmail(body?.email)
+    const source = sanitizeText(body?.source, 80) || 'future_products_interest'
     const name = sanitizeText(body?.name, 80)
     const idea = sanitizeText(body?.idea, 500)
     const comments = sanitizeText(body?.comments, 1000)
 
     if (!email) {
       return NextResponse.json({ error: 'A valid email address is required.' }, { status: 400 })
+    }
+
+    // Rate limit: 3 submissions per 24 hours per email address
+    const rlEmail = await rateLimit(`future-products-email:${email}`, 3, 24 * 60 * 60 * 1000, { failClosed: true })
+    if (!rlEmail.allowed) {
+      return NextResponse.json(
+        { message: "You've already shared your interest recently. We'll be in touch!" },
+        { status: 200 }
+      )
     }
 
     const supabase = getSupabaseAdmin()
@@ -76,7 +95,7 @@ export async function POST(request: Request) {
       {
         email,
         name: name || null,
-        source: 'future_products_interest',
+        source,
         subscribed: true,
         subscribed_at: now,
         unsubscribed_at: null,
@@ -94,13 +113,13 @@ export async function POST(request: Request) {
     )
 
     if (error) {
-      console.error('[future-products-interest]', error.message)
+      safeLogError('[future-products-interest]', error)
       return NextResponse.json({ error: 'Failed to save interest.' }, { status: 500 })
     }
 
     return NextResponse.json({ ok: true })
   } catch (error) {
-    console.error('[future-products-interest]', error)
+    safeLogError('[future-products-interest]', error)
     return NextResponse.json({ error: 'Unexpected error.' }, { status: 500 })
   }
 }

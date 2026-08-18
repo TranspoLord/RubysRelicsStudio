@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Cinzel, Inter } from 'next/font/google'
-import { headers } from 'next/headers'
+import { headers, cookies } from 'next/headers'
 import { Analytics } from '@vercel/analytics/react'
 import { ThemeRegistry } from '@/theme/ThemeRegistry'
 import { SkipToMain } from '@/components/common/SkipToMain'
@@ -66,8 +66,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // SEC-047: Read the CSP nonce set by middleware so Next.js can add it to
   // its injected inline scripts. Without this, the CSP blocks Next.js's own
   // bootstrap scripts and the page won't function (including controlled inputs).
+  //
+  // SEC-047-FIX: Fall back to the rrs_csp_nonce cookie if the x-nonce header
+  // is unavailable, for environments where middleware response headers are
+  // not propagated through headers().
   const headersList = await headers()
-  const nonce = headersList.get('x-nonce') ?? ''
+  const cookieNonce = (await cookies()).get('rrs_csp_nonce')?.value ?? ''
+  const nonce = headersList.get('x-nonce') ?? cookieNonce
 
   return (
     <html lang="en" className={`${cinzel.variable} ${inter.variable}`}>

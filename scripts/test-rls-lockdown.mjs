@@ -18,6 +18,12 @@ const CUSTOMER_TABLES = [
   'exp_newsletter_subscribers',
 ]
 
+// Tables with selective RLS: anon can SELECT visible rows but cannot INSERT/UPDATE/DELETE
+const SELECTIVE_RLS_TABLES = [
+  'exp_future_products',
+  'exp_future_product_statuses',
+]
+
 function loadEnvFile(filePath) {
   if (!existsSync(filePath)) return
   const raw = readFileSync(filePath, 'utf8')
@@ -115,6 +121,44 @@ async function main() {
     const serviceStatus = serviceResult.error ? 'FAIL' : 'PASS'
     const anonStatus = isAuthorizationFailure(anonResult.error) ? 'PASS' : 'FAIL'
     console.log(`${tableName}: service_role=${serviceStatus}, anon_blocked=${anonStatus}`)
+  }
+
+  // ─── Selective RLS tables: anon can SELECT visible rows, but cannot write ────
+  for (const tableName of SELECTIVE_RLS_TABLES) {
+    const serviceResult = await queryOneRow(serviceClient, tableName)
+    if (isMissingTableError(serviceResult.error)) {
+      skipped.push(tableName)
+      console.log(`${tableName}: SKIP (table not found; migration may be pending)`)
+      continue
+    }
+
+    if (serviceResult.error) {
+      failures.push(
+        `[service_role] ${tableName}: expected readable, got error ${serviceResult.error.code ?? 'unknown'} - ${serviceResult.error.message}`,
+      )
+    }
+
+    // Anon should be able to SELECT (visible rows only — RLS filters them)
+    const anonReadResult = await queryOneRow(anonClient, tableName)
+    if (anonReadResult.error && !isAuthorizationFailure(anonReadResult.error)) {
+      failures.push(
+        `[anon read] ${tableName}: SELECT visible rows should succeed, got error ${anonReadResult.error.code ?? 'unknown'} - ${anonReadResult.error.message}`,
+      )
+    }
+
+    // Anon should NOT be able to INSERT (no INSERT policy for anon/authenticated)
+    const anonInsertResult = await anonClient.from(tableName).insert({})
+    if (!isAuthorizationFailure(anonInsertResult.error)) {
+      const errorText = anonInsertResult.error
+        ? `${anonInsertResult.error.code ?? 'unknown'} - ${anonInsertResult.error.message}`
+        : 'no error — INSERT was not blocked!'
+      failures.push(`[anon write] ${tableName}: INSERT should be blocked, got ${errorText}`)
+    }
+
+    const s2 = serviceResult.error ? 'FAIL' : 'PASS'
+    const anonReadOk = isAuthorizationFailure(anonReadResult.error) ? 'FAIL' : 'PASS'
+    const anonWriteBlocked = isAuthorizationFailure(anonInsertResult.error) ? 'PASS' : 'FAIL'
+    console.log(`${tableName}: service_role=${s2}, anon_read=${anonReadOk}, anon_write_blocked=${anonWriteBlocked}`)
   }
 
   if (failures.length > 0) {

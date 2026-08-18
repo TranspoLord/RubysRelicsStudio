@@ -45,7 +45,7 @@ export function FutureProductsNotifyCard({ content, sectionKey }: FutureProducts
       const response = await fetch('/api/future-products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name, idea, comments }),
+        body: JSON.stringify({ email, name, idea, comments, source: 'homepage_notify_card' }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : 'Unable to save your interest.')

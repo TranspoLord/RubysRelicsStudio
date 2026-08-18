@@ -14,11 +14,20 @@ function signPayload(payload: string, key: string): string {
   return createHmac('sha256', key).update(payload).digest('hex')
 }
 
+/**
+ * SEC-047: Dev-only convenience. A Supabase outage in production must NOT
+ * silently disable session-revoke checks, so the fallback is force-disabled in
+ * Vercel/production. It only takes effect in local (non-Vercel, non-production)
+ * dev when the env var is explicitly set to 'true'.
+ */
 function allowLegacySessionFallback(): boolean {
+  if (process.env.VERCEL) return false
+  if (process.env.NODE_ENV === 'production') return false
   return process.env.ALLOW_LEGACY_ADMIN_SESSION_FALLBACK === 'true'
 }
 
 // SEC-047: Derive the hash key from an environment variable (or ADMIN_LOGIN_KEY)
+
 // instead of a hardcoded constant.
 function hashToken(token: string): string {
   const hashKey = process.env.SESSION_HASH_KEY || process.env.ADMIN_LOGIN_KEY
@@ -207,6 +216,18 @@ export function extractJtiFromToken(token: string | null | undefined): string | 
   const parts = token.split('.')
   if (parts.length !== 5) return null // v2: version.exp.jti.mfaFlag.sig
   return parts[2]
+}
+
+/**
+ * Extract the MFA verification flag from a session token (without verifying).
+ * Returns '1' if MFA is verified, '0' if not, or null if the token is invalid.
+ * SEC-047: Used by /api/admin/session GET to report MFA status to the client.
+ */
+export function extractMfaFlagFromToken(token: string | null | undefined): string | null {
+  if (!token) return null
+  const parts = token.split('.')
+  if (parts.length !== 5) return null // v2: version.exp.jti.mfaFlag.sig
+  return parts[3]
 }
 
 export async function getAdminSessionMaxAgeSeconds(): Promise<number> {

@@ -63,7 +63,35 @@ export function validateCsrfOrigin(request: Request): boolean {
 }
 
 /**
+ * Lenient same-origin check for pre-authentication mutation endpoints (e.g.
+ * login/logout at /api/admin/session).
+ *
+ * Unlike `validateCsrfOrigin`, this returns `true` when the request omits
+ * both Origin and Referer — many same-origin `fetch()` calls (and some edge
+ * runtimes) omit the Origin header. It still rejects any request whose
+ * Origin/Referer *is* present and cross-origin, which is the actual CSRF
+ * signal. This is the origin-only pattern recommended by
+ * docs/PENTEST_CSRF_PLAYBOOK.md §2.4 for pre-auth mutation routes.
+ */
+export function validateCsrfOriginLenient(request: Request): boolean {
+  const origin = request.headers.get('origin')
+  const referer = request.headers.get('referer')
+
+  const allowedOrigin = normalizeOrigin(
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    'http://localhost:3000'
+  )
+
+  // Absent headers => lenient allow (same-origin client that omitted them).
+  if (origin && normalizeOrigin(origin) !== allowedOrigin) return false
+  if (referer && normalizeOrigin(referer) !== allowedOrigin) return false
+  return true
+}
+
+/**
  * Validate the double-submit CSRF token.
+
  * Compares the CSRF cookie value to the X-CSRF-Token header value.
  * Returns true if both are present and equal.
  */

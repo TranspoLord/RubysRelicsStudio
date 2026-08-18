@@ -30,6 +30,7 @@ import {
   getHeroCollageConfig,
 } from '@/lib/supabase/queries/homepage'
 import { getAllActiveProducts } from '@/lib/supabase/queries/products'
+import { getFutureProductNotifySettings } from '@/lib/storefront-settings'
 import type { HeroCollageConfig } from '@/components/home/HeroCollage'
 
 // Force dynamic rendering so admin CMS changes (sections, announcements, etc.)
@@ -45,7 +46,7 @@ export const metadata: Metadata = {
 
 export default async function HomePage() {
   // Fetch all CMS data in parallel
-  const [sections, announcement, categories, collections, gallery, testimonials, faq, materials, collageConfig, products] = await Promise.all([
+  const [sections, announcement, categories, collections, gallery, testimonials, faq, materials, collageConfig, products, notifySettings] = await Promise.all([
     getHomepageSections(),
     getActiveAnnouncement(),
     getCategories(),
@@ -56,6 +57,7 @@ export default async function HomePage() {
     getMaterials(),
     getHeroCollageConfig(),
     getAllActiveProducts(),
+    getFutureProductNotifySettings(),
   ])
   return (
     <>
@@ -145,7 +147,7 @@ export default async function HomePage() {
         {sections['faq_preview']?.is_visible !== false && <FaqPreview faqs={faq} />}
 
         {/* 11. Future products notify card */}
-        {sections['future_products_notify']?.is_visible !== false && (
+        {sections['future_products_notify']?.is_visible !== false && notifySettings?.enabled !== false && (
           <FutureProductsNotifyCard content={sections['future_products_notify']?.content} sectionKey="future_products_notify" />
         )}
 

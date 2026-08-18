@@ -72,7 +72,7 @@ export function HomepageProductGrid({ products, categories, content, sectionKey 
     const params = new URLSearchParams()
     if (category !== 'all') params.set('category', category)
     if (priceMin > minPrice) params.set('price_min', String(priceMin))
-    if (priceMax < maxPrice) params.set('price_max', String(priceMax))
+    if (priceMax > 0 && priceMax < maxPrice) params.set('price_max', String(priceMax))
     if (!showReadyMade) params.set('ready_made', 'false')
     if (!showCustomizable) params.set('customizable', 'false')
     if (search) params.set('search', search)

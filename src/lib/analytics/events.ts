@@ -133,4 +133,34 @@ export const Analytics = {
   waitlistSignupAttempted(categoryKey: string) {
     track('waitlist_signup_attempted', { category_key: categoryKey })
   },
+
+  // ─── Future Products ──────────────────────────────────────────────────────────
+  futureProductViewed(productId: string) {
+    track('future_product_viewed', { product_id: productId })
+  },
+
+  futureProductCategoryClicked(categoryKey: string | null) {
+    track('future_product_category_clicked', { category_key: categoryKey })
+  },
+
+  futureProductNotifyAttempted(source: string) {
+    track('future_product_notify_attempted', { source })
+  },
+
+  futureProductNotifySubmitted() {
+    track('future_product_notify_submitted')
+  },
+
+  // ─── Homepage Product Grid ─────────────────────────────────────────────────────
+  homepageProductFilterApplied(filterType: string, value: string) {
+    track('homepage_product_filter_applied', { filter_type: filterType, value })
+  },
+
+  homepageProductViewAllClicked() {
+    track('homepage_product_view_all_clicked')
+  },
+
+  homepageFutureProductsLinkClicked() {
+    track('homepage_future_products_link_clicked')
+  },
 }

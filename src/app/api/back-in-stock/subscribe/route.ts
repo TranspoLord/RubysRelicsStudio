@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 import { requireCsrfOriginOnly } from '@/lib/security/csrf'
+import { safeLogError } from '@/lib/security/logger'
 import { sanitizeText, validateEmail } from '@/lib/validate'
 
 interface SubscribeBody {
@@ -17,7 +18,7 @@ export async function POST(request: Request) {
 
     const ip = getClientIp(request)
 
-    const rlIp = await rateLimit(`bis-ip:${ip}`, 8, 10 * 60 * 1000)
+    const rlIp = await rateLimit(`bis-ip:${ip}`, 8, 10 * 60 * 1000, { failClosed: true })
     if (!rlIp.allowed) return rateLimitResponse(rlIp.retryAfter ?? 60)
 
     const body = (await request.json().catch(() => ({}))) as SubscribeBody
@@ -33,7 +34,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'A valid email address is required.' }, { status: 400 })
     }
 
-    const rlEmail = await rateLimit(`bis-email:${productId}:${email}`, 4, 24 * 60 * 60 * 1000)
+    const rlEmail = await rateLimit(`bis-email:${productId}:${email}`, 4, 24 * 60 * 60 * 1000, { failClosed: true })
     if (!rlEmail.allowed) {
       return NextResponse.json({ message: 'You are already subscribed for this product.' }, { status: 200 })
     }
@@ -71,13 +72,13 @@ export async function POST(request: Request) {
       )
 
     if (upsertError) {
-      console.error('[back-in-stock:subscribe]', upsertError.message)
+      safeLogError('[back-in-stock:subscribe]', upsertError)
       return NextResponse.json({ error: 'Failed to save subscription.' }, { status: 500 })
     }
 
     return NextResponse.json({ message: 'Subscribed for back-in-stock alerts.' }, { status: 200 })
   } catch (error) {
-    console.error('[back-in-stock:subscribe]', error)
+    safeLogError('[back-in-stock:subscribe]', error)
     return NextResponse.json({ error: 'An unexpected error occurred.' }, { status: 500 })
   }
 }

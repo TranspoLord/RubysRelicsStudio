@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 
+import { safeLogError } from '@/lib/security/logger'
 import { unsubscribeBackInStockByToken } from '@/lib/back-in-stock'
 
 function asString(value: string | null, maxLen: number): string {
@@ -23,7 +24,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ message: 'You have been unsubscribed from this back-in-stock alert.' }, { status: 200 })
   } catch (error) {
-    console.error('[back-in-stock:unsubscribe]', error)
+    safeLogError('[back-in-stock:unsubscribe]', error)
     return NextResponse.json({ error: 'An unexpected error occurred.' }, { status: 500 })
   }
 }
