@@ -169,7 +169,7 @@ export async function getProductsByCategory(
     .select('key, display_name, slug, emoji, gradient, tagline, how_it_works_anchor')
     .eq('slug', categorySlug)
     .eq('type', 'category')
-    .single()
+    .maybeSingle()
 
   if (taxError || !tax) {
     if (taxError?.code !== 'PGRST116') {
