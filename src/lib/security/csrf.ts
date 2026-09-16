@@ -37,27 +37,33 @@ function normalizeOrigin(url: string): string {
 }
 
 /**
+ * Derive the expected origin from the request's own host. On Vercel/Next this
+ * reflects the real routed host (via forwarded headers), so it works across
+ * preview/custom domains and local dev without a configured public URL.
+ */
+function requestOrigin(request: Request): string {
+  return normalizeOrigin(request.url)
+}
+
+/**
  * Validate the Origin/Referer headers on a state-changing request.
  * Returns true if the request is same-origin, false otherwise.
  *
- * SEC-047: Uses exact origin comparison instead of startsWith to prevent
- * subdomain bypass (e.g., evil.example.com matching example.com).
+ * SEC-047: Exact origin comparison (against the request's own host) is used
+ * instead of startsWith to prevent subdomain bypass (e.g. evil.example.com
+ * matching example.com).
  */
 export function validateCsrfOrigin(request: Request): boolean {
   const origin = request.headers.get('origin')
   const referer = request.headers.get('referer')
-  const allowedOrigin = normalizeOrigin(
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    'http://localhost:3000'
-  )
+  const expected = requestOrigin(request)
 
   // At least one of Origin/Referer must be present
   if (!origin && !referer) return false
 
-  // SEC-047: Exact origin comparison prevents subdomain bypass
-  if (origin && normalizeOrigin(origin) !== allowedOrigin) return false
-  if (referer && normalizeOrigin(referer) !== allowedOrigin) return false
+  // Present Origin/Referer must match the request's own origin exactly.
+  if (expected && origin && normalizeOrigin(origin) !== expected) return false
+  if (expected && referer && normalizeOrigin(referer) !== expected) return false
 
   return true
 }
@@ -81,23 +87,21 @@ export function validateCsrfOriginLenient(request: Request): boolean {
   const referer = request.headers.get('referer')
   const fetchSite = request.headers.get('sec-fetch-site')
 
-  const allowedOrigin = normalizeOrigin(
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    'http://localhost:3000'
-  )
-
-  // Modern browsers send Sec-Fetch-Site on cross-site requests even when
-  // Origin/Referer are suppressed. Reject cross-site explicitly.
+  // Reject explicit cross-site / same-site requests. Sec-Fetch-Site is set by
+  // the browser and cannot be forged by cross-origin JavaScript.
   if (fetchSite && fetchSite !== 'same-origin' && fetchSite !== 'none') return false
 
-  // If neither Origin, Referer, nor Sec-Fetch-Site is present, treat the
-  // request as an opaque/embedded client and reject it.
+  // A browser-reported same-origin result is authoritative and needs no
+  // configured origin, so accept it directly.
+  if (fetchSite === 'same-origin') return true
+
+  // No usable Sec-Fetch-Site (older browsers / opaque clients). Reject only if
+  // every signal is absent, then compare Origin/Referer to the request's host.
   if (!origin && !referer && !fetchSite) return false
 
-  // Present Origin/Referer headers must match the allowed origin exactly.
-  if (origin && normalizeOrigin(origin) !== allowedOrigin) return false
-  if (referer && normalizeOrigin(referer) !== allowedOrigin) return false
+  const expected = requestOrigin(request)
+  if (expected && origin && normalizeOrigin(origin) !== expected) return false
+  if (expected && referer && normalizeOrigin(referer) !== expected) return false
   return true
 }
 
