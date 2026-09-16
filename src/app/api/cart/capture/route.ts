@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 import { requireCsrfOriginOnly } from '@/lib/security/csrf'
+import { parseJsonBodyOrError } from '@/lib/security/body'
 
 // ---------------------------------------------------------------------------
 // POST /api/cart/capture
@@ -59,13 +60,9 @@ export async function POST(request: Request) {
   const rl = await rateLimit(`cart-capture:${ip}`, 10, 60 * 60 * 1000)
   if (!rl.allowed) return rateLimitResponse(rl.retryAfter ?? 3600)
 
-  let body: CartCaptureBody
-
-  try {
-    body = (await request.json()) as CartCaptureBody
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 })
-  }
+  const parsed = await parseJsonBodyOrError<CartCaptureBody>(request)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.body
 
   const email = asString(body.email, 254)
   if (!isValidEmail(email)) {

@@ -47,6 +47,9 @@ describe('pricing promotions helper', () => {
 
     const exhausted = validatePromoCode({ ...promo, usage_count: 2 }, 'SAVE10', NOW)
     expect(exhausted.ok).toBe(false)
+
+    const mismatched = validatePromoCode(promo, 'WRONGCODE', NOW)
+    expect(mismatched.ok).toBe(false)
   })
 
   it('resolves deal eligibility and picks best non-stackable path with stackables', () => {

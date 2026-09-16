@@ -4,6 +4,7 @@ import { getEmailSenderAddress, getResend } from '@/lib/resend/client'
 import { randomBytes } from 'node:crypto'
 import { rateLimit, rateLimitResponse, getClientIp } from '@/lib/rate-limit'
 import { requireCsrfOriginOnly } from '@/lib/security/csrf'
+import { parseJsonBodyOrError } from '@/lib/security/body'
 import {
   getCustomOrderIntakeSettings,
   getOperationalNotificationSettings,
@@ -223,7 +224,10 @@ export async function POST(request: Request) {
     const rl = await rateLimit(`intake:${ip}`, 5, 60 * 60 * 1000, { failClosed: true })
     if (!rl.allowed) return rateLimitResponse(rl.retryAfter!)
 
-    const body = (await request.json()) as CustomOrderBody
+    const parsed = await parseJsonBodyOrError<CustomOrderBody>(request, 10 * 1024 * 1024)
+    if (!parsed.ok) return parsed.response
+
+    const body = parsed.body
     const intakeSettings = await getCustomOrderIntakeSettings()
 
     const customerName = asTrimmedString(body.customerName, 120)

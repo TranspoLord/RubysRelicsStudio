@@ -1041,6 +1041,10 @@ All three features are controlled by database values:
 
 ## 12. File Inventory
 
+> **NOTE:** This inventory lists the files from the *original plan*. It is aspirational — not all files have been created, and several paths differ from what was planned. See **Section 14** (Execution Status) for the verified, triple-checked actual state of each file.
+>
+> **Path discrepancy:** Per Section 5.1, the admin API route structure uses `/admin/catalog/future-products/` (under the Catalog module). The inventory below lists shorter paths (`admin/future-products/`) for brevity. The actual file paths include the `catalog/` subdirectory. See Section 14.1 for confirmed locations.
+
 ### New Files (15)
 
 | # | File | Type | Purpose |
@@ -1123,122 +1127,128 @@ Status snapshot date: **2026-08-08**
 
 This section reflects an explicit cross-check between this plan and the current repository state.
 
+### 14.0 Critical Bugs Found During Code Review (PRE-GA BLOCKERS)
+
+> ⚠️ The following were discovered during a line-by-line audit of the repository against this plan. Sections 14.1 and 14.2 have been corrected to reflect the true state of the code.
+
+#### A) CRITICAL: `status` column mismatch — public endpoints will crash at runtime
+
+The migration (`055`) creates `exp_future_products` with a **`status_id`** UUID column (FK to `exp_future_product_statuses`). The admin code correctly queries `status_id`. However, **all public-facing code queries a non-existent `status` column**:
+
+- `src/app/future-products/page.tsx` line 42: `.select('id, title, description, estimated_release, category_key, **status**, media_url, ...')`
+- `src/app/api/future-products/route.ts` line 12: `.select('id, title, description, estimated_release, category_key, **status**, media_url, ...')`
+
+This produces a PostgREST `PGRST204` "column does not exist" error on every page load. The future products page and its API endpoint are **non-functional on a fresh migration**. The test (`route.test.ts` line 46) mocks `status: { label: 'Planned' }` matching the bug, so it gives a false positive.
+
+**Fix:** Query `status_id` and LEFT JOIN `exp_future_product_statuses` for label/color, matching the data model in migration 055.
+
+#### B) HIGH: "View All" button encodes `price_max=0` by default
+
+In `HomepageProductGrid.tsx`, `priceMax` is initialized to `useState(0)`. The `buildViewAllUrl()` method checks `if (priceMax < maxPrice)` — with defaults `priceMax=0` and `maxPrice>0`, this is **true**, so it encodes `price_max=0` into the URL. On `/shop/all`, `price_max=0` filters out **every product with `base_price > 0`**. Users clicking "View All" without touching price inputs see zero products.
+
+**Fix:** Guard with `priceMax > 0` before encoding, or initialize `priceMax` to `maxPrice`.
+
+#### C) MEDIUM-HIGH: Public notify API uses `console.error` instead of `safeLogError`
+
+The security checklist (Section 7) and the logger module (`src/lib/security/logger.ts`) establish a `safeLogError()` function that strips sensitive patterns (API keys, JWTs, connection strings) from log output. The Product Designer export route correctly uses it. However, `src/app/api/future-products/route.ts` uses raw `console.error` (lines 97, 103, and the GET handler at line 17), bypassing sanitization. Supabase error messages may expose connection strings or internal details in production logs.
+
+**Fix:** Import `safeLogError` from `@/lib/security/logger` and replace all `console.error` calls.
+
+---
+
 ### 14.1 Completed (Implemented)
+
+> **Status key:** ✅ = fully correct, ⚠️ = partially done / has gaps, ❌ = claimed but missing
 
 #### A) Homepage + Future Products Foundation
 
-1. Homepage section keys and visibility plumbing are implemented for:
-  - `shop_all_preview`
-  - `future_products_notify`
-2. Homepage renders both sections:
-  - `HomepageProductGrid` in [src/app/page.tsx](src/app/page.tsx)
-  - `FutureProductsNotifyCard` in [src/app/page.tsx](src/app/page.tsx)
-3. `shop_all_preview` content editing is implemented in admin homepage settings:
-  - API validation and persistence in [src/app/api/admin/homepage/sections/[key]/route.ts](src/app/api/admin/homepage/sections/[key]/route.ts)
-  - UI editor controls in [src/app/admin/(panel)/homepage/page.tsx](src/app/admin/(panel)/homepage/page.tsx)
-4. `/shop/all` query support exists for the new filter params:
-  - `category`, `price_min`, `price_max`, `ready_made`, `customizable`, `search`
-  - Implemented in [src/app/shop/all/page.tsx](src/app/shop/all/page.tsx)
-5. Future products data model migration is present:
-  - [supabase/migrations/055_future_products_roadmap.sql](supabase/migrations/055_future_products_roadmap.sql)
-6. Future products seed file is present:
-  - [supabase/seed/006_future_products_seed.sql](supabase/seed/006_future_products_seed.sql)
-7. Public future products page exists:
-  - [src/app/future-products/page.tsx](src/app/future-products/page.tsx)
-8. Storefront notify-form toggle accessor exists:
-  - [src/lib/storefront-settings.ts](src/lib/storefront-settings.ts)
-9. Admin catalog page for future products exists (basic create/list path):
-  - [src/app/admin/(panel)/catalog/future-products/page.tsx](src/app/admin/(panel)/catalog/future-products/page.tsx)
-10. Admin API for future products create/list exists:
-  - [src/app/api/admin/catalog/future-products/route.ts](src/app/api/admin/catalog/future-products/route.ts)
+1. ✅ Homepage section keys `shop_all_preview` and `future_products_notify` are registered in `ALL_SECTION_KEYS` and rendered conditionally via the standard visibility-toggle pattern in `src/app/page.tsx` (lines 111-118, 148-150).
+2. ✅ `HomepageProductGrid` (`src/components/home/HomepageProductGrid.tsx`, 202 lines) renders on the homepage with category filter, price min/max inputs, ready-made/customizable toggles, search, "View All" button (encodes filter state to `/shop/all` URL), and "Future Products" link. Uses shared `filterProductsForShopAll()` from `@/lib/catalog/filters.ts`. **Note:** Section 2.2 in the plan references a different component name — the actual component is `HomepageProductGrid`, not `NotifyForFutureProductsForm`.
+3. ⚠️ `shop_all_preview` content editing — **API route is fully implemented** (`src/app/api/admin/homepage/sections/[key]/route.ts` lines 225-260 with `validateShopAllPreviewPayload`), and the admin homepage page has `ShopAllPreviewState` interface + `handleSaveShopAllPreview()` handler + state loading (lines 164-172, 214-224, 326-351). **BUT the editor UI panel is NOT rendered in the JSX** — there are no input fields or Save buttons in the returned markup. The state and handlers are dead code. An admin can only toggle visibility, not edit `product_count`, `show_filters`, heading, or subheading.
+4. ✅ `/shop/all` page (`src/app/shop/all/page.tsx`) supports all new query params (`category`, `price_min`, `price_max`, `ready_made`, `customizable`, `search`) with backward compatibility for `?process=`.
+5. ✅ Migration 055 (`supabase/migrations/055_future_products_roadmap.sql`, 108 lines) is well-crafted: creates `exp_future_products` + `exp_future_product_statuses` tables with FK constraints, indexes, RLS policies (public read visible-only), `updated_at` triggers, and extends `exp_newsletter_subscribers` with `name`, `interest_details`, `response_status`, `denial_reason`.
+6. ✅ Seed file 006 (`supabase/seed/006_future_products_seed.sql`, 23 lines) seeds 5 statuses, 2 example future products, 2 homepage sections, and the storefront setting.
+7. ⚠️ Public future products page (`src/app/future-products/page.tsx`, 150 lines) exists and renders roadmap items. However: (a) it queries the non-existent `status` column (CRITICAL BUG A above), (b) it does **not** join `exp_future_product_statuses` so status labels are never displayed, (c) it fetches `media_url`/`media_alt` but does not render them, (d) description is rendered as plain text (no rich-text sanitization), (e) the notify form is an **inline `<form>` with server POST** rather than a reusable component, (f) the inline form does NOT check the `future_products_notify_form.enabled` storefront setting (only the page-level `notifySettings.enabled` check gates the entire section, which is correct but differs from the plan's `NotifyForFutureProductsForm` reusable-component approach).
+8. ⚠️ Storefront notify-form toggle accessor `getFutureProductNotifySettings()` exists in `src/lib/storefront-settings.ts` (line 204). The `/future-products` page checks it (line 125). **However, the homepage `FutureProductsNotifyCard` component does NOT check this setting** — it always renders the form regardless of the toggle.
+9. ⚠️ Admin catalog page for future products exists at `src/app/admin/(panel)/catalog/future-products/page.tsx` (185 lines). It is a **basic create/list page only** — no edit, delete, drag-to-reorder, no status dropdown (accepts raw UUID in a text field), no category dropdown (accepts raw taxonomy key in a text field), and no tabbed interface (Products | Statuses | Responses). The catalog dashboard (`src/app/admin/(panel)/catalog/page.tsx`, lines 166-171) correctly links to both future-products and future-product-statuses management pages. ✅ for nav links.
+10. ⚠️ Admin API for future products create/list exists at `src/app/api/admin/catalog/future-products/route.ts` (113 lines) with GET + POST, admin auth, rate limiting, audit logging, and input validation. **BUT no `[id]/route.ts` exists** — there are no PATCH (update) or DELETE handlers. Admin can only create, not edit or delete. Note: actual path is `...catalog/future-products/...` not `.../future-products/...` as listed in Section 12 File Inventory.
+11. ⚠️ Admin API for status values exists at `src/app/api/admin/catalog/future-product-statuses/route.ts` (105 lines) with GET + POST. **BUT no `[id]/route.ts` exists** — no PATCH or DELETE. Statuses can be created but not edited or deleted.
+12. ✅ Admin nav links exist: the catalog dashboard page links to both "Manage Future Products" and "Manage Statuses" as Quick Action buttons.
+13. ❌ **No TypeScript types** — `FutureProduct` and `FutureProductStatus` interfaces from Section 3.3 are **NOT** in `src/types/index.ts`. The code uses inline interfaces instead.
+14. ❌ **No dedicated query module** — `src/lib/supabase/queries/future-products.ts` does not exist. The future-products page and API route each have an inline `getFutureProducts()` function.
+15. ❌ **No analytics events** — `src/lib/analytics/events.ts` has zero future-products or homepage-grid events. Neither `HomepageProductGrid` nor `FutureProductsNotifyCard` import or call `Analytics`.
+16. ❌ **No `source` field** in form submission — `FutureProductsNotifyCard` submits `{ email, name, idea, comments }` (line 48). The API hardcodes `source: 'future_products_interest'` (line 79). Homepage vs. page submissions cannot be distinguished.
+17. ❌ **No email-based rate limiting** — the public API has IP-based rate limiting only (5/hr, failClosed). The plan called for 3/24h per email.
+18. ❌ **RLS lockdown script not extended** — `scripts/test-rls-lockdown.mjs` `CUSTOMER_TABLES` array does not include `exp_future_products` or `exp_future_product_statuses`.
+19. ❌ **No responses management** — No API routes or admin UI for viewing/moderating notify form submissions (filtering by response status, marking viewed/responded/denied).
+20. ❌ **No `[id]` CRUD routes** — No PATCH/DELETE for individual future products or statuses.
 
-#### B) Product Designer Addendum (Section 13) — Major Progress
+#### B) Product Designer Addendum (Section 13) — Major Progress ✅
 
-1. Canonical design schema (`DesignDocumentV1`) implemented:
-  - [src/lib/design/schema.ts](src/lib/design/schema.ts)
-2. Cart + checkout design propagation implemented:
-  - [src/components/cart/CartProvider.tsx](src/components/cart/CartProvider.tsx)
-  - [src/components/checkout/CheckoutPageView.tsx](src/components/checkout/CheckoutPageView.tsx)
-  - [src/components/shop/ProductConfigurator.tsx](src/components/shop/ProductConfigurator.tsx)
-  - [src/components/shop/SquareCheckoutButton.tsx](src/components/shop/SquareCheckoutButton.tsx)
-3. Server checkout validation and persistence for design docs implemented:
-  - [src/app/api/square/checkout/route.ts](src/app/api/square/checkout/route.ts)
-4. Customer-safe upload flow and upload-token persistence implemented:
-  - [src/app/api/custom-orders/upload/route.ts](src/app/api/custom-orders/upload/route.ts)
-5. Custom-order design persistence and verification implemented:
-  - [src/app/api/custom-orders/route.ts](src/app/api/custom-orders/route.ts)
-6. Design persistence/export DB model migration implemented:
-  - [supabase/migrations/057_product_design_persistence_and_exports.sql](supabase/migrations/057_product_design_persistence_and_exports.sql)
-7. Private export artifact bucket migration implemented:
-  - [supabase/migrations/058_design_artifacts_bucket.sql](supabase/migrations/058_design_artifacts_bucket.sql)
-8. Export API with limits, failure codes, idempotent reuse, and storage write implemented:
-  - [src/app/api/designs/export/route.ts](src/app/api/designs/export/route.ts)
-9. Real image compositing renderer implemented (PNG + PDF):
-  - [src/lib/design/export-renderer.ts](src/lib/design/export-renderer.ts)
-10. Secure signed download endpoint (10 min URLs) implemented:
-   - [src/app/api/designs/exports/[id]/download/route.ts](src/app/api/designs/exports/[id]/download/route.ts)
-11. Export status and download UX surfaced for admin/custom-order views:
-   - [src/app/admin/(panel)/custom-requests/page.tsx](src/app/admin/(panel)/custom-requests/page.tsx)
-   - [src/app/custom-orders/[id]/page.tsx](src/app/custom-orders/[id]/page.tsx)
-12. Audit logging added to export generation and download flows:
-   - [src/app/api/designs/export/route.ts](src/app/api/designs/export/route.ts)
-   - [src/app/api/designs/exports/[id]/download/route.ts](src/app/api/designs/exports/[id]/download/route.ts)
-13. Tests exist and are passing for schema/persistence/export/download paths:
-   - [src/lib/design/schema.test.ts](src/lib/design/schema.test.ts)
-   - [src/lib/design/persistence.test.ts](src/lib/design/persistence.test.ts)
-   - [src/lib/design/export-renderer.test.ts](src/lib/design/export-renderer.test.ts)
-   - [src/app/api/designs/export/route.test.ts](src/app/api/designs/export/route.test.ts)
-   - [src/app/api/designs/exports/[id]/download/route.test.ts](src/app/api/designs/exports/[id]/download/route.test.ts)
+All claimed files exist and are well-implemented (verified by direct inspection):
+- [src/lib/design/schema.ts](src/lib/design/schema.ts) (299 lines) — `DesignDocumentV1` with strict validation
+- [src/lib/design/export-renderer.ts](src/lib/design/export-renderer.ts) — Real PNG + PDF image compositing
+- [src/lib/design/persistence.ts](src/lib/design/persistence.ts) + [test](src/lib/design/persistence.test.ts)
+- [src/app/api/designs/export/route.ts](src/app/api/designs/export/route.ts) (523 lines) — Full export pipeline with limits, idempotency, audit logging, `safeLogError`
+- [src/app/api/designs/exports/[id]/download/route.ts](src/app/api/designs/exports/[id]/download/route.ts) — Secure 10-min signed URLs
+- Tests: [schema.test.ts](src/lib/design/schema.test.ts), [persistence.test.ts](src/lib/design/persistence.test.ts), [export-renderer.test.ts](src/lib/design/export-renderer.test.ts), [export/route.test.ts](src/app/api/designs/export/route.test.ts), [download/route.test.ts](src/app/api/designs/exports/[id]/download/route.test.ts)
+- Dependencies installed: `konva`, `react-konva`, `pdf-lib`, `pngjs` (confirmed in package.json)
+
+Section 14.3's remaining Product Designer gaps (template governance, token rebind UX, integration tests, 3D deferral) are accurately characterized.
 
 ### 14.2 Remaining (Still Needs To Be Done)
 
 #### A) Future Products Scope (Sections 2–6) — Partial/Incomplete
 
-1. **Header nav is missing "Future Products" link**
-  - Current nav in [src/components/layout/Header.tsx](src/components/layout/Header.tsx) does not include `/future-products`.
-2. **Reusable notify form component from plan is not present as specified**
-  - Planned: `NotifyForFutureProductsForm`.
-  - Current implementation uses [src/components/home/FutureProductsNotifyCard.tsx](src/components/home/FutureProductsNotifyCard.tsx).
-3. **Notify endpoint path differs from plan**
-  - Planned: `/api/future-products/notify`.
-  - Current: `/api/future-products` in [src/app/api/future-products/route.ts](src/app/api/future-products/route.ts).
-4. **Future products public page does not yet implement plan-grade rich-text sanitization flow**
-  - Plan called for server-side sanitization of rich HTML (e.g., `sanitize-html`) before render.
-  - Current page renders simple text descriptions in [src/app/future-products/page.tsx](src/app/future-products/page.tsx).
-5. **Dedicated query module is missing**
-  - Planned: [src/lib/supabase/queries/future-products.ts](src/lib/supabase/queries/future-products.ts)
-  - Not found.
-6. **Future product status CRUD API routes are missing**
-  - Planned `statuses` routes under admin API are not present.
-7. **Future product responses admin API routes are missing**
-  - Planned `responses` routes under admin API are not present.
-8. **Admin Future Products page is not yet plan-complete**
-  - Current page is basic create/list and does not include the full tabbed model (Products, Statuses, Responses) described in the plan.
-9. **Analytics events from Section 9 are not yet added**
-  - [src/lib/analytics/events.ts](src/lib/analytics/events.ts) lacks the specified future-products/homepage-grid event set.
-10. **RLS lockdown script not yet extended for future-products tables as planned**
-   - [scripts/test-rls-lockdown.mjs](scripts/test-rls-lockdown.mjs) does not include explicit checks for `exp_future_products` / `exp_future_product_statuses`.
+1. **Header nav is missing "Future Products" link** — confirmed in `src/components/layout/Header.tsx` (`NAV_LINKS` does not include `/future-products`).
+2. **Reusable notify form component not present as planned** — planned `src/components/common/NotifyForFutureProductsForm.tsx` does not exist. Implementation uses [src/components/home/FutureProductsNotifyCard.tsx](src/components/home/FutureProductsNotifyCard.tsx) instead (create/list only, no edit/delete). The component also does NOT check the `future_products_notify_form.enabled` storefront setting before rendering (only the `/future-products` page checks it).
+3. **Notify endpoint path differs from plan** — planned `/api/future-products/notify`; actual path is `/api/future-products` in [src/app/api/future-products/route.ts](src/app/api/future-products/route.ts). Actual path should be ratified in the plan.
+4. **No rich-text sanitization flow** — `sanitize-html` is NOT installed (not in `package.json`). No Tiptap editor in admin page (uses plain `TextField`). Public page renders description as plain text, not sanitized HTML. [Section 10.1 dependencies](package.json) were not installed.
+5. **Dedicated query module missing** — `src/lib/supabase/queries/future-products.ts` does not exist. Inline `getFutureProducts()` functions exist in both the page and API route.
+6. **Future product status CRUD API routes missing** — no `[id]/route.ts` under `src/app/api/admin/catalog/future-product-statuses/`. Only GET (list) + POST (create) exist. No PATCH/DELETE for individual statuses.
+7. **Future product responses admin API routes missing** — no responses routes exist under admin API.
+8. **Admin Future Products page not plan-complete** — basic create/list page (185 lines). No tabbed interface (Products | Statuses | Responses), no edit/delete per row, no drag-to-reorder, no status dropdown (accepts raw UUID text), no category dropdown (accepts raw taxonomy key text).
+9. **Analytics events missing** — `src/lib/analytics/events.ts` lacks all future-products/homepage-grid events. Neither `HomepageProductGrid` nor `FutureProductsNotifyCard` import or call `Analytics`.
+10. **RLS lockdown script not extended** — `scripts/test-rls-lockdown.mjs` `CUSTOMER_TABLES` array does not include `exp_future_products` / `exp_future_product_statuses`.
+11. **No TypeScript types** — `FutureProduct` and `FutureProductStatus` from Section 3.3 are NOT in `src/types/index.ts`.
+12. **No `FutureProductsGrid.tsx` component** — Section 3.5 planned this; does not exist.
+13. **No `[id]` CRUD routes for future products** — no PATCH/DELETE for individual products. Admin can only create, not edit or delete.
+14. **No email-based rate limiting** — public API has IP-based only (5/hr, failClosed). Plan called for 3/24h per email.
+15. **Public API uses `console.error` instead of `safeLogError`** — bypasses sensitive-data stripping per [Section 7 security checklist](supabase/migrations/055_future_products_roadmap.sql).
+16. **No `source` field in form submission** — `FutureProductsNotifyCard` submits `{ email, name, idea, comments }` without `source`. API hardcodes `source: 'future_products_interest'`.
+17. **Admin homepage editor UI panels not rendered** — `ShopAllPreviewState` + `handleSaveShopAllPreview()` exist in admin page but the editor input fields + Save button are NOT in the JSX return. Dead code.
+18. **Price_max=0 encoding bug** — `HomepageProductGrid`'s `buildViewAllUrl()` encodes `price_max=0` by default (priceMax initialized to `useState(0)`), filtering out ALL products on `/shop/all`.
+19. **Future products public page does not display status or media** — queries `media_url`/`media_alt` but renders neither; no status badge join.
+20. **Test mocks the wrong column** — `route.test.ts` line 46 mocks `status: { label: 'Planned' }` matching the non-existent `status` column, not the real `status_id` from migration 055.
+21. **No tests for responses management or `[id]` routes** — only basic create/list tests exist.
 
-#### B) Product Designer Addendum — Remaining Gaps To Reach Full “Done”
+#### B) Product Designer Addendum — Remaining Gaps
 
-1. **Template-accurate rendering contract is only partially implemented**
-  - Design canvas dimensions and DPI are enforced, but full per-product template governance (bleed/safe-area from admin builder contract) still needs formal end-to-end enforcement in export and preview.
-2. **Recovery/rebind UX for expired upload tokens is not complete**
-  - Server rejects invalid/expired token pairs correctly, but user-facing rebind/refresh workflow is not fully implemented.
-3. **Comprehensive integration/security tests listed in 13.13 are not all complete**
-  - Core tests exist for schema/export/download.
-  - Remaining integration tests from the checklist (close/reopen persistence, immutable order snapshot verification path, expired token recovery flow, abuse edge matrix) still need dedicated coverage.
-4. **3D remains deferred (intentional)**
-  - Boundary contract is present, but interactive 3D renderer is intentionally not production-ready.
+1. **Template-accurate rendering** — canvas dims/DPI enforced, but full per-product template governance (bleed/safe-area) needs end-to-end enforcement.
+2. **Token rebind UX** — server rejects expired tokens correctly, but user-facing rebind/refresh workflow not complete.
+3. **Integration tests not all complete** — core tests exist; remaining (close/reopen persistence, order snapshot verification, token recovery, abuse matrix) need coverage.
+4. **3D deferred** — boundary contract present, interactive 3D intentionally not production-ready.
 
 ### 14.3 Recommended Next Execution Order
 
-1. Finish Future Products admin/status/response APIs and wire tabbed admin UI.
-2. Add `/future-products` navigation link and align endpoint naming to the plan (`/api/future-products/notify`) or update plan to ratify current route shape.
-3. Implement or ratify rich-text sanitization strategy for roadmap descriptions.
-4. Add missing analytics events from Section 9.
-5. Extend `scripts/test-rls-lockdown.mjs` with explicit future-products table checks.
-6. Close remaining builder integration tests and token-rebind UX.
+> **Priority order** — critical bugs first, then remaining feature gaps, then Product Designer debt.
+
+1. **🔴 Fix `status` → `status_id` column mismatch** in `src/app/future-products/page.tsx` (line 42) and `src/app/api/future-products/route.ts` (line 12). Query `status_id` and LEFT JOIN `exp_future_product_statuses` for label/color. Also fix the test mock in `route.test.ts` (line 46). **PRE-GA BLOCKER.**
+2. **🔴 Fix `price_max=0` encoding bug** in `HomepageProductGrid.tsx`'s `buildViewAllUrl()`. Guard with `priceMax > 0` before encoding.
+3. **🟠 Replace `console.error` with `safeLogError`** in `src/app/api/future-products/route.ts` and the GET handler.
+4. **🟠 Wire the Shop All Preview editor UI panel** in the admin homepage page — state + handlers exist (lines 164-172, 214-224, 326-351) but no input fields are rendered in JSX.
+5. Add `FutureProduct` / `FutureProductStatus` TypeScript types to `src/types/index.ts`.
+6. Create dedicated query module `src/lib/supabase/queries/future-products.ts` with JOIN to statuses (replacing inline queries).
+7. Add `/future-products` navigation link to `src/components/layout/Header.tsx` NAV_LINKS.
+8. Make `FutureProductsNotifyCard` check the `future_products_notify_form.enabled` storefront setting.
+9. Send `source` field from the form component; add email-based rate limiting (3/24h) to the notify API.
+10. Implement or ratify rich-text sanitization strategy — add `sanitize-html` + `@tiptap/react` + `@tiptap/starter-kit` deps, add Tiptap editor to admin, sanitize HTML server-side.
+11. Create `[id]/route.ts` CRUD routes for future products, statuses, and responses.
+12. Build tabbed admin UI (Products | Statuses | Responses) with edit/delete/drag-and-drop.
+13. Add analytics events to `src/lib/analytics/events.ts` and wire into `HomepageProductGrid` + `FutureProductsNotifyCard`.
+14. Extend `scripts/test-rls-lockdown.mjs` with `exp_future_products` / `exp_future_product_statuses` checks.
+15. Close remaining builder integration tests and token-rebind UX.
+16. Fix Section 12 File Inventory paths to match actual locations (`catalog/` subdirectory).
 
 ---
 

@@ -9,8 +9,8 @@ import { getSupabaseAdmin } from '@/lib/supabase/client'
 // ---------------------------------------------------------------------------
 
 export async function GET(request: Request) {
-  const authResult = await requireAdminApiSession(request)
-  if (authResult instanceof NextResponse) return authResult
+  const auth = await requireAdminApiSession(request)
+  if (!auth.ok) return auth.response
 
   const { searchParams } = new URL(request.url)
   const type = searchParams.get('type') ?? 'all'      // 'captures' | 'sessions' | 'all'
@@ -61,8 +61,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const authResult = await requireAdminApiSession(request)
-  if (authResult instanceof NextResponse) return authResult
+  const auth = await requireAdminApiSession(request)
+  if (!auth.ok) return auth.response
 
   let body: Record<string, unknown> = {}
   try {

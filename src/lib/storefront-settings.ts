@@ -119,7 +119,7 @@ export async function getAdminSessionSettings(): Promise<AdminSessionSettings> {
 
   return {
     ttl_hours:
-      Number.isFinite(ttlHours) && ttlHours >= 1 && ttlHours <= 168
+      Number.isFinite(ttlHours) && ttlHours >= 1 && ttlHours <= 24 * 14
         ? ttlHours
         : DEFAULT_ADMIN_SESSION_SETTINGS.ttl_hours,
   }

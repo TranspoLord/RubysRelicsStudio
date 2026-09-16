@@ -65,7 +65,7 @@ export async function requireAdminApiSession(
     const sessionToken = extractAdminSessionToken(request.headers.get('cookie'))
 
     // SEC-047: requireMfa=true (default) — the token must have mfaFlag='1'
-    if (!(await verifyAdminSessionToken(sessionToken, adminKey, true))) {
+    if (!(await verifyAdminSessionToken(sessionToken, undefined, true))) {
       return {
         ok: false,
         response: NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 }),
@@ -114,12 +114,12 @@ export async function requireAdminPageSessionOrRedirect(nextPath = '/admin', req
   // SEC-047: MFA verification is now cryptographically bound to the session token.
   // verifyAdminSessionToken with requireMfa=true rejects tokens without mfaFlag='1'.
   // No separate admin_mfa_verified cookie is needed.
-  if (!await verifyAdminSessionToken(token, adminKey, requireMFA)) {
+  if (!await verifyAdminSessionToken(token, undefined, requireMFA)) {
     // If MFA is required and the token doesn't have it, redirect to MFA challenge.
     // Otherwise redirect to login.
     if (requireMFA) {
       // Check if the token is valid without MFA to determine the right redirect
-      const validWithoutMfa = await verifyAdminSessionToken(token, adminKey, false)
+      const validWithoutMfa = await verifyAdminSessionToken(token, undefined, false)
       if (validWithoutMfa) {
         redirect(`/admin/mfa-challenge?next=${encodeURIComponent(nextPath)}`)
       }

@@ -10,6 +10,7 @@ import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
 
 import { brandTokens } from '@/theme/theme'
+import { AdminCsrfFetchBridge } from '@/components/admin/AdminCsrfFetchBridge'
 
 export default function AdminLoginPage() {
   const router = useRouter()
@@ -75,7 +76,9 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <Box component="main" id="main-content" sx={{ minHeight: '100vh', backgroundColor: brandTokens.bgVoid, py: { xs: 6, md: 8 } }}>
+    <>
+      <AdminCsrfFetchBridge />
+      <Box component="main" id="main-content" sx={{ minHeight: '100vh', backgroundColor: brandTokens.bgVoid, py: { xs: 6, md: 8 } }}>
       <Container maxWidth="sm">
         <Box
           sx={{
@@ -89,7 +92,7 @@ export default function AdminLoginPage() {
             Admin Access
           </Typography>
           <Typography variant="h3" component="h1" sx={{ mb: 1.2 }}>
-            Ruby's Relics Admin
+            Ruby&apos;s Relics Admin
           </Typography>
           <Typography sx={{ color: alpha(brandTokens.parchment, 0.68), mb: 2 }}>
             Enter the admin key to continue. MFA will be required after login.
@@ -118,5 +121,6 @@ export default function AdminLoginPage() {
         </Box>
       </Container>
     </Box>
-  )
+  </>
+)
 }

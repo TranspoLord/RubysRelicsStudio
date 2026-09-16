@@ -13,7 +13,7 @@
  * The table is `admin_mfa_codes` (not `exp_admin_mfa_codes`).
  */
 
-import { createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto'
+import { createHmac, hkdfSync, randomInt, randomUUID, timingSafeEqual } from 'node:crypto'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { safeLogError } from '@/lib/security/logger'
 
@@ -27,12 +27,31 @@ interface MFACodeEntry {
 
 const MFA_CODE_HASH_PREFIX = 'h1$'
 
-function getMfaCodeHashKey(): string {
-  const key = process.env.MFA_CODE_HASH_KEY || process.env.ADMIN_LOGIN_KEY
-  if (!key) {
-    throw new Error('MFA_CODE_HASH_KEY or ADMIN_LOGIN_KEY must be set for MFA code hashing.')
+// SEC-BATCH1-H2: Derive the MFA code hash key from a dedicated high-entropy
+// seed. Never fall back to ADMIN_LOGIN_KEY.
+function loadMfaCodeHashKey(): Buffer {
+  const seed = process.env.MFA_CODE_HASH_KEY_SEED
+  if (!seed) {
+    throw new Error('MFA_CODE_HASH_KEY_SEED must be set for MFA code hashing.')
   }
-  return key
+  if (!/^[0-9a-fA-F]{64}$/.test(seed)) {
+    throw new Error('MFA_CODE_HASH_KEY_SEED must be a 64-character hex string (32 bytes).')
+  }
+  return Buffer.from(
+    hkdfSync(
+      'sha256',
+      Buffer.from(seed, 'hex'),
+      Buffer.from('rr-admin-mfa-code-v1'),
+      Buffer.from('rr-admin'),
+      32
+    )
+  )
+}
+
+const MFA_CODE_HASH_KEY = loadMfaCodeHashKey()
+
+function getMfaCodeHashKey(): Buffer {
+  return MFA_CODE_HASH_KEY
 }
 
 function hashMfaCode(challengeToken: string, code: string): string {

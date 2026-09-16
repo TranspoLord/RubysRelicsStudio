@@ -238,7 +238,7 @@ export default function AdminSettingsPage() {
           fullWidth
           value={settings.admin_session.ttl_hours}
           onChange={(e) => handleChange('admin_session', 'ttl_hours', Number(e.target.value) || 1)}
-          inputProps={{ min: 1, max: 168 }}
+          inputProps={{ min: 1, max: 336 }}
           helperText="Controls how long an admin login remains valid before re-authentication is required"
           variant="outlined"
         />

@@ -9,6 +9,7 @@
  *
  * Usage:
  *   const result = await rateLimit(`login:${ip}`, 5, 15 * 60 * 1000)
+ *   // Default is fail-closed. For non-critical endpoints, pass { failClosed: false }.
  *   if (!result.allowed) return 429 with Retry-After header
  */
 
@@ -48,7 +49,7 @@ export async function rateLimit(
   key: string,
   limit: number,
   windowMs: number,
-  options: { failClosed?: boolean } = {}
+  options: { failClosed?: boolean } = { failClosed: true }
 ): Promise<RateLimitResult> {
   const now = Date.now()
   const windowStart = Math.floor(now / windowMs)
@@ -120,8 +121,10 @@ export function rateLimitResponse(retryAfter: number): Response {
  */
 export function getClientIp(request: Request): string {
   // SEC-021: Only trust X-Forwarded-For on Vercel, which overwrites it at the
-  // edge. Outside Vercel, a client can spoof this header.
-  if (process.env.VERCEL) {
+  // edge, or when the operator explicitly opts in via TRUST_PROXY=true.
+  // Outside those environments, a client can spoof this header.
+  const trustForwardedFor = process.env.VERCEL || process.env.TRUST_PROXY === 'true'
+  if (trustForwardedFor) {
     const forwarded = request.headers.get('x-forwarded-for')
     if (forwarded) {
       // x-forwarded-for may contain multiple IPs (client, proxy1, proxy2, ...)
@@ -136,9 +139,9 @@ export function getClientIp(request: Request): string {
     }
   }
 
-  // Non-Vercel: refuse to trust X-Forwarded-For to prevent spoofing
-  if (!process.env.VERCEL) {
-    console.warn('[rate-limit] getClientIp called outside Vercel — using unknown')
+  // Non-trusted-proxy: refuse to trust X-Forwarded-For to prevent spoofing
+  if (!trustForwardedFor) {
+    console.warn('[rate-limit] getClientIp called without a trusted proxy — using unknown')
   }
 
   return 'unknown'

@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server'
 import { calculateShippingRates } from '@/lib/shippo/client'
 import { getShippoSettings } from '@/lib/shippo/settings'
+import { clampPackageWeight, derivePackageWeight } from '@/lib/shippo/weight'
 import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 import { requireCsrfOriginOnly } from '@/lib/security/csrf'
+import { parseJsonBodyOrError } from '@/lib/security/body'
+import { safeLogError } from '@/lib/security/logger'
 
 interface RatesRequest {
   address: {
@@ -14,7 +17,12 @@ interface RatesRequest {
     zip: string
     country: string
   }
-  weight: number
+  items?: Array<{
+    productId: string
+    variantId?: string | null
+    quantity: number
+  }>
+  weight?: number
 }
 
 function asString(value: unknown, maxLen: number): string {
@@ -38,16 +46,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Shipping calculations are not enabled.' }, { status: 503 })
     }
 
-    const body = (await request.json()) as RatesRequest
+    const parsed = await parseJsonBodyOrError<RatesRequest>(request)
+    if (!parsed.ok) return parsed.response
+
+    const body = parsed.body
     const address = body.address
 
     if (!address?.street1 || !address?.city || !address?.state || !address?.zip || !address?.country) {
       return NextResponse.json({ error: 'Complete shipping address is required.' }, { status: 400 })
     }
 
-    const weight = Number(body.weight)
-    if (!weight || weight <= 0) {
-      return NextResponse.json({ error: 'Valid package weight is required.' }, { status: 400 })
+    // SEC-047: Derive package weight from catalog items when available.
+    // Never trust the client-supplied weight for a paid-rate lookup.
+    let weight: number
+    if (Array.isArray(body.items) && body.items.length > 0) {
+      const derived = await derivePackageWeight(body.items)
+      if (!derived) {
+        return NextResponse.json({ error: 'Unable to calculate package weight from items.' }, { status: 400 })
+      }
+      weight = derived.weight
+    } else {
+      weight = clampPackageWeight(body.weight)
     }
 
     const rates = await calculateShippingRates({ address, weight })
@@ -64,6 +83,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ rates: filteredRates }, { status: 200 })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Could not calculate shipping rates.'
-    return NextResponse.json({ error: message }, { status: 500 })
+    safeLogError('[shippo:rates]', { message })
+    return NextResponse.json({ error: 'Could not calculate shipping rates. Please try again.' }, { status: 500 })
   }
 }

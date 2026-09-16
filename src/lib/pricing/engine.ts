@@ -57,6 +57,7 @@ export interface PricingContext {
   base_price: number
   is_active: boolean
   is_archived: boolean
+  categoryKey?: string | null
   variants: PricingVariant[]
   options: PricingOption[]
   bulk_discounts: PricingBulkTier[]

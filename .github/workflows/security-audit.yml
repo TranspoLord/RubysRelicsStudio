@@ -1,0 +1,45 @@
+name: Security Audit
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  audit:
+    name: Dependency vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: 'package.json'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        run: npm audit --audit-level=high
+        # Exit code is non-zero when high/critical vulnerabilities are found,
+        # making this a blocking CI gate for regressions.
+
+      - name: Verify schema reconstruction is complete
+        run: |
+          # DB-6: migration 049 must contain the core tables reconstructed from the live schema
+          for table in exp_orders exp_products exp_product_variants exp_rate_limit_windows exp_artwork_uploads; do
+            grep -q "create table if not exists $table" supabase/migrations/049_Migration_1.sql || { echo "Missing table $table in migration 049"; exit 1; }
+          done
+          # DB-1: migration 059 applies the missing 057/058 design-persistence tables
+          for table in exp_product_designs exp_product_design_assets exp_product_design_exports; do
+            grep -q "create table if not exists $table" supabase/migrations/059_batch2_security_remediation.sql || { echo "Missing table $table in migration 059"; exit 1; }
+          done
+          grep -q "weight_lb" supabase/migrations/049_Migration_1.sql || { echo "Missing weight_lb column in migration 049"; exit 1; }
+          grep -q "DROP POLICY IF EXISTS exp_promo_codes_public_read" supabase/migrations/059_batch2_security_remediation.sql || { echo "Missing promo public-read drop in migration 059"; exit 1; }
+          grep -q "DROP POLICY IF EXISTS exp_bundle_deals_public_read" supabase/migrations/059_batch2_security_remediation.sql || { echo "Missing bundle public-read drop in migration 059"; exit 1; }
+          grep -q "design-artifacts" supabase/migrations/059_batch2_security_remediation.sql || { echo "Missing design-artifacts bucket in migration 059"; exit 1; }
+          echo "Schema reconstruction verification passed"

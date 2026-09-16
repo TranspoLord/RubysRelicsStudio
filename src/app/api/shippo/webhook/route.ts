@@ -156,6 +156,10 @@ export async function POST(request: Request) {
         try {
           const resend = getResend()
           const fromAddress = process.env.SHIPPO_FROM_EMAIL || 'orders@rubysrelics.com'
+          const origin = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://rubysrelicsstudio.com'
+          const trackUrl = order.guest_tracking_token
+            ? `${origin}/orders/${encodeURIComponent(order.id)}?access=${encodeURIComponent(order.guest_tracking_token)}`
+            : `${origin}/shop`
 
           await resend.emails.send({
             from: fromAddress,
@@ -164,7 +168,7 @@ export async function POST(request: Request) {
             html: `
               <h2>Order Delivered</h2>
               <p>Your order #${safeHtmlEscape(order.id)} has been delivered via ${safeHtmlEscape(carrier.toUpperCase())} tracking #${safeHtmlEscape(tracking_number)}.</p>
-              <p><a href="https://yourdomain.com/orders/${encodeURIComponent(order.id)}">View order details</a></p>
+              <p><a href="${safeHtmlEscape(trackUrl)}">View order details</a></p>
             `,
           })
         } catch (emailError) {

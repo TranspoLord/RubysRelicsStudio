@@ -6,6 +6,7 @@ import { getSupabaseAdmin, branch } from '@/lib/supabase/client'
 import { getEmailSenderAddress, getResend } from '@/lib/resend/client'
 import { createSquareCheckout } from '@/lib/square/client'
 import { safeHtmlEscape } from '@/lib/validate'
+import { parseJsonBodyOrError } from '@/lib/security/body'
 
 interface RequestContext {
   params: Promise<{ id: string }>
@@ -198,7 +199,9 @@ export async function PATCH(request: Request, context: RequestContext) {
 
     const params = await context.params
     const requestId = asString(params.id, 64)
-    const body = (await request.json()) as QuoteActionBody
+    const parsed = await parseJsonBodyOrError<QuoteActionBody>(request)
+    if (!parsed.ok) return parsed.response
+    const body = parsed.body
     const action = asString(body.action, 40)
     const confirmAction = asString(body.confirmAction, 40)
 

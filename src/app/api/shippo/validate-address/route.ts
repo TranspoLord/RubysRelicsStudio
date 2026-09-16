@@ -3,6 +3,7 @@ import { validateAddress } from '@/lib/shippo/client'
 import { getShippoSettings } from '@/lib/shippo/settings'
 import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 import { requireCsrfOriginOnly } from '@/lib/security/csrf'
+import { safeLogError } from '@/lib/security/logger'
 
 interface ValidateAddressRequest {
   address: {
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
     }, { status: 200 })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Could not validate address.'
-    return NextResponse.json({ error: message }, { status: 500 })
+    safeLogError('[shippo:validate-address]', { message })
+    return NextResponse.json({ error: 'Could not validate address. Please try again.' }, { status: 500 })
   }
 }

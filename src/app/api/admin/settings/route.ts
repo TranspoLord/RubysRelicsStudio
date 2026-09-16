@@ -118,6 +118,14 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Invalid settings structure.' }, { status: 400 })
     }
 
+    // SEC-047: Bound admin session TTL to a reasonable range (1 hour – 2 weeks)
+    const ttlHours = Number(settings.admin_session.ttl_hours)
+    if (!Number.isFinite(ttlHours) || ttlHours < 1 || ttlHours > 24 * 14) {
+      await writeAdminAuditLog({ action: 'settings.update', entityType: 'storefront_settings', route: '/api/admin/settings', request, status: 'failure', details: { reason: 'invalid_ttl_hours', ttl_hours: settings.admin_session.ttl_hours } })
+      return NextResponse.json({ error: 'admin_session.ttl_hours must be between 1 and 336.' }, { status: 400 })
+    }
+    settings.admin_session.ttl_hours = Math.floor(ttlHours)
+
     const supabase = getSupabaseAdmin()
 
     // Update guest_order_tracking

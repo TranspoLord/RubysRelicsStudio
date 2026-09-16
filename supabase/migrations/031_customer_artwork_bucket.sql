@@ -19,7 +19,11 @@ values (
     'application/pdf'
   ]::text[]
 )
-on conflict (id) do nothing;
+on conflict (id) do update
+set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
 
 -- No public read policy is created intentionally.
 -- Only the service-role key (getSupabaseAdmin) may access files.

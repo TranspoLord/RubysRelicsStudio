@@ -41,12 +41,11 @@ function ensureCsrfCookie(request: NextRequest, response: NextResponse): NextRes
  * Edge-compatible HMAC-SHA256 verification using the Web Crypto API.
  * Returns true if the token's signature matches the expected HMAC.
  * SEC-047: Updated for v2 token format (version.exp.jti.mfaFlag.sig).
+ * SEC-BATCH1-H2: Derives the signing key from SESSION_SIGNING_KEY_SEED via HKDF
+ * so the human-typed ADMIN_LOGIN_KEY is never used as an HMAC key.
  */
-async function verifyTokenEdge(
-  token: string,
-  adminKey: string
-): Promise<boolean> {
-  if (!token || !adminKey) return false
+async function verifyTokenEdge(token: string): Promise<boolean> {
+  if (!token) return false
 
   const parts = token.split('.')
   if (parts.length !== 5) return false // v2: version.exp.jti.mfaFlag.sig
@@ -58,15 +57,39 @@ async function verifyTokenEdge(
   if (!Number.isFinite(exp)) return false
   if (exp < Math.floor(Date.now() / 1000)) return false
 
-  // Verify HMAC signature using Web Crypto API
+  const seedHex = process.env.SESSION_SIGNING_KEY_SEED
+  if (!seedHex) return false
+  if (!/^[0-9a-fA-F]{64}$/.test(seedHex)) return false
+
+  // Verify HMAC signature using Web Crypto API + HKDF-derived key
   const payload = `${version}.${exp}.${jti}.${mfaFlag}`
   const encoder = new TextEncoder()
 
+  function hexToBuffer(hex: string): ArrayBuffer {
+    const bytes = new Uint8Array(hex.length / 2)
+    for (let i = 0; i < hex.length; i += 2) {
+      bytes[i / 2] = Number.parseInt(hex.slice(i, i + 2), 16)
+    }
+    return bytes.buffer
+  }
+
   try {
-    const keyData = encoder.encode(adminKey)
-    const key = await crypto.subtle.importKey(
+    const seed = hexToBuffer(seedHex)
+    const baseKey = await crypto.subtle.importKey(
       'raw',
-      keyData,
+      seed,
+      { name: 'HKDF' },
+      false,
+      ['deriveBits', 'deriveKey']
+    )
+    const key = await crypto.subtle.deriveKey(
+      {
+        name: 'HKDF',
+        hash: 'SHA-256',
+        salt: encoder.encode('rr-admin-session-signing-v1'),
+        info: encoder.encode('rr-admin'),
+      },
+      baseKey,
       { name: 'HMAC', hash: 'SHA-256' },
       false,
       ['sign']
@@ -99,20 +122,23 @@ async function verifyTokenEdge(
  * The nonce is passed to the app via the x-nonce response header so
  * Server Components can include it in script tags.
  *
- * NOTE: 'unsafe-eval' is required for Next.js in both dev and production
+ * NOTE: 'unsafe-eval' is required for Next.js in development
  * (Turbopack HMR, React DevTools, source-map reconstruction, etc.).
- * Without it, React controlled inputs may not update the DOM value,
- * causing MUI labels to never float up.
+ * Production builds do not require it; it is omitted in production
+ * to harden the CSP.
  */
 function buildCspHeader(nonce: string): string {
+  const scriptSrc = isProd()
+    ? `script-src 'self' 'nonce-${nonce}' https://vercel.live`
+    : `script-src 'self' 'unsafe-eval' 'nonce-${nonce}' https://vercel.live`
   return [
     "default-src 'self'",
-    `script-src 'self' 'unsafe-eval' 'nonce-${nonce}' https://vercel.live https://js.stripe.com`,
+    scriptSrc,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: blob: https:",
-    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com https://vitals.vercel-insights.com https://api.resend.com https://secure.shippingapis.com",
-    "frame-src https://js.stripe.com https://hooks.stripe.com https://vercel.live",
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://vitals.vercel-insights.com https://api.resend.com https://secure.shippingapis.com",
+    "frame-src https://vercel.live",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -162,9 +188,8 @@ export async function middleware(request: NextRequest) {
 
     // Check for valid admin session cookie
     const cookie = request.cookies.get('rr_admin_session')
-    const adminKey = process.env.ADMIN_LOGIN_KEY
 
-    if (!cookie || !adminKey || !(await verifyTokenEdge(cookie.value, adminKey))) {
+    if (!cookie || !(await verifyTokenEdge(cookie.value))) {
       if (pathname.startsWith('/api/')) {
         const response = NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         response.headers.set('Content-Security-Policy', csp)
@@ -178,6 +203,36 @@ export async function middleware(request: NextRequest) {
         return ensureCsrfCookie(request, response)
       }
       const response = NextResponse.redirect(new URL('/admin/login', request.url))
+      response.headers.set('Content-Security-Policy', csp)
+      response.cookies.set(CSP_NONCE_COOKIE, nonce, {
+        httpOnly: true,
+        sameSite: 'strict',
+        secure: isProd(),
+        path: '/',
+        maxAge: 60,
+      })
+      return ensureCsrfCookie(request, response)
+    }
+
+    // Defense-in-depth: enforce MFA flag at the Edge for admin routes.
+    // Pre-MFA tokens may only reach the MFA challenge flow; all other admin
+    // pages/APIs require mfaFlag='1'. Route-level requireAdminApiSession remains
+    // the revocation authority because Edge cannot query the DB.
+    const [, , , mfaFlag] = cookie.value.split('.')
+    if (mfaFlag !== '1') {
+      if (pathname.startsWith('/api/')) {
+        const response = NextResponse.json({ error: 'MFA required' }, { status: 401 })
+        response.headers.set('Content-Security-Policy', csp)
+        response.cookies.set(CSP_NONCE_COOKIE, nonce, {
+          httpOnly: true,
+          sameSite: 'strict',
+          secure: isProd(),
+          path: '/',
+          maxAge: 60,
+        })
+        return ensureCsrfCookie(request, response)
+      }
+      const response = NextResponse.redirect(new URL('/admin/mfa-challenge', request.url))
       response.headers.set('Content-Security-Policy', csp)
       response.cookies.set(CSP_NONCE_COOKIE, nonce, {
         httpOnly: true,

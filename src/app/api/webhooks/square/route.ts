@@ -72,7 +72,11 @@ export async function POST(request: NextRequest) {
 
   // SEC-003: The notification URL is part of Square's signature payload.
   // It must match the URL configured in the Square dashboard.
-  const notificationUrl = process.env.SQUARE_WEBHOOK_NOTIFICATION_URL || request.url
+  const notificationUrl = process.env.SQUARE_WEBHOOK_NOTIFICATION_URL
+  if (!notificationUrl) {
+    safeLogError('[Square Webhook]', 'SQUARE_WEBHOOK_NOTIFICATION_URL not configured')
+    return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 })
+  }
 
   // Verify webhook signature — fail-closed
   if (!verifySquareWebhookSignature(body, signature, signatureKey, notificationUrl)) {

@@ -67,6 +67,7 @@ create or replace function exp_reserve_order_inventory(p_order_id uuid)
 returns jsonb
 language plpgsql
 security definer
+set search_path = ''
 as $$
 declare
   v_order record;
@@ -190,6 +191,7 @@ create or replace function exp_release_order_inventory(p_order_id uuid, p_note t
 returns jsonb
 language plpgsql
 security definer
+set search_path = ''
 as $$
 declare
   v_order record;

@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   hasValidAdminKey: vi.fn(),
   extractAdminSessionToken: vi.fn(),
   validateCsrfOrigin: vi.fn(),
-  validateCsrfOriginLenient: vi.fn(),
+  requireCsrfLenient: vi.fn(),
   getClientIp: vi.fn(),
   rateLimit: vi.fn(),
   rateLimitResponse: vi.fn(),
@@ -40,7 +40,7 @@ vi.mock('@/lib/admin/auth', () => ({
 
 vi.mock('@/lib/security/csrf', () => ({
   validateCsrfOrigin: mocks.validateCsrfOrigin,
-  validateCsrfOriginLenient: mocks.validateCsrfOriginLenient,
+  requireCsrfLenient: mocks.requireCsrfLenient,
 }))
 
 vi.mock('@/lib/rate-limit', () => ({
@@ -121,7 +121,7 @@ describe('GET /api/admin/session', () => {
 describe('POST /api/admin/session (login)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.validateCsrfOriginLenient.mockReturnValue(true)
+    mocks.requireCsrfLenient.mockReturnValue(null)
     mocks.getExpectedAdminKey.mockReturnValue(ADMIN_KEY)
     mocks.getClientIp.mockReturnValue('203.0.113.7')
     mocks.rateLimit.mockResolvedValue({ allowed: true, remaining: 4 })
@@ -130,7 +130,9 @@ describe('POST /api/admin/session (login)', () => {
   })
 
   it('blocks cross-origin login (login-CSRF protection)', async () => {
-    mocks.validateCsrfOriginLenient.mockReturnValue(false)
+    mocks.requireCsrfLenient.mockReturnValue(
+      new Response(JSON.stringify({ error: 'Cross-origin request blocked.' }), { status: 403 })
+    )
     const res = await POST(
       req('/api/admin/session', {
         method: 'POST',
@@ -190,12 +192,14 @@ describe('POST /api/admin/session (login)', () => {
 describe('DELETE /api/admin/session (logout)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.validateCsrfOriginLenient.mockReturnValue(true)
+    mocks.requireCsrfLenient.mockReturnValue(null)
     mocks.isProd.mockReturnValue(false)
   })
 
   it('blocks cross-origin logout (logout-CSRF protection)', async () => {
-    mocks.validateCsrfOriginLenient.mockReturnValue(false)
+    mocks.requireCsrfLenient.mockReturnValue(
+      new Response(JSON.stringify({ error: 'Cross-origin request blocked.' }), { status: 403 })
+    )
     const res = await DELETE(req('/api/admin/session', { method: 'DELETE', headers: { origin: 'https://evil.example' } }))
     expect(res.status).toBe(403)
   })

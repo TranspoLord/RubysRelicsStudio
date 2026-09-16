@@ -1,13 +1,20 @@
 import { NextResponse } from 'next/server'
 import { randomUUID } from 'node:crypto'
 import { createSquareCheckout } from '@/lib/square/client'
-import { ShippingRate, getRateByObjectId } from '@/lib/shippo/client'
+import { ShippingRate, verifyShippingRate } from '@/lib/shippo/client'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import {
   computeCanonicalLine,
   PricingContext,
   PricingSelectedOption,
 } from '@/lib/pricing/engine'
+import {
+  applyPromotions,
+  resolveEligibleDeals,
+  validatePromoCode,
+  PromotionLineInput,
+} from '@/lib/pricing/promotions'
+import { parseJsonBodyOrError } from '@/lib/security/body'
 import { parseDesignDocument } from '@/lib/design/schema'
 import type { DesignDocumentV1 } from '@/lib/design/schema'
 import {
@@ -47,6 +54,7 @@ interface SquareCheckoutRequest {
     country: string
   }
   shippingRate?: ShippingRate
+  discountCode?: string
 }
 
 /**
@@ -58,7 +66,7 @@ async function fetchPricingContext(productId: string): Promise<PricingContext | 
 
   const { data: product, error } = await supabase
     .from('exp_products')
-    .select('id, title, base_price, is_active, is_archived')
+    .select('id, title, base_price, is_active, is_archived, category_key')
     .eq('id', productId)
     .maybeSingle()
 
@@ -88,6 +96,7 @@ async function fetchPricingContext(productId: string): Promise<PricingContext | 
     base_price: Number(product.base_price),
     is_active: product.is_active,
     is_archived: product.is_archived,
+    categoryKey: product.category_key ?? null,
     variants: (variants ?? []).map((v: any) => ({
       id: v.id,
       label: v.label,
@@ -125,7 +134,10 @@ export async function POST(request: Request) {
     const csrfResponse = requireCsrfOriginOnly(request)
     if (csrfResponse) return csrfResponse
 
-    const body = (await request.json()) as SquareCheckoutRequest
+    const parsed = await parseJsonBodyOrError<SquareCheckoutRequest>(request, 20 * 1024 * 1024)
+    if (!parsed.ok) return parsed.response
+
+    const body = parsed.body
 
     if (!Array.isArray(body.items) || body.items.length === 0) {
       return NextResponse.json({ error: 'No items provided for checkout.' }, { status: 400 })
@@ -142,18 +154,21 @@ export async function POST(request: Request) {
     // SEC-001: Compute all prices server-side — never trust client prices
     const lineItems = []
     const orderItemsSnapshot = []
+    const promotionLines: PromotionLineInput[] = []
 
     for (const item of body.items) {
       const parsedDesign = item.designDocument ? parseDesignDocument(item.designDocument) : null
       if (item.designDocument && !parsedDesign) {
+        safeLogError('[square:checkout:design-invalid]', { productId: item.productId })
         return NextResponse.json(
-          { error: `Design document is invalid for product ${item.productId}.` },
+          { error: 'One or more design documents are invalid. Please review your cart and try again.' },
           { status: 400 }
         )
       }
       if (parsedDesign && parsedDesign.product_id !== item.productId) {
+        safeLogError('[square:checkout:design-mismatch]', { productId: item.productId, designProductId: parsedDesign.product_id })
         return NextResponse.json(
-          { error: `Design document product mismatch for ${item.productId}.` },
+          { error: 'One or more design documents do not match the selected product. Please review your cart and try again.' },
           { status: 400 }
         )
       }
@@ -163,6 +178,7 @@ export async function POST(request: Request) {
       if (parsedDesign) {
         const assetVerification = await verifyDesignAssetOwnership(supabase, parsedDesign)
         if (!assetVerification.ok) {
+          safeLogError('[square:checkout:asset-verification]', { productId: item.productId, code: assetVerification.code })
           return NextResponse.json(
             { error: assetVerification.message ?? 'Design asset ownership verification failed.' },
             { status: assetVerification.code === 'LIMIT_EXCEEDED' ? 400 : 403 }
@@ -184,8 +200,9 @@ export async function POST(request: Request) {
         })
 
         if (!persisted) {
+          safeLogError('[square:checkout:persist-design]', { productId: item.productId })
           return NextResponse.json(
-            { error: 'Could not persist design document for checkout.' },
+            { error: 'Could not finalize your design. Please try again.' },
             { status: 500 }
           )
         }
@@ -197,8 +214,9 @@ export async function POST(request: Request) {
       // Fetch product data from DB
       const pricingContext = await fetchPricingContext(item.productId)
       if (!pricingContext) {
+        safeLogError('[square:checkout:product-not-found]', { productId: item.productId })
         return NextResponse.json(
-          { error: `Product not found: ${item.productId}` },
+          { error: 'One or more products in your cart could not be found. Please refresh and try again.' },
           { status: 400 }
         )
       }
@@ -212,8 +230,9 @@ export async function POST(request: Request) {
       )
 
       if (!canonical) {
+        safeLogError('[square:checkout:price-compute]', { productId: item.productId, title: pricingContext.title })
         return NextResponse.json(
-          { error: `Could not compute price for: ${pricingContext.title}` },
+          { error: 'We could not calculate a price for one or more items. Please review your selections.' },
           { status: 400 }
         )
       }
@@ -244,34 +263,145 @@ export async function POST(request: Request) {
         line_discount: canonical.lineDiscount,
         line_total: canonical.lineTotal,
       })
+
+      promotionLines.push({
+        productId: canonical.productId,
+        categoryKey: pricingContext.categoryKey ?? null,
+        quantity: canonical.quantity,
+        lineTotal: canonical.lineTotal,
+        selectedOptions: canonical.selectedOptions,
+      })
     }
 
-    // SEC-047: Validate shipping rate server-side — re-fetch from Shippo by rateToken
-    // Never trust the client-supplied amount. The rateToken (Shippo object_id)
-    // is the only client-supplied value we use; the amount comes from Shippo.
+    // SEC-047 / M-1: Verify shipping rate server-side. Re-fetch Shippo rates for
+    // the server-derived cart weight and confirm the client-selected service/carrier
+    // is available at that weight. This prevents a client from fetching a rate for
+    // a tiny parcel and applying it to a heavy order.
+    // P-5: A ship-to address and a verifiable rate are REQUIRED — never fall back
+    // to $0 shipping on a physical order.
+    const shippingAddress = body.shippingAddress
+    if (
+      !shippingAddress ||
+      !shippingAddress.street1 ||
+      !shippingAddress.city ||
+      !shippingAddress.state ||
+      !shippingAddress.zip ||
+      !shippingAddress.country
+    ) {
+      return NextResponse.json({ error: 'A complete shipping address is required.' }, { status: 400 })
+    }
+    if (!body.shippingRate) {
+      return NextResponse.json({ error: 'A shipping method is required.' }, { status: 400 })
+    }
+
     let shippingAmountCents = 0
     let verifiedShippingRate: { amount: number; carrier: string; serviceName: string } | null = null
-    if (body.shippingRate?.rateToken) {
-      verifiedShippingRate = await getRateByObjectId(body.shippingRate.rateToken)
 
-      if (!verifiedShippingRate) {
-        return NextResponse.json(
-          { error: 'Shipping rate could not be verified. Please refresh rates and try again.' },
-          { status: 400 }
-        )
+    verifiedShippingRate = await verifyShippingRate({
+      items: body.items.map((item) => ({
+        productId: item.productId,
+        variantId: item.variantId ?? null,
+        quantity: Math.max(1, Math.min(999, Number(item.quantity) || 1)),
+      })),
+      address: shippingAddress,
+      selectedRate: body.shippingRate,
+    })
+
+    if (!verifiedShippingRate) {
+      return NextResponse.json(
+        { error: 'Shipping rate could not be verified for this cart. Please refresh rates and try again.' },
+        { status: 400 }
+      )
+    }
+
+    shippingAmountCents = Math.round(verifiedShippingRate.amount * 100)
+    totalAmountCents += shippingAmountCents
+
+    lineItems.push({
+      name: `Shipping: ${verifiedShippingRate.serviceName}`,
+      quantity: '1',
+      base_price_money: {
+        amount: shippingAmountCents,
+        currency: 'USD',
+      },
+    })
+
+    // SEC-047 / P-2: Apply promo / bundle-deal discounts server-side.
+    let promoDiscountCents = 0
+    let appliedDiscountCode: string | null = null
+    let appliedPromoId: string | null = null
+    const appliedDealIds: string[] = []
+    if (body.discountCode && promotionLines.length > 0) {
+      const rawCode =
+        typeof body.discountCode === 'string'
+          ? body.discountCode.replace(/[%_\\]/g, '').trim().toUpperCase()
+          : ''
+      if (rawCode && rawCode.length <= 40) {
+        const now = new Date()
+
+        const { data: promoRows } = await supabase
+          .from('exp_promo_codes')
+          .select('*')
+          .eq('is_active', true)
+          .eq('code', rawCode)
+          .limit(1)
+        const promoValidation = validatePromoCode((promoRows?.[0] ?? null) as any, rawCode, now)
+
+        const { data: dealRows } = await supabase
+          .from('exp_bundle_deals')
+          .select('*')
+          .eq('is_active', true)
+        const dealsValidation = resolveEligibleDeals((dealRows ?? []) as any, promotionLines, rawCode, now)
+
+        const appliedPromo = promoValidation.ok && promoValidation.promo ? promoValidation.promo : null
+        const appliedDeals = dealsValidation.ok ? dealsValidation.deals : []
+
+        if (appliedPromo) appliedPromoId = appliedPromo.id
+        for (const deal of appliedDeals) appliedDealIds.push(deal.id)
+
+        if (appliedPromo || appliedDeals.length > 0) {
+          const outcome = applyPromotions({
+            lines: promotionLines,
+            shippingCost: shippingAmountCents / 100,
+            promo: appliedPromo as any,
+            deals: appliedDeals as any,
+          })
+
+          // Reduce each product line by its allocated discount.
+          for (let i = 0; i < orderItemsSnapshot.length; i += 1) {
+            const discountCents = Math.round((outcome.lineDiscounts[i] ?? 0) * 100)
+            if (discountCents <= 0 || !lineItems[i]) continue
+            const lineCentsBefore = lineItems[i].base_price_money.amount * orderItemsSnapshot[i].quantity
+            const lineCentsAfter = Math.max(1, lineCentsBefore - discountCents)
+            const unitCents = Math.max(1, Math.round(lineCentsAfter / orderItemsSnapshot[i].quantity))
+            lineItems[i].base_price_money.amount = unitCents
+            promoDiscountCents += lineCentsBefore - lineCentsAfter
+          }
+
+          // Free-shipping: reduce or remove the shipping line item.
+          const shippingDiscountCents = Math.round(outcome.shippingDiscount * 100)
+          if (shippingAmountCents > 0 && shippingDiscountCents > 0) {
+            const newShippingCents = Math.max(0, shippingAmountCents - shippingDiscountCents)
+            const shippingLineIndex = lineItems.length - 1
+            if (newShippingCents === 0) {
+              lineItems.splice(shippingLineIndex, 1)
+              promoDiscountCents += shippingAmountCents
+              shippingAmountCents = 0
+            } else if (lineItems[shippingLineIndex]) {
+              lineItems[shippingLineIndex].base_price_money.amount = newShippingCents
+              promoDiscountCents += shippingAmountCents - newShippingCents
+              shippingAmountCents = newShippingCents
+            }
+          }
+
+          appliedDiscountCode = rawCode
+
+          totalAmountCents = lineItems.reduce(
+            (sum, li) => sum + li.base_price_money.amount * Number(li.quantity),
+            0
+          )
+        }
       }
-
-      shippingAmountCents = Math.round(verifiedShippingRate.amount * 100)
-      totalAmountCents += shippingAmountCents
-
-      lineItems.push({
-        name: `Shipping: ${verifiedShippingRate.serviceName}`,
-        quantity: '1',
-        base_price_money: {
-          amount: shippingAmountCents,
-          currency: 'USD',
-        },
-      })
     }
 
     // Build shipping address note for reference
@@ -290,6 +420,8 @@ export async function POST(request: Request) {
       metadata: {
         ...(body.buyerEmail && { buyer_email: body.buyerEmail }),
         ...(body.buyerPhone && { buyer_phone: body.buyerPhone }),
+        ...(appliedDiscountCode && { promo_code: appliedDiscountCode }),
+        ...(promoDiscountCents > 0 && { promo_discount_cents: String(promoDiscountCents) }),
         ...(verifiedShippingRate && {
           shipping_carrier: verifiedShippingRate.carrier,
           shipping_service: verifiedShippingRate.serviceName,
@@ -302,6 +434,21 @@ export async function POST(request: Request) {
       },
     })
 
+    // SEC-062: Increment promo/bundle usage counters now that a real payment
+    // link exists. Best-effort — never fail checkout if the increment errors.
+    if (appliedPromoId || appliedDealIds.length > 0) {
+      try {
+        if (appliedPromoId) {
+          await supabase.rpc('exp_increment_promo_code_usage', { p_code_id: appliedPromoId })
+        }
+        for (const dealId of appliedDealIds) {
+          await supabase.rpc('exp_increment_bundle_deal_usage', { p_deal_id: dealId })
+        }
+      } catch (err) {
+        safeLogError('[square:checkout:promo-usage]', err)
+      }
+    }
+
     // SEC-002: Persist the order to the database with server-computed total
     const guestTrackingToken = randomUUID()
     const orderTotalDollars = totalAmountCents / 100
@@ -311,12 +458,13 @@ export async function POST(request: Request) {
       .insert({
         square_order_id: checkoutResponse.payment_link.order_id,
         order_path: 'shop',
-        payment_mode: 'stripe_checkout',
+        payment_mode: 'square_checkout',
         payment_status: 'pending',
         status: 'awaiting_payment',
         order_total: orderTotalDollars,
         subtotal: orderItemsSnapshot.reduce((sum, i) => sum + i.line_subtotal, 0),
-        discount_amount: orderItemsSnapshot.reduce((sum, i) => sum + i.line_discount, 0),
+        discount_amount:
+          orderItemsSnapshot.reduce((sum, i) => sum + i.line_discount, 0) + promoDiscountCents / 100,
         shipping_cost: shippingAmountCents / 100,
         shipping_method: verifiedShippingRate?.serviceName || 'standard',
         shipping_address: body.shippingAddress || {},
@@ -365,7 +513,6 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     safeLogError('[square:checkout]', error)
-    const message = error instanceof Error ? error.message : 'Could not create checkout.'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: 'Could not create checkout. Please try again.' }, { status: 500 })
   }
 }

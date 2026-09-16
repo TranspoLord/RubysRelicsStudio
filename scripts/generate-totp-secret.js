@@ -1,11 +1,14 @@
 // Run with: node scripts/generate-totp-secret.js
 // Returns a base32 TOTP secret compatible with Google Authenticator
 
+const crypto = require('crypto')
+
 function generateBase32Secret(length = 32) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+  const bytes = crypto.randomBytes(length)
   let result = ''
   for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length))
+    result += chars.charAt(bytes[i] % chars.length)
   }
   return result
 }

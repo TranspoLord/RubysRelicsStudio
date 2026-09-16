@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import TextField from '@mui/material/TextField'
@@ -27,13 +27,18 @@ interface ShippingAddress {
 interface ShippingFormProps {
   onAddressChange: (address: ShippingAddress | null) => void
   onRateSelect: (rate: ShippingRate | null) => void
-  packageWeight: number
+  items: Array<{
+    productId: string
+    variantId?: string | null
+    quantity: number
+    weight?: number
+  }>
   autoCalculate?: boolean
 }
 
 const COUNTRY_OPTIONS = ['US', 'CA', 'MX']
 
-export function ShippingForm({ onAddressChange, onRateSelect, packageWeight, autoCalculate = false }: ShippingFormProps) {
+export function ShippingForm({ onAddressChange, onRateSelect, items, autoCalculate = false }: ShippingFormProps) {
   const [address, setAddress] = useState<ShippingAddress>({
     street1: '',
     city: '',
@@ -47,36 +52,14 @@ export function ShippingForm({ onAddressChange, onRateSelect, packageWeight, aut
   const [selectedRateId, setSelectedRateId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const totalWeight = useMemo(() => {
+    return items.reduce((sum, item) => {
+      const itemWeight = item.weight ?? 1
+      return sum + itemWeight * Math.max(1, item.quantity)
+    }, 0)
+  }, [items])
+
   const hasValidatedRef = useRef(false)
-
-  // Auto-calculate when we have a complete address and autoCalculate is true
-  useEffect(() => {
-    if (autoCalculate && hasValidatedRef.current) {
-      void validateAndGetRates()
-    }
-  }, [autoCalculate])
-
-  const handleInputChange = (field: keyof ShippingAddress, value: string) => {
-    const newAddress = { ...address, [field]: value }
-    setAddress(newAddress)
-    
-    // Clear any existing selection when address changes
-    if (selectedRateId) {
-      setSelectedRateId(null)
-      onRateSelect(null)
-    }
-    
-    // Check if address is complete
-    const isComplete = Boolean(
-      newAddress.street1 && newAddress.city && newAddress.state && newAddress.zip && newAddress.country
-    )
-    
-    if (isComplete) {
-      onAddressChange(newAddress)
-    } else {
-      onAddressChange(null)
-    }
-  }
 
   const validateAndGetRates = async () => {
     setValidating(true)
@@ -101,7 +84,14 @@ export function ShippingForm({ onAddressChange, onRateSelect, packageWeight, aut
       const ratesResponse = await fetch('/api/shippo/rates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, weight: packageWeight }),
+        body: JSON.stringify({
+          address,
+          items: items.map((item) => ({
+            productId: item.productId,
+            variantId: item.variantId ?? null,
+            quantity: item.quantity,
+          })),
+        }),
       })
 
       if (!ratesResponse.ok) {
@@ -122,6 +112,35 @@ export function ShippingForm({ onAddressChange, onRateSelect, packageWeight, aut
     } finally {
       setValidating(false)
       setLoadingRates(false)
+    }
+  }
+
+  // Auto-calculate when we have a complete address and autoCalculate is true
+  useEffect(() => {
+    if (autoCalculate && hasValidatedRef.current) {
+      void validateAndGetRates()
+    }
+  }, [autoCalculate])
+
+  const handleInputChange = (field: keyof ShippingAddress, value: string) => {
+    const newAddress = { ...address, [field]: value }
+    setAddress(newAddress)
+
+    // Clear any existing selection when address changes
+    if (selectedRateId) {
+      setSelectedRateId(null)
+      onRateSelect(null)
+    }
+
+    // Check if address is complete
+    const isComplete = Boolean(
+      newAddress.street1 && newAddress.city && newAddress.state && newAddress.zip && newAddress.country
+    )
+
+    if (isComplete) {
+      onAddressChange(newAddress)
+    } else {
+      onAddressChange(null)
     }
   }
 
@@ -234,9 +253,9 @@ export function ShippingForm({ onAddressChange, onRateSelect, packageWeight, aut
         </Box>
       )}
 
-      {packageWeight > 0 && (
+      {totalWeight > 0 && (
         <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.6) }}>
-          Package weight: {packageWeight.toFixed(2)} lbs
+          Estimated package weight: {totalWeight.toFixed(2)} lbs
         </Typography>
       )}
     </Box>

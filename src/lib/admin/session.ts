@@ -1,4 +1,4 @@
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
+import { createHmac, hkdfSync, randomUUID, timingSafeEqual } from 'node:crypto'
 import { getAdminSessionSettings } from '@/lib/storefront-settings'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { safeLogError } from '@/lib/security/logger'
@@ -10,8 +10,42 @@ export const ADMIN_COOKIE_NAME = 'rr_admin_session'
 const SESSION_VERSION = 'v2'
 const DEFAULT_SESSION_TTL_SECONDS = 60 * 60 * 12
 
-function signPayload(payload: string, key: string): string {
-  return createHmac('sha256', key).update(payload).digest('hex')
+// SEC- BATCH1-H2: Independent high-entropy signing/hash keys derived from
+// dedicated env secrets. ADMIN_LOGIN_KEY is used ONLY for the login comparison.
+
+function loadHexSeed(envVar: string): Buffer {
+  const value = process.env[envVar]
+  if (!value) {
+    throw new Error(`${envVar} must be set to a 32-byte hex string.`)
+  }
+  if (!/^[0-9a-fA-F]{64}$/.test(value)) {
+    throw new Error(`${envVar} must be a 64-character hex string (32 bytes).`)
+  }
+  return Buffer.from(value, 'hex')
+}
+
+function deriveHmacKey(seed: Buffer, salt: string, info: string): Buffer {
+  return Buffer.from(hkdfSync('sha256', seed, Buffer.from(salt), Buffer.from(info), 32))
+}
+
+const SESSION_SIGNING_KEY = deriveHmacKey(
+  loadHexSeed('SESSION_SIGNING_KEY_SEED'),
+  'rr-admin-session-signing-v1',
+  'rr-admin'
+)
+
+const SESSION_HASH_KEY = deriveHmacKey(
+  loadHexSeed('SESSION_HASH_KEY_SEED'),
+  'rr-admin-session-hash-v1',
+  'rr-admin'
+)
+
+function signPayload(payload: string): string {
+  return createHmac('sha256', SESSION_SIGNING_KEY).update(payload).digest('hex')
+}
+
+function hashToken(token: string): string {
+  return createHmac('sha256', SESSION_HASH_KEY).update(token).digest('hex')
 }
 
 /**
@@ -26,15 +60,6 @@ function allowLegacySessionFallback(): boolean {
   return process.env.ALLOW_LEGACY_ADMIN_SESSION_FALLBACK === 'true'
 }
 
-// SEC-047: Derive the hash key from an environment variable (or ADMIN_LOGIN_KEY)
-
-// instead of a hardcoded constant.
-function hashToken(token: string): string {
-  const hashKey = process.env.SESSION_HASH_KEY || process.env.ADMIN_LOGIN_KEY
-  if (!hashKey) throw new Error('SESSION_HASH_KEY or ADMIN_LOGIN_KEY must be set.')
-  return createHmac('sha256', hashKey).update(token).digest('hex')
-}
-
 /**
  * SEC-011: Create an admin session token with a JTI (UUID).
  * SEC-047: Token format is now v2.{exp}.{jti}.{mfaFlag}.{sig} where mfaFlag
@@ -43,7 +68,6 @@ function hashToken(token: string): string {
  * A corresponding row is inserted into exp_admin_sessions.
  */
 export async function createAdminSessionToken(
-  adminKey: string,
   ttlSeconds = DEFAULT_SESSION_TTL_SECONDS,
   metadata?: { ipAddress?: string; userAgent?: string; mfaVerified?: boolean }
 ): Promise<string> {
@@ -51,7 +75,7 @@ export async function createAdminSessionToken(
   const jti = randomUUID()
   const mfaFlag = metadata?.mfaVerified ? '1' : '0'
   const payload = `${SESSION_VERSION}.${expiresAt}.${jti}.${mfaFlag}`
-  const sig = signPayload(payload, adminKey)
+  const sig = signPayload(payload)
   const token = `${payload}.${sig}`
 
   // SEC-011: Insert a session row for revocation support
@@ -80,10 +104,10 @@ export async function createAdminSessionToken(
  */
 export async function verifyAdminSessionToken(
   token: string | null | undefined,
-  adminKey: string,
+  _adminKey?: string,
   requireMfa = true
 ): Promise<boolean> {
-  if (!token || !adminKey) return false
+  if (!token) return false
 
   const parts = token.split('.')
   if (parts.length !== 5) return false // v2: version.exp.jti.mfaFlag.sig
@@ -98,8 +122,9 @@ export async function verifyAdminSessionToken(
   // SEC-047: Enforce MFA flag — reject tokens that haven't completed MFA
   if (requireMfa && mfaFlag !== '1') return false
 
+  // Verify HMAC signature using the dedicated signing key (never ADMIN_LOGIN_KEY).
   const payload = `${version}.${exp}.${jti}.${mfaFlag}`
-  const expectedSignature = signPayload(payload, adminKey)
+  const expectedSignature = signPayload(payload)
 
   const actualBuf = Buffer.from(signature)
   const expectedBuf = Buffer.from(expectedSignature)

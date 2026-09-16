@@ -42,8 +42,8 @@ function asPositiveNumber(value: unknown): number | null {
 }
 
 export async function GET(request: Request) {
-  const authResult = await requireAdminApiSession(request)
-  if (authResult instanceof NextResponse) return authResult
+  const auth = await requireAdminApiSession(request)
+  if (!auth.ok) return auth.response
 
   const { searchParams } = new URL(request.url)
   const fromParam = searchParams.get('from')
@@ -106,8 +106,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const authResult = await requireAdminApiSession(request)
-  if (authResult instanceof NextResponse) return authResult
+  const auth = await requireAdminApiSession(request)
+  if (!auth.ok) return auth.response
 
   let body: Record<string, unknown>
   try {
@@ -189,8 +189,8 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const authResult = await requireAdminApiSession(request)
-  if (authResult instanceof NextResponse) return authResult
+  const auth = await requireAdminApiSession(request)
+  if (!auth.ok) return auth.response
 
   let body: Record<string, unknown>
   try {
@@ -283,8 +283,8 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const authResult = await requireAdminApiSession(request)
-  if (authResult instanceof NextResponse) return authResult
+  const auth = await requireAdminApiSession(request)
+  if (!auth.ok) return auth.response
 
   const { searchParams } = new URL(request.url)
   const id = searchParams.get('id')

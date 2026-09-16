@@ -72,10 +72,14 @@ export function validateCsrfOrigin(request: Request): boolean {
  * Origin/Referer *is* present and cross-origin, which is the actual CSRF
  * signal. This is the origin-only pattern recommended by
  * docs/PENTEST_CSRF_PLAYBOOK.md §2.4 for pre-auth mutation routes.
+ *
+ * SEC-BATCH1-H3: Hardened with Sec-Fetch-Site so a cross-site attacker that
+ * strips Origin/Referer (e.g. via referrer-policy) is still rejected.
  */
 export function validateCsrfOriginLenient(request: Request): boolean {
   const origin = request.headers.get('origin')
   const referer = request.headers.get('referer')
+  const fetchSite = request.headers.get('sec-fetch-site')
 
   const allowedOrigin = normalizeOrigin(
     process.env.NEXT_PUBLIC_APP_URL ||
@@ -83,10 +87,39 @@ export function validateCsrfOriginLenient(request: Request): boolean {
     'http://localhost:3000'
   )
 
-  // Absent headers => lenient allow (same-origin client that omitted them).
+  // Modern browsers send Sec-Fetch-Site on cross-site requests even when
+  // Origin/Referer are suppressed. Reject cross-site explicitly.
+  if (fetchSite && fetchSite !== 'same-origin' && fetchSite !== 'none') return false
+
+  // If neither Origin, Referer, nor Sec-Fetch-Site is present, treat the
+  // request as an opaque/embedded client and reject it.
+  if (!origin && !referer && !fetchSite) return false
+
+  // Present Origin/Referer headers must match the allowed origin exactly.
   if (origin && normalizeOrigin(origin) !== allowedOrigin) return false
   if (referer && normalizeOrigin(referer) !== allowedOrigin) return false
   return true
+}
+
+/**
+ * SEC-BATCH1-H3: Combined CSRF check for pre-authentication mutation endpoints.
+ * Enforces the lenient origin check plus the double-submit token. Login/logout
+ * are state-changing and must carry the CSRF cookie echoed in X-CSRF-Token.
+ */
+export function requireCsrfLenient(request: Request): NextResponse | null {
+  if (!validateCsrfOriginLenient(request)) {
+    return NextResponse.json(
+      { error: 'Cross-origin request blocked.' },
+      { status: 403 }
+    )
+  }
+  if (!validateCsrfToken(request)) {
+    return NextResponse.json(
+      { error: 'CSRF token missing or invalid.' },
+      { status: 403 }
+    )
+  }
+  return null
 }
 
 /**

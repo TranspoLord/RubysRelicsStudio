@@ -18,7 +18,7 @@ alter table exp_storefront_settings enable row level security;
 -- Public read access is limited to non-sensitive runtime toggles.
 create policy "public_read_storefront_settings"
   on exp_storefront_settings for select
-  using (true);
+  using (setting_key in ('guest_order_tracking', 'contact', 'recommendations'));
 
 create trigger trg_storefront_settings_updated_at
 before update on exp_storefront_settings

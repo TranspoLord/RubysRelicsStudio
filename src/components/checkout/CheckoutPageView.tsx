@@ -157,6 +157,7 @@ export function CheckoutPageView() {
           buyerEmail: normalizedEmail || undefined,
           shippingAddress: shippingAddress || undefined,
           shippingRate: selectedRate || undefined,
+          discountCode: discountCode.trim() || undefined,
         }),
       })
 
@@ -346,7 +347,12 @@ export function CheckoutPageView() {
         <ShippingForm
           onAddressChange={setShippingAddress}
           onRateSelect={setSelectedRate}
-          packageWeight={totalWeight}
+          items={items.map((item) => ({
+            productId: item.productId,
+            variantId: item.variantId ?? null,
+            quantity: item.quantity,
+            weight: item.weight ?? undefined,
+          }))}
         />
 
         {loadingConfig ? (

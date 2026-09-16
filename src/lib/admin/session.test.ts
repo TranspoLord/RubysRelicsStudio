@@ -1,6 +1,21 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { createHmac } from 'node:crypto'
+import { createHmac, hkdfSync } from 'node:crypto'
 import { extractMfaFlagFromToken, verifyAdminSessionToken } from '@/lib/admin/session'
+
+// SEC-BATCH1-H2: Tests must sign with the same HKDF-derived key that the
+// implementation uses. test-setup.ts seeds these env vars before module load.
+const SESSION_SIGNING_KEY_SEED = process.env.SESSION_SIGNING_KEY_SEED || '0'.repeat(64)
+const SESSION_HASH_KEY_SEED = process.env.SESSION_HASH_KEY_SEED || '1'.repeat(64)
+
+const TEST_SIGNING_KEY = Buffer.from(
+  hkdfSync(
+    'sha256',
+    Buffer.from(SESSION_SIGNING_KEY_SEED, 'hex'),
+    Buffer.from('rr-admin-session-signing-v1'),
+    Buffer.from('rr-admin'),
+    32
+  )
+)
 
 const ADMIN_KEY = 'test-admin-key'
 const PREV_FALLBACK = process.env.ALLOW_LEGACY_ADMIN_SESSION_FALLBACK
@@ -11,12 +26,12 @@ afterEach(() => {
 })
 
 // Mirror session.ts signing: v2.{exp}.{jti}.{mfaFlag}.{hmacSig}
-function makeToken(opts: { exp?: number; jti?: string; mfaFlag?: string; sig?: string }, key = ADMIN_KEY): string {
+function makeToken(opts: { exp?: number; jti?: string; mfaFlag?: string; sig?: string }): string {
   const exp = opts.exp ?? Math.floor(Date.now() / 1000) + 3600
   const jti = opts.jti ?? 'jti-test'
   const flag = opts.mfaFlag ?? '0'
   const payload = `v2.${exp}.${jti}.${flag}`
-  const sig = opts.sig ?? createHmac('sha256', key).update(payload).digest('hex')
+  const sig = opts.sig ?? createHmac('sha256', TEST_SIGNING_KEY).update(payload).digest('hex')
   return `${payload}.${sig}`
 }
 
@@ -79,9 +94,12 @@ describe('extractMfaFlagFromToken', () => {
 })
 
 describe('verifyAdminSessionToken', () => {
-  it('rejects a missing token or key', async () => {
-    expect(await verifyAdminSessionToken(undefined, ADMIN_KEY)).toBe(false)
-    expect(await verifyAdminSessionToken(makeToken({}), '')).toBe(false)
+  it('rejects a missing token', async () => {
+    expect(await verifyAdminSessionToken(undefined)).toBe(false)
+  })
+
+  it('rejects an empty token string', async () => {
+    expect(await verifyAdminSessionToken('')).toBe(false)
   })
 
   it('rejects a v1 (4-part) token', async () => {

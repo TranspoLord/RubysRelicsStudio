@@ -32,7 +32,7 @@ export async function parseJsonBody<T = unknown>(
 ): Promise<T> {
   const text = await request.text()
 
-  if (text.length > maxSize) {
+  if (Buffer.byteLength(text, 'utf8') > maxSize) {
     throw new BodyTooLargeError(maxSize)
   }
 

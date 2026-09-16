@@ -18,6 +18,8 @@ export const DEFAULT_PACKAGE_DIMENSIONS = {
 // North America country codes
 export const NORTH_AMERICA_COUNTRIES = ['US', 'CA', 'MX']
 
+import { derivePackageWeight, MAX_PACKAGE_WEIGHT_LB } from './weight'
+
 interface ShippoAddress {
   name?: string
   company?: string
@@ -202,10 +204,52 @@ const ALLOWED_CARRIERS = new Set(['usps', 'ups', 'fedex', 'dhl', 'dhl_express', 
 const TRACKING_NUMBER_RE = /^[A-Za-z0-9]{8,40}$/
 
 /**
- * SEC-047: Re-fetch a shipping rate by its Shippo object_id to get the
- * authoritative amount server-side. This prevents price manipulation where
- * a client could send a modified amount in the checkout request body.
+ * SEC-047: Re-fetch shipping rates for the server-derived cart weight and
+ * verify that the client-selected service/carrier is available for that weight.
+ *
+ * This closes the M-1 weight-provenance gap: a client cannot request rates for
+ * a 0.1 lb parcel, then apply that rateToken to a 30 lb cart. The authoritative
+ * amount comes from a fresh Shippo lookup performed with the correct weight.
  */
+export async function verifyShippingRate(params: {
+  items: Array<{ productId: string; variantId?: string | null; quantity: number }>
+  address: {
+    name?: string
+    street1: string
+    street2?: string
+    city: string
+    state: string
+    zip: string
+    country: string
+  }
+  selectedRate: ShippingRate
+}): Promise<{ amount: number; currency: string; carrier: string; serviceName: string } | null> {
+  if (!SHIPPO_API_TOKEN) {
+    throw new Error('Shippo API token not configured.')
+  }
+
+  const derived = await derivePackageWeight(params.items)
+  if (!derived) return null
+
+  const weight = Math.min(MAX_PACKAGE_WEIGHT_LB, derived.weight)
+  const rates = await calculateShippingRates({ address: params.address, weight })
+
+  const match = rates.find(
+    (rate) =>
+      rate.service.toLowerCase() === params.selectedRate.service.toLowerCase() &&
+      rate.carrier.toLowerCase() === params.selectedRate.carrier.toLowerCase()
+  )
+
+  if (!match) return null
+
+  return {
+    amount: match.amount,
+    currency: match.currency,
+    carrier: match.carrier,
+    serviceName: match.service,
+  }
+}
+
 export async function getRateByObjectId(rateObjectId: string): Promise<{
   amount: number
   currency: string

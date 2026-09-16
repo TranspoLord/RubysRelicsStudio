@@ -360,6 +360,9 @@ export function validatePromoCode(
 ): { ok: true; promo: PromoCodeRecord | null } | { ok: false; reason: string } {
   if (!codeInput) return { ok: true, promo: null }
   if (!promo) return { ok: false, reason: 'Promo code was not found.' }
+  if (promo.code.trim().toUpperCase() !== codeInput.trim().toUpperCase()) {
+    return { ok: false, reason: 'Promo code was not found.' }
+  }
   if (!promo.is_active) return { ok: false, reason: 'Promo code is not active.' }
   if (!underUsageLimit(promo.usage_limit, promo.usage_count)) {
     return { ok: false, reason: 'Promo code has reached its usage limit.' }

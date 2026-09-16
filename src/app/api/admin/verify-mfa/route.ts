@@ -10,6 +10,7 @@ import {
 import { getClientIp, rateLimit } from '@/lib/rate-limit'
 import { isProd } from '@/lib/security/env'
 import { safeLogError } from '@/lib/security/logger'
+import { parseJsonBodyOrError } from '@/lib/security/body'
 
 export const runtime = 'nodejs'
 
@@ -30,11 +31,15 @@ export async function POST(request: NextRequest) {
       .join('=')
 
     // Verify the session token WITHOUT MFA requirement (the user is about to verify MFA)
-    if (!(await verifyAdminSessionToken(sessionToken, adminKey, false))) {
+    if (!(await verifyAdminSessionToken(sessionToken, undefined, false))) {
       return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 })
     }
 
-    const body = await request.json().catch(() => ({}))
+    const parseResult = await parseJsonBodyOrError<{ code?: string; deviceFingerprint?: string }>(request)
+    if (!parseResult.ok) {
+      return parseResult.response
+    }
+    const body = parseResult.body
     const { code } = body
     const deviceFingerprint = typeof body.deviceFingerprint === 'string' ? body.deviceFingerprint : undefined
 
@@ -84,7 +89,7 @@ export async function POST(request: NextRequest) {
     // This cryptographically binds the MFA-verified state to the session,
     // replacing the old client-forgeable admin_mfa_verified cookie.
     const maxAge = await getAdminSessionMaxAgeSeconds()
-    const newToken = await createAdminSessionToken(adminKey, maxAge, {
+    const newToken = await createAdminSessionToken(maxAge, {
       ipAddress: getClientIp(request),
       userAgent: request.headers.get('user-agent') || undefined,
       mfaVerified: true,

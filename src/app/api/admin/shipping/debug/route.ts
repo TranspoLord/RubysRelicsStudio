@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireAdminApiSession } from '@/lib/admin/auth'
 import { calculateShippingRates, validateAddress } from '@/lib/shippo/client'
+import { clampPackageWeight } from '@/lib/shippo/weight'
 
 // Admin-protected shipping debug endpoint
 // GET /api/admin/shipping/debug?street1=...&city=...&state=...&zip=...&country=US&weight=1
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
       zip: url.searchParams.get('zip') || '',
       country: url.searchParams.get('country') || 'US',
     }
-    const weight = Number(url.searchParams.get('weight') || '1')
+    const weight = clampPackageWeight(url.searchParams.get('weight') || '1')
 
     if (!address.street1 || !address.city || !address.state || !address.zip) {
       return NextResponse.json({ 
