@@ -48,9 +48,12 @@ function loadMfaCodeHashKey(): Buffer {
   )
 }
 
-const MFA_CODE_HASH_KEY = loadMfaCodeHashKey()
+let MFA_CODE_HASH_KEY: Buffer | null = null
 
 function getMfaCodeHashKey(): Buffer {
+  if (!MFA_CODE_HASH_KEY) {
+    MFA_CODE_HASH_KEY = loadMfaCodeHashKey()
+  }
   return MFA_CODE_HASH_KEY
 }
 

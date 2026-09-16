@@ -28,24 +28,36 @@ function deriveHmacKey(seed: Buffer, salt: string, info: string): Buffer {
   return Buffer.from(hkdfSync('sha256', seed, Buffer.from(salt), Buffer.from(info), 32))
 }
 
-const SESSION_SIGNING_KEY = deriveHmacKey(
-  loadHexSeed('SESSION_SIGNING_KEY_SEED'),
-  'rr-admin-session-signing-v1',
-  'rr-admin'
-)
+let SESSION_SIGNING_KEY: Buffer | null = null
+function getSessionSigningKey(): Buffer {
+  if (!SESSION_SIGNING_KEY) {
+    SESSION_SIGNING_KEY = deriveHmacKey(
+      loadHexSeed('SESSION_SIGNING_KEY_SEED'),
+      'rr-admin-session-signing-v1',
+      'rr-admin'
+    )
+  }
+  return SESSION_SIGNING_KEY
+}
 
-const SESSION_HASH_KEY = deriveHmacKey(
-  loadHexSeed('SESSION_HASH_KEY_SEED'),
-  'rr-admin-session-hash-v1',
-  'rr-admin'
-)
+let SESSION_HASH_KEY: Buffer | null = null
+function getSessionHashKey(): Buffer {
+  if (!SESSION_HASH_KEY) {
+    SESSION_HASH_KEY = deriveHmacKey(
+      loadHexSeed('SESSION_HASH_KEY_SEED'),
+      'rr-admin-session-hash-v1',
+      'rr-admin'
+    )
+  }
+  return SESSION_HASH_KEY
+}
 
 function signPayload(payload: string): string {
-  return createHmac('sha256', SESSION_SIGNING_KEY).update(payload).digest('hex')
+  return createHmac('sha256', getSessionSigningKey()).update(payload).digest('hex')
 }
 
 function hashToken(token: string): string {
-  return createHmac('sha256', SESSION_HASH_KEY).update(token).digest('hex')
+  return createHmac('sha256', getSessionHashKey()).update(token).digest('hex')
 }
 
 /**

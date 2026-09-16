@@ -22,7 +22,7 @@ security definer
 set search_path = ''
 as $$
 begin
-  delete from admin_mfa_codes where expires_at < now();
+  delete from public.admin_mfa_codes where expires_at < now();
 end;
 $$;
 
@@ -35,7 +35,7 @@ security definer
 set search_path = ''
 as $$
 begin
-  delete from exp_rate_limit_windows where expires_at < now();
+  delete from public.exp_rate_limit_windows where expires_at < now();
 end;
 $$;
 
@@ -50,21 +50,21 @@ as $$
 declare
   v_count int;
 begin
-  insert into exp_rate_limit_windows (key, window_start, count, expires_at)
+  insert into public.exp_rate_limit_windows (key, window_start, count, expires_at)
   values (p_key, extract(epoch from now())::bigint, 1, p_expires_at)
   on conflict (key)
   do update set
     count = case
-      when exp_rate_limit_windows.expires_at < now() then 1
-      else exp_rate_limit_windows.count + 1
+      when public.exp_rate_limit_windows.expires_at < now() then 1
+      else public.exp_rate_limit_windows.count + 1
     end,
     window_start = case
-      when exp_rate_limit_windows.expires_at < now() then extract(epoch from now())::bigint
-      else exp_rate_limit_windows.window_start
+      when public.exp_rate_limit_windows.expires_at < now() then extract(epoch from now())::bigint
+      else public.exp_rate_limit_windows.window_start
     end,
     expires_at = case
-      when exp_rate_limit_windows.expires_at < now() then p_expires_at
-      else exp_rate_limit_windows.expires_at
+      when public.exp_rate_limit_windows.expires_at < now() then p_expires_at
+      else public.exp_rate_limit_windows.expires_at
     end
   returning count into v_count;
 
@@ -82,7 +82,7 @@ declare
   v_inventory record;
   v_adjusted_qty int;
 begin
-  select * into v_order from exp_orders where id = p_order_id for update;
+  select * into v_order from public.exp_orders where id = p_order_id for update;
   if not found then
     return jsonb_build_object('ok', false, 'reason', 'order_not_found');
   end if;
@@ -93,12 +93,12 @@ begin
 
   for v_item in
     select oi.*, p.is_ready_made, p.id as product_id
-    from exp_order_items oi
-    join exp_products p on p.id = oi.product_id
+    from public.exp_order_items oi
+    join public.exp_products p on p.id = oi.product_id
     where oi.order_id = p_order_id and p.is_ready_made = true
   loop
     select * into v_inventory
-    from exp_product_inventory
+    from public.exp_product_inventory
     where product_id = v_item.product_id
     for update;
 
@@ -122,25 +122,25 @@ begin
 
   for v_item in
     select oi.*, p.is_ready_made, p.id as product_id
-    from exp_order_items oi
-    join exp_products p on p.id = oi.product_id
+    from public.exp_order_items oi
+    join public.exp_products p on p.id = oi.product_id
     where oi.order_id = p_order_id and p.is_ready_made = true
   loop
     select * into v_inventory
-    from exp_product_inventory
+    from public.exp_product_inventory
     where product_id = v_item.product_id
     for update;
 
     if v_inventory.is_track_inventory then
       v_adjusted_qty := v_item.quantity;
 
-      update exp_product_inventory
+      update public.exp_product_inventory
       set available_qty = available_qty - v_adjusted_qty,
           last_adjusted_at = now(),
           updated_at = now()
       where id = v_inventory.id;
 
-      insert into exp_inventory_adjustments (
+      insert into public.exp_inventory_adjustments (
         inventory_id, product_id, order_id, change_qty,
         quantity_before, quantity_after, reason_code, note, adjusted_by
       ) values (
@@ -157,7 +157,7 @@ begin
     end if;
   end loop;
 
-  update exp_orders
+  update public.exp_orders
   set inventory_reserved_at = now(),
       updated_at = now()
   where id = p_order_id;
@@ -176,7 +176,7 @@ declare
   v_inventory record;
   v_current_qty int;
 begin
-  select * into v_order from exp_orders where id = p_order_id for update;
+  select * into v_order from public.exp_orders where id = p_order_id for update;
   if not found then
     return jsonb_build_object('ok', false, 'reason', 'order_not_found');
   end if;
@@ -195,25 +195,25 @@ begin
 
   for v_item in
     select oi.*, p.is_ready_made, p.id as product_id
-    from exp_order_items oi
-    join exp_products p on p.id = oi.product_id
+    from public.exp_order_items oi
+    join public.exp_products p on p.id = oi.product_id
     where oi.order_id = p_order_id and p.is_ready_made = true
   loop
     select * into v_inventory
-    from exp_product_inventory
+    from public.exp_product_inventory
     where product_id = v_item.product_id
     for update;
 
     if found and v_inventory.is_track_inventory then
       v_current_qty := v_inventory.available_qty;
 
-      update exp_product_inventory
+      update public.exp_product_inventory
       set available_qty = available_qty + v_item.quantity,
           last_adjusted_at = now(),
           updated_at = now()
       where id = v_inventory.id;
 
-      insert into exp_inventory_adjustments (
+      insert into public.exp_inventory_adjustments (
         inventory_id, product_id, order_id, change_qty,
         quantity_before, quantity_after, reason_code, note, adjusted_by
       ) values (
@@ -230,7 +230,7 @@ begin
     end if;
   end loop;
 
-  update exp_orders
+  update public.exp_orders
   set inventory_released_at = now(),
       updated_at = now()
   where id = p_order_id;
