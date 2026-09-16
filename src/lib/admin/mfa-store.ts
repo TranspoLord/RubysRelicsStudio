@@ -255,7 +255,8 @@ async function tryVerifyWithColumn(
       }
 
       const row = rawRow as Record<string, unknown>
-      const rowId = typeof row.id === 'string' ? row.id : ''
+      const rowId =
+        typeof row.id === 'string' || typeof row.id === 'number' ? String(row.id) : ''
       const storedCode = typeof row.code === 'string' ? row.code : ''
       const storedFingerprint = typeof row.device_fingerprint === 'string'
         ? row.device_fingerprint
@@ -269,12 +270,15 @@ async function tryVerifyWithColumn(
         continue
       }
 
-      // HARD CHECK: If a device fingerprint was stored with this code,
-      // the verify request MUST provide a matching fingerprint.
-      if (storedFingerprint) {
-        if (!deviceFingerprint || storedFingerprint !== deviceFingerprint) {
-          continue
-        }
+      // SEC: The device fingerprint is an optional, self-reported risk signal —
+      // NOT a security boundary (it can be spoofed). A mismatch is logged for
+      // monitoring but does not reject an otherwise valid challenge-token +
+      // HMAC-code verification.
+      if (storedFingerprint && storedFingerprint !== deviceFingerprint) {
+        safeLogError(
+          '[MFA Store] Fingerprint mismatch on verify',
+          `stored=${storedFingerprint} provided=${deviceFingerprint ?? 'none'}`
+        )
       }
 
       // Mark as used (one-time use)

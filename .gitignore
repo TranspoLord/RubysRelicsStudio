@@ -46,3 +46,5 @@ Thumbs.db
 .supabase/*
 
 .env.example
+supabase/config.toml
+supabase/.temp/cli-latest
