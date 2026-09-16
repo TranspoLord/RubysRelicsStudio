@@ -22,6 +22,23 @@ export interface RateLimitResult {
   retryAfter?: number   // seconds until the window resets (only set when denied)
 }
 
+function describeRateLimitError(error: unknown): Error {
+  if (error instanceof Error) return error
+  if (error && typeof error === 'object') {
+    const e = error as { message?: unknown; code?: unknown; details?: unknown }
+    const parts: string[] = []
+    if (typeof e.message === 'string') parts.push(e.message)
+    if (typeof e.code === 'string') parts.push(`code=${e.code}`)
+    if (parts.length > 0) return new Error(parts.join(' | '))
+    try {
+      return new Error(JSON.stringify(error))
+    } catch {
+      return new Error('[unserializable error object]')
+    }
+  }
+  return new Error(String(error))
+}
+
 // Lazy cleanup counter — run cleanup ~every 5 minutes
 let lastCleanup = 0
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000
@@ -69,7 +86,7 @@ export async function rateLimit(
     if (error) {
       // SEC-047: If failClosed is true (security-critical endpoints like login/MFA),
       // reject the request instead of allowing unlimited attempts.
-      safeLogError('[rate-limit]', error)
+      safeLogError('[rate-limit]', describeRateLimitError(error))
       if (options.failClosed) {
         return { allowed: false, remaining: 0, retryAfter: 60 }
       }
@@ -87,7 +104,7 @@ export async function rateLimit(
     return { allowed: true, remaining: Math.max(0, limit - count) }
   } catch (error) {
     // SEC-047: If failClosed is true, reject on infrastructure errors too
-    safeLogError('[rate-limit]', error)
+    safeLogError('[rate-limit]', describeRateLimitError(error))
     if (options.failClosed) {
       return { allowed: false, remaining: 0, retryAfter: 60 }
     }
