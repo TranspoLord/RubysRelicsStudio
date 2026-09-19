@@ -48,3 +48,4 @@ Thumbs.db
 .env.example
 supabase/config.toml
 supabase/.temp/cli-latest
+.agents/*
