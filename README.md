@@ -28,5 +28,6 @@ Admin auth requires `ADMIN_LOGIN_KEY` plus the dedicated high-entropy seeds
 - `docs/Database.md` — canonical schema reference
 - `SECURITY_AUDIT.md` — current security audit
 - `SEPT_IMPLEMENTATION_PLAN.md` — remaining / unimplemented work
+- `UI_AUDIT.md` — how the storefront UI audit is run (method + evidence locations)
 - `docs/archive/` — historical planning and audit docs
 

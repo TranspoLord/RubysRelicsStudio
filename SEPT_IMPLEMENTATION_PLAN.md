@@ -11,24 +11,35 @@ September security review. Items are grouped by area, each noting its source.
 - ❌ **NOT DONE** — no evidence of the work
 - ❓ **UNVERIFIED** — could not be confirmed from the repo alone
 
+**§7 was added 2026-09-19** from the storefront UI audit (`UI_AUDIT.md`); its items were
+re-verified against the working tree and the live database on that date. Three existing items
+were also re-classified or annotated: §3.8 → 🟡, and notes added to §3.4 and §3.11.
+
 > Note: promo/bundle `usage_count` accounting was implemented as part of this pass
 > (migration `062` + checkout increment) and is intentionally **not** listed below.
 
-## Summary (2026-09-16 audit)
+## Summary (2026-09-16 audit; §7 added 2026-09-19)
 
 | Section | ✅ Done | 🟡 Partial | ❌ Not done | Other |
 |---|---|---|---|---|
 | 1. Security & deployment | 0 | 1 | 4 | — |
 | 2. Retention & notification | 6 | 1 | 7 | 1 unverified |
-| 3. Future-products / homepage | 5 | 1 | 6 | — |
+| 3. Future-products / homepage | 5 | 2 | 5 | — |
 | 4. Product designer / 3D | 0 | 2 | 2 | — |
 | 5. General hygiene | 2 | 0 | 0 | — |
 | 6. Live DB follow-ups | 0 | 0 | 3 | 1 corrected, 2 informational |
-| **Total** | **13** | **5** | **22** | **4** |
+| 7. Storefront UI (added 2026-09-19) | 0 | 0 | 15 | 4 informational |
+| **Total** | **13** | **6** | **36** | **8** |
 
-Highest-value open items: `npm audit` high CVE (§1.5), the migration-history baseline
-(§1.1/§6.1 — blocks any future `db push`), the dead `ip` fallback removal (§1.4/§6.3), and
-the unwired Shop All Preview editor JSX (§3.4).
+§3.8 was re-classified ❌ → 🟡 on 2026-09-19 (§7 re-verification: the `enabled` gate exists at
+`src/app/page.tsx:150`), which is the single-count difference in §3 and in the totals above.
+
+Highest-value open items: the CSP block that disables **all** analytics (§7.1 — also blocks
+§3.11 before any dashboard work is meaningful), the silent no-op section writes that will
+discard the Shop All Preview editor's input (§7.3, a prerequisite for §3.4), the section-ordering
+refactor that finally makes `sort_order` real (§7.2), `npm audit` high CVE (§1.5), the
+migration-history baseline (§1.1/§6.1 — blocks any future `db push`), and the dead `ip` fallback
+removal (§1.4/§6.3).
 
 ## 1. Security & deployment follow-ups
 
@@ -132,9 +143,13 @@ High/medium:
    `src/app/api/future-products/route.ts` imports it (line 6) and uses it at lines 18, 56,
    116, 122.
 4. Wire the Shop All Preview editor UI in the admin homepage page (state exists, no JSX).
-    ❌ **NOT DONE.** `src/app/admin/(panel)/homepage/page.tsx` is 967 lines with `return (` at
+    ❌ **NOT DONE.** `src/app/admin/(panel)/homepage/page.tsx` is 903 lines (967 at the 2026-09-16 audit) with `return (` at
    line 414; **every** `shopAllPreview` / `futureProductsNotify` reference sits at lines
-   110–375 (state + `handleSave*` handlers only). No editor fields are rendered — same for the
+   110–375 (state + `handleSave*` handlers only). **Dependency (2026-09-19, §7.3):** this item must
+    ship together with the upsert fix — the `[key]` PATCH route only `.update()`s and never
+    inserts or verifies a matched row, so with no DB row for `shop_all_preview` a save returns
+    `{ok:true}` and stores nothing. Completing the UI alone yields an editor that looks like it
+    saves and silently discards input. No editor fields are rendered — same for the
    Future Products Notify card.
 5. Add `[id]` CRUD routes for future products / statuses / responses. ❌ **NOT DONE.**
    `api/admin/catalog/future-products/` and `future-product-statuses/` each contain only
@@ -147,7 +162,10 @@ High/medium:
    (`src/components/layout/Header.tsx:31`) ✅, but there is **no** dedicated query module —
    `src/lib/supabase/queries/` contains only `homepage.ts` and `products.ts`.
 8. Make `FutureProductsNotifyCard` respect the `future_products_notify_form.enabled` setting.
-   ❌ **NOT DONE.** `src/components/home/FutureProductsNotifyCard.tsx` has no `enabled` /
+   🟡 **PARTIAL.** Re-checked 2026-09-19 (§7): the gate exists one level up, at
+    `src/app/page.tsx:150` (`sections['future_products_notify']?.is_visible !== false &&
+    notifySettings?.enabled !== false`), so the requirement is satisfied in practice. The
+    component itself still has no `enabled` /
    `notify_form` reference at all — the card renders unconditionally. (The `/future-products`
    page does gate its form on `notifySettings.enabled`.)
 9. Send `source` from the notify form + add email-based rate limiting (3/24h). ✅ **DONE.**
@@ -156,7 +174,11 @@ High/medium:
 10. Decide/implement rich-text sanitization (Tiptap editor + server-side sanitize). ❌ **NOT
     DONE.** No Tiptap dependency or sanitize path found.
 11. Add analytics events and wire into `HomepageProductGrid` + `FutureProductsNotifyCard`.
-    ❌ **NOT DONE.** Zero analytics matches in either component.
+    ❌ **NOT DONE.** Zero analytics matches in either component. **Re-checked 2026-09-19 (§7):**
+    the grid's helpers already exist in `src/lib/analytics/events.ts`
+    (`homepageProductFilterApplied`, `homepageProductViewAllClicked`,
+    `homepageFutureProductsLinkClicked`) but are never called — and no event can be recorded at
+    all until §7.1 is fixed, so sequence this after §7.1.
 12. Extend `scripts/test-rls-lockdown.mjs` with `exp_future_products` / statuses checks.
     ✅ **DONE.** `scripts/test-rls-lockdown.mjs:23-24` lists both tables.
 
@@ -242,3 +264,164 @@ Action items:
 6. Optional: start Docker Desktop when full `db diff` drift detection is wanted. ℹ️ Docker
    Desktop is installed but does not reach "engine ready" from a headless start; `db query`
    covers most inspection needs without it.
+
+## 7. Storefront UI audit & follow-ups
+
+_Source: `UI_AUDIT.md` (method + evidence locations). Added 2026-09-19 from a full homepage
+capture at 1440 / 834 / 390 via headless Edge over CDP; the evidence lives outside the repo in
+`%TEMP%\rrs-shots3\` (16 tiles + `audit.json`). Re-run the harness in `UI_AUDIT.md` §14 to
+re-verify. Items that extend an existing section are cross-referenced rather than duplicated._
+
+Critical:
+
+1. **The CSP blocks the Vercel Analytics script — all analytics are currently dark.** ❌ **NOT
+   DONE.** `src/middleware.ts:131-133` builds `script-src 'self' 'nonce-…' https://vercel.live`,
+   but the script is served from `https://va.vercel-scripts.com`, and that console violation
+   fires on every page load. `connect-src` already lists `vitals.vercel-insights.com` (line 140),
+   so **only** the script origin is missing. `@vercel/analytics` exposes **no** `nonce` prop
+   (checked in the installed types), so allowlisting the origin is the fix — add it to **both**
+   the production and dev branches to keep dev/prod parity. The impact is not just pageviews:
+   `src/lib/analytics/events.ts` wraps `track()` and is imported by 12 files (~35 events,
+   including `checkout_started`, `checkout_completed`, `custom_request_submitted`). **Blocks
+   §3.11.**
+2. **Homepage section order is code-driven; `sort_order` is never read.** ❌ **NOT DONE.**
+   `src/app/page.tsx:78-158` renders a fixed JSX sequence; `getHomepageSections()` returns
+   `sort_order` but only `is_visible` / `content` are consumed, so admin ordering is decorative.
+   Refactor to a shared key registry + pure ordering function + key→element render loop, with
+   four safety rules: (a) a key with **no DB row** stays **visible** at a default order
+   (`shop_all_preview` 45, `future_products_notify` 105 — their current JSX slots), (b) equal
+   `sort_order` breaks deterministically by default-order then key (Postgres tie order is
+   arbitrary), (c) `hero` is pinned first, (d) an empty/failed section map falls back to the full
+   default order, so a Supabase outage cannot blank the page. The live `sort_order` values
+   already mirror the current JSX order for every row-bearing key, so the refactor should render
+   identically — diffing `audit.json` before/after is the acceptance test.
+3. **Homepage-section writes silently no-op for keys without a DB row.** ❌ **NOT DONE.** Every
+   writer uses `.update().eq('section_key', …)` and never inserts, nor verifies that a row was
+   matched (`src/app/api/admin/homepage/sections/[key]/route.ts:204,241,277,308,355`; the batch
+   equivalent at `sections/route.ts:113-116`). Supabase returns no error on a 0-row match, so
+   saves for `shop_all_preview` / `future_products_notify` return `{ok:true}` and write a
+   **success** audit entry while storing nothing. `section_key` is `UNIQUE`
+   (`supabase/migrations/001_homepage_cms.sql:35`, re-confirmed in `049` and
+   `supabase/verification/schema_repair.sql`), so `upsert(…, { onConflict: 'section_key' })` is
+   available with **no schema change and no migration** (and therefore no `db push` — see §1.1).
+   Also make the audit log record a real failure when 0 rows match. **Prerequisite for §3.4 and
+   for items 9 and 15 below.**
+4. **The announcement banner cannot be turned off.** ❌ **NOT DONE.** Three independent layers:
+   `src/app/page.tsx:65` renders it unconditionally; `AnnouncementBanner.tsx:33` does
+   `data ?? STATIC_FALLBACK`, so clearing `exp_announcement.is_active` **still renders a
+   hard-coded banner**; and the admin homepage page has no announcement panel at all
+   (`ALL_SECTION_KEYS` in `sections/route.ts:8-26` deliberately excludes `announcement` — the
+   intended switch is `exp_announcement.is_active`). Separately, the live table holds **two
+   identical active rows**, and the newest-wins `limit(1)` query hides that landmine.
+
+High:
+
+5. **The banner and footer CTA point at a non-existent category (404).** ❌ **NOT DONE.**
+   `exp_announcement.cta_href` is `/shop/categories/engraved-drinkware`, which is **not** a key
+   in `exp_taxonomy` (the drinkware keys are `drinkware` and `powder_coated_tumbler`), and
+   `src/app/shop/categories/[slug]/page.tsx:52` calls `notFound()` for an unknown slug. The same
+   href appears in `src/components/layout/Footer.tsx:16` ("Engraved Drinkware") and in
+   `AnnouncementBanner.tsx:28` (`STATIC_FALLBACK`). Repoint all three at a real category.
+6. **Migrate `middleware.ts` → `proxy.ts` (Next 16 deprecation).** ❌ **NOT DONE.** Dev log,
+   verbatim: `⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.` →
+   `npx @next/codemod@canary middleware-to-proxy .`. `src/middleware.ts` is the only such file
+   (`src/proxy.ts` does not exist). Preserve the nonce contract — the `x-nonce` response header
+   **and** the `rrs_csp_nonce` cookie, both read at `src/app/layout.tsx:73-75` — plus
+   `config.matcher` (line 277) and the `CSP_NONCE_COOKIE` export. Verify afterwards: CSP header
+   still set, page still hydrates (a broken nonce presents *exactly* like an unhydrated page),
+   admin still redirects to `/admin/login`, `npm run type-check` clean. Do this together with
+   item 1 — same file, same header.
+7. **Brand-palette drift in section accents.** ❌ **NOT DONE.** `quick_picks.items[].glow_color`
+   holds `#C084FC` (violet), `#6B9E6B` (green) and `#6A7AC4` (indigo) with matching purple /
+   green / navy gradients; the hidden `process_picks` adds `#2ABCD4` (cyan) and `#8B4FBE`
+   (purple). `ShortcutSection.tsx:132,201` makes the "Shop now →" link inherit `glow_color`, so
+   a purple CTA renders beside a gold button. Also a green eyebrow (`#5A9A3A`) at
+   `src/app/shop/ready-made/page.tsx:48`, and `secondary.light` + `letterSpacing: 0.1em` at
+   `CustomOrderPitch.tsx:76-78`. Best fix: recolor the CMS values now (no deploy), then change
+   the CMS validator from free-form hex to a brand-hue enum so it cannot drift back.
+8. **Hero CTA redundancy and a mislabeled analytics event.** ❌ **NOT DONE.**
+   `src/components/home/HeroSection.tsx:150-172` renders "Shop the Hoard" (filled) **and**
+   "Browse Shop" (outlined), both pointing at `/shop`, while the copy directly above promises
+   "Upload your artwork or choose from our ready-made designs" — neither intent is offered. The
+   first button also fires `Analytics.categoryClicked('all', 'shop')`, mislabelling a hero click
+   as a category click. Separately, `HeroSection.tsx:15` still carries the `TODO` to move hero
+   copy into admin-managed content (the `hero` row already exists in `exp_homepage_sections`).
+9. **Shop All filter defaults and a missing empty state.** ❌ **NOT DONE.** No
+   `shop_all_preview` row exists, so the component defaults win at
+   `HomepageProductGrid.tsx:27-28` (`product_count: 6`, `show_filters: true`). All 9 live
+   `exp_products` rows are `is_ready_made=false` / `is_customizable=true`, which makes
+   "Show ready-made" a **no-op** and "Show customizable" OFF remove every product **with no
+   empty state** — the `if (!products.length) return null` guard at line 83 only covers the
+   pre-filter list. Depends on item 3 (the row cannot be created until writes can insert).
+10. **No favicon and no OG image.** ❌ **NOT DONE.** `public/` does not exist and there is no
+    `src/app/icon.*`, so `/favicon.ico` 404s on every page load (`middleware.ts:277` even
+    excludes it from the matcher). There is no `sitemap.ts` either — that part belongs to §2.10.
+    A programmatic `src/app/icon.tsx` using `ImageResponse` avoids waiting on artwork.
+
+Medium:
+
+11. **Hero collage renders 4 invisible placeholder tiles and absolute production URLs.** ❌
+    **NOT DONE.** The `hero_collage` content has `image_count: 6` with 4 entries at `url: ""`;
+    those fall into the placeholder branch (`HeroCollage.tsx:192-207`) at
+    `alpha(parchment, 0.3)`, which reads as empty space rather than intentional art. The 2 real
+    tiles link to absolute `https://rubysrelicsstudio.vercel.app/...` URLs, so in local dev
+    those clicks leave the dev server — make them relative. The collage is also `lg`-only
+    (`display: { xs: 'none', lg: 'block' }`, line 117), so tablet and mobile get no imagery.
+    Real photos are the eventual fix; sizing the container to the real image count, and giving
+    the placeholder branch a label plus stronger contrast, are the interim options.
+12. **Eyebrow labels are hard-coded and `overline` sits below the 12px floor.** ❌ **NOT DONE.**
+    Roughly 30 `variant="overline"` sites across the app (most of them in
+    `src/components/home/`); `ShortcutSection.tsx:80-88` reuses the `ariaLabel` prop as the
+    visible eyebrow, so one string does accessibility and editorial duty and cannot be changed
+    independently. `theme.ts:111-116` sets `0.7rem` (11.2px) — a single theme edit fixes every
+    site at once. The CMS follow-up is a shared `SectionHeading` plus a `content.eyebrow` field
+    (validator + admin editor). Note the theme's `textTransform: 'uppercase'` already hides
+    source-case differences, so the real issues are hard-coding, colour drift, and tone
+    ("Shop preview" reads like internal jargon). See §2.8.
+13. **Mobile hero wastes ~200px of vertical space.** ❌ **NOT DONE.** `HeroSection.tsx:28` sets
+    `minHeight: { xs: '88vh' }` = 743px at 390×844 with `py: 10` and vertically centred content;
+    the banner (73px) and header (64px) add ~137px of chrome above it, and the scroll cue is
+    20×32px at `opacity: 0.4` (lines 215-257). Reclaim it with
+    `minHeight: { xs: 'auto', sm: '72vh', md: '90vh' }`, a smaller `py` on xs, a tighter trust
+    row, and a higher-contrast cue. See §2.11.
+14. **Homepage section queries under-fetch their own content.** ❌ **NOT DONE.**
+    `src/app/page.tsx:54-55` calls `getVisibleTestimonials(3)` while 6 testimonial rows exist,
+    and `getPublishedGallery(6)` while 12 gallery rows exist — both sections would render
+    half-empty on the day they are re-enabled.
+
+Content/data-only decisions (no deploy required):
+
+15. **Homepage content toggles, pending items 2/3 for anything order-related.** ❌ **NOT DONE.**
+    Hide `quick_picks`; enable `faq_preview` (it already sits above "The Forge's Codex" in the
+    JSX order and 8 `exp_faq` rows exist for `section='homepage'`); set the `order_paths` /
+    `shop_all_preview` `sort_order` values so "Three Ways to Claim Your Treasure" precedes the
+    product grid; repoint the banner CTA (item 5); delete the duplicate active `exp_announcement`
+    row; fill the null `exp_taxonomy.emoji` values (`wood_goods`, `pet_products`) and give
+    `signs_and_decor` its own glyph (🪵 is currently shared with `wood_basswood`, which is why a
+    slate product reads as a wood one); recolor the shortcut accents (item 7).
+
+Informational (no action yet):
+
+- The NSFW line at `HeroSection.tsx:127-138` (`alpha(forgeGold, 0.65)` + italic) is deliberate
+  brand positioning — suggestive work is welcome — but it is styled like a compliance
+  disclaimer, sitting directly under the value proposition at every breakpoint. It should read
+  as confidence rather than fine print (higher contrast, no italic, or a chip in the trust row)
+  and link to the existing `faq-nsfw` entry / `/resources`. Refinement is pending a wording
+  decision.
+- `/gallery` exists but is not linked from the header nav, while the homepage gallery teaser
+  (`fresh_from_forge`) is hidden.
+- The cookie banner does not gate analytics, and `@vercel/analytics` is cookieless — confirm the
+  privacy copy matches actual behaviour before relying on the data.
+- `src/app/page.tsx` comment numbering duplicates ("7a", then "7." and "8." twice) — cosmetic,
+  but confusing when editing the exact section order that item 2 changes.
+
+Re-classifications from this pass (2026-09-19):
+
+- **§3.4** — claim confirmed (903 lines now, not 967; `return (` still at 414; the rendered
+  panels are Section Visibility at 432, Hero Collage at 534 and the tile editors at 673+, with
+  **no** Shop All / Future Products editor), but it now carries a **dependency on item 3**:
+  completing the UI without the upsert fix produces an editor that appears to save and silently
+  discards input.
+- **§3.8** — ❌ → 🟡: the `enabled` gate exists at `src/app/page.tsx:150`.
+- **§3.11** — the helpers already exist in `src/lib/analytics/events.ts` but are never called,
+  and the whole analytics surface is dead until item 1 is fixed.
