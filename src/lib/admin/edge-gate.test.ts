@@ -67,10 +67,11 @@ describe('ADMIN_AUTH_EXEMPT_PATHS', () => {
     // Without this one the gate would bounce /admin/not-authorized back to
     // /admin/login and a signed-in non-admin would loop forever.
     expect(isAdminAuthExemptPath('/admin/not-authorized')).toBe(true)
-    expect(isAdminAuthExemptPath('/api/admin/session')).toBe(true)
+    expect(ADMIN_AUTH_EXEMPT_PATHS).toHaveLength(2)
   })
 
-  it('no longer exempts the retired MFA flow', () => {
+  it('no longer exempts the retired key, MFA and custom-session paths', () => {
+    expect(isAdminAuthExemptPath('/api/admin/session')).toBe(false)
     expect(isAdminAuthExemptPath('/admin/mfa-challenge')).toBe(false)
     expect(isAdminAuthExemptPath('/api/admin/send-mfa')).toBe(false)
     expect(isAdminAuthExemptPath('/api/admin/verify-mfa')).toBe(false)
@@ -81,6 +82,5 @@ describe('ADMIN_AUTH_EXEMPT_PATHS', () => {
     expect(isAdminAuthExemptPath('/admin/homepage')).toBe(false)
     expect(isAdminAuthExemptPath('/admin/login/extra')).toBe(false)
     expect(isAdminAuthExemptPath('/api/admin/orders')).toBe(false)
-    expect(ADMIN_AUTH_EXEMPT_PATHS).toHaveLength(3)
   })
 })

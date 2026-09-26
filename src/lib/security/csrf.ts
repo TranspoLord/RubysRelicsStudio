@@ -69,8 +69,11 @@ export function validateCsrfOrigin(request: Request): boolean {
 }
 
 /**
- * Lenient same-origin check for pre-authentication mutation endpoints (e.g.
- * login/logout at /api/admin/session).
+ * Lenient same-origin check retained for pre-authentication mutation endpoints.
+ * It was written for the admin key login/logout at `/api/admin/session`, which
+ * the Google-OAuth switch deleted (SEPT_IMPLEMENTATION_PLAN §10.10); the pattern
+ * stays because `docs/archive/PENTEST_CSRF_PLAYBOOK.md` §2.4 recommends exactly
+ * this check for any future pre-auth mutation route.
  *
  * Unlike `validateCsrfOrigin`, this returns `true` when the request omits
  * both Origin and Referer — many same-origin `fetch()` calls (and some edge

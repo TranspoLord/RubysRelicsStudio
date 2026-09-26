@@ -16,6 +16,7 @@ import { useRouter } from 'next/navigation'
 import { usePathname } from 'next/navigation'
 
 import { brandTokens } from '@/theme/theme'
+import { useAuth } from '@/components/auth/AuthProvider'
 
 export interface AdminModuleLink {
   label: string
@@ -53,6 +54,7 @@ function panelSurface(tint: string, surfaceAlpha = 0.98, tintAlpha = 0.06) {
 export function AdminShell({ children, notificationCount, moduleLinks }: AdminShellProps) {
   const router = useRouter()
   const pathname = usePathname()
+  const { signOut: signOutSupabase } = useAuth()
   const [query, setQuery] = useState('')
   const [searching, setSearching] = useState(false)
   const [remoteResults, setRemoteResults] = useState<AdminSearchResult[]>([])
@@ -151,8 +153,10 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
     await loadNotifications()
   }
 
-  async function signOut() {
-    await fetch('/api/admin/session', { method: 'DELETE' })
+  async function handleSignOut() {
+    // Supabase's signOut() revokes the refresh token server-side, so this is a
+    // real revocation — the retired custom cookie's "sign out" never was (§1.6).
+    await signOutSupabase()
     router.replace('/admin/login')
     router.refresh()
   }
@@ -193,7 +197,7 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
                 </Badge>
               </IconButton>
 
-              <Button variant="outlined" size="small" startIcon={<LogoutOutlinedIcon />} onClick={signOut}>
+              <Button variant="outlined" size="small" startIcon={<LogoutOutlinedIcon />} onClick={handleSignOut}>
                 Sign out
               </Button>
             </Box>

@@ -898,22 +898,6 @@ enabled, no policies, all access revoked from `anon` / `authenticated`).
 | `last_login_at` | `timestamptz` |  Nullable |
 | `revoked_at` | `timestamptz` |  Nullable |
 
-## Table `exp_admin_sessions`
-
-### Columns
-
-| Name | Type | Constraints |
-|------|------|-------------|
-| `id` | `uuid` | Primary |
-| `token_hash` | `text` |  Unique |
-| `jti` | `text` |  Unique |
-| `ip_address` | `text` |  Nullable |
-| `user_agent` | `text` |  Nullable |
-| `created_at` | `timestamptz` |  |
-| `expires_at` | `timestamptz` |  |
-| `revoked_at` | `timestamptz` |  Nullable |
-| `last_activity_at` | `timestamptz` |  Nullable |
-
 ## Table `exp_artwork_uploads`
 
 ### Columns
@@ -925,21 +909,6 @@ enabled, no policies, all access revoked from `anon` / `authenticated`).
 | `file_path` | `text` |  |
 | `created_at` | `timestamptz` |  |
 | `expires_at` | `timestamptz` |  |
-
-## Table `admin_mfa_codes`
-
-### Columns
-
-| Name | Type | Constraints |
-|------|------|-------------|
-| `id` | `int8` | Primary Identity |
-| `ip` | `text` |  Nullable |
-| `code` | `text` |  |
-| `created_at` | `timestamptz` |  |
-| `expires_at` | `timestamptz` |  |
-| `used` | `bool` |  |
-| `challenge_token` | `text` |  Nullable |
-| `device_fingerprint` | `text` |  Nullable |
 
 ## Table `exp_future_product_statuses`
 

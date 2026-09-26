@@ -22,15 +22,15 @@ import { hasAdminRole, type AuthClaims } from '@/lib/auth/claims'
  * - `/admin/not-authorized` — §10.4's landing page for a signed-in non-admin.
  *   Omitting it here would bounce that page straight back to `/admin/login`
  *   and the two would loop.
- * - `/api/admin/session` — legacy session-status endpoint, retired in §10.10.
  *
- * `/admin/mfa-challenge`, `/api/admin/send-mfa` and `/api/admin/verify-mfa` are
- * deliberately absent: that flow is deleted by §10.8/§10.9.
+ * That is the whole list. Every other `/admin` or `/api/admin` path needs the
+ * admin claim — including the retired `/admin/mfa-challenge`,
+ * `/api/admin/session`, `/api/admin/send-mfa` and `/api/admin/verify-mfa`
+ * paths, whose files were deleted by §10.8–§10.10.
  */
 export const ADMIN_AUTH_EXEMPT_PATHS = [
   '/admin/login',
   '/admin/not-authorized',
-  '/api/admin/session',
 ] as const
 
 export function isAdminAuthExemptPath(pathname: string): boolean {

@@ -39,17 +39,17 @@ and §9.7).
 
 | Section | ✅ Done | 🟡 Partial | ❌ Not done | Other |
 |---|---|---|---|---|
-| 1. Security & deployment | 0 | 1 | 5 | — |
+| 1. Security & deployment | 3 | 0 | 3 | — |
 | 2. Retention & notification | 6 | 3 | 5 | 1 unverified |
 | 3. Future-products / homepage | 5 | 2 | 5 | — |
 | 4. Product designer / 3D | 0 | 2 | 2 | — |
 | 5. General hygiene | 2 | 0 | 0 | — |
-| 6. Live DB follow-ups | 0 | 0 | 3 | 1 corrected, 2 informational |
+| 6. Live DB follow-ups | 1 | 0 | 2 | 1 corrected, 2 informational |
 | 7. Storefront UI (added 2026-09-19) | 0 | 0 | 15 | 4 informational |
 | 8. Storefront UI, 2nd pass (added 2026-09-24) | 0 | 0 | 9 | — |
 | 9. Admin panel UI (added 2026-09-24) | 1 | 0 | 16 | 1 unverified area (interactions) |
-| 10. Admin auth switch: MFA → Google OAuth (added 2026-09-24) | 7 | 1 | 7 | 2 deferred decisions |
-| **Total** | **21** | **9** | **67** | **11** |
+| 10. Admin auth switch: MFA → Google OAuth (added 2026-09-24) | 14 | 1 | 0 | 2 open decisions |
+| **Total** | **32** | **8** | **57** | **11** |
 
 Highest-value open items: **the admin panel's blocking redirect is fixed** — the Edge verifier had been
 deriving a different session-signing key than the signer, so *no* login could reach `/admin` (§9.1) — which
@@ -70,7 +70,9 @@ Until it lands, the panel keeps a shared secret, an audit log that cannot name t
 does not revoke. **Updated 2026-09-26: the cutover has landed** (§10.1–§10.7 ✅) — the panel authenticates
 with Supabase Auth, every panel action is attributed to a named admin, and the shared key plus emailed MFA are
 off the request path entirely (their endpoints are deleted in §10.8–§10.12). What remains of §10 is removal
-and hygiene, not exposure.
+and hygiene, not exposure. **Updated 2026-09-26 (final): §10 is done** — 14 of 15 items ✅, §10.13 🟡 only
+because the Vercel environment variables still need removing, so the retired stack exists neither in code nor
+in the database. What remains are its two open decisions (§10.16 second factor, §10.17 session management).
 
 ## 1. Security & deployment follow-ups
 
@@ -85,25 +87,26 @@ and hygiene, not exposure.
    schema_name='supabase_migrations'` → `0`. Still absent._
 2. Set and verify `SESSION_SIGNING_KEY_SEED`, `SESSION_HASH_KEY_SEED`,
    `MFA_CODE_HASH_KEY_SEED` in every environment — the Node and Edge values must match.
-   🟡 **PARTIAL.** Local `.env` has all three set (64 hex chars each) ✓. `NEXT_PUBLIC_SITE_URL`
-   is **missing** and `NEXT_PUBLIC_APP_URL` still holds the localhost fallback, so email /
-   checkout redirect URLs resolve to localhost in local dev. Vercel values are not verifiable
-   from the repo. **→ Superseded in part by §10.13:** the three seed variables go away with the MFA switch;
-   only the `NEXT_PUBLIC_SITE_URL` gap survives — and it is needed for the Google OAuth `redirectTo` anyway.
+   ✅ **DONE / OBSOLETE (2026-09-26).** Those seeds existed only for the custom admin session, which is
+   deleted (§10.13): they are gone from `.env`, `.env.example` and `src/test-setup.ts`, so there is nothing
+   left to set or verify. The other half of this item — `NEXT_PUBLIC_SITE_URL` — is now **set locally**
+   (`http://localhost:3000`), which is what makes the Google `redirectTo` return to the right host; before it
+   was set, a local sign-in could be handed to the production Site URL. It still needs setting to the
+   production origin in Vercel, where values stay unverifiable from the repo. §10.13 tracks that residual.
 3. Add route-level regression tests for the Square checkout promo application and the new
    required-shipping validation (only pure helpers are unit-tested today). ❌ **NOT DONE.**
    `src/app/api/square/checkout/route.test.ts` does not exist, and there are **no** test files
    anywhere under `src/app/api/square/`.
 4. Remove the dead legacy `ip`-column fallback in `src/lib/admin/mfa-store.ts` now that the
-   live `admin_mfa_codes` table uses `challenge_token`. ❌ **NOT DONE.** Still present at
-   `src/lib/admin/mfa-store.ts:137,140,178-180,203-207`. **→ Superseded by §10.8:** the file is deleted
-   whole (the MFA code path it belongs to is removed), so repairing the dead fallback is no longer the plan.
+   live `admin_mfa_codes` table uses `challenge_token`. ✅ **DONE — closed by deletion (2026-09-26).** The
+   file went with the whole MFA stack (§10.8) and the `ip` column went with the table (§10.12), so there is
+   nothing left to repair.
 5. Verify `npm audit --audit-level=high` passes locally (CI workflow exists). ❌ **FAILS.**
    One **high** severity advisory: `@xmldom/xmldom` 0.9.0-beta.1 – 0.9.11 (13 advisories:
    XML name/attribute/PI/DOCTYPE injection, ReDoS, quadratic parse/memory). `npm audit fix`
    offers a fix.
 6. **Sign out clears the cookie but never revokes the session row, so a copied token survives
-   logout.** ❌ **NOT DONE.** `AdminShell.tsx:154-157` signs out with
+   logout.** ✅ **DONE — closed by §10.10 (2026-09-26).**
    `fetch('/api/admin/session', { method: 'DELETE' })`, and that handler
    (`src/app/api/admin/session/route.ts:122-140`) only overwrites the cookie with an empty value at
    `maxAge: 0` — it never calls `revokeAdminSession(jti)`. Revocation is reachable **only** via
@@ -122,6 +125,10 @@ and hygiene, not exposure.
    too. **→ Superseded by §10.10:** the custom session token (and this bug with it) is retired in favour of
    Supabase session cookies, where `signOut()` revokes the refresh token. The item stays open until §10.10
    lands — until then the fix above is still the correct stop-gap.
+   **Closed:** the custom session is gone entirely. `AdminShell` signs out through Supabase's `signOut()`,
+   which revokes the refresh token, and the panel's authority is the `exp_admin_users` row re-checked on
+   every request by `requireAdminApiSession`. Nothing reads `rr_admin_session` any more, so a copied one
+   grants nothing — the "Sign out that does not revoke" defect no longer has a mechanism to exist in.
 
 ## 2. Retention & notification gaps
 
@@ -312,10 +319,12 @@ Action items:
    `049`, and `supabase/verification/schema_repair.sql`.
    - `drop table if exists public.exp_stripe_webhook_events;` — dead Stripe-era table, nothing
      in the codebase reads it.
-   - `alter table public.admin_mfa_codes drop column if exists ip;` — dead column targeted
-     only by the legacy `tryVerifyWithColumn(…, 'ip')` fallback.
+   - ~~`alter table public.admin_mfa_codes drop column if exists ip;`~~ — **moot as of 2026-09-26:** the
+     whole `admin_mfa_codes` table was dropped by §10.12, so only the `exp_stripe_webhook_events` drop
+     remains here. Renumber it to land *after* §10.12 rather than claiming `065` up front.
 3. Remove the dead legacy `ip`-column fallback in `src/lib/admin/mfa-store.ts` (also listed in
-   §1 item 4) once the column is dropped. ❌ **NOT DONE.**
+   §1 item 4) once the column is dropped. ✅ **DONE — closed by deletion (2026-09-26):** the file and the
+   column it fell back to both no longer exist.
 4. ~~**Fix the local `.env` Supabase key.**~~ ✅ **CORRECTED — NOT A REAL ISSUE.** The finding
    was an artifact of probing `/rest/v1/` at the root with `select=*`; re-tested 2026-09-16 with
    real queries the `sb_publishable_…` key authenticates correctly (`exp_products` → `200` with
@@ -853,17 +862,17 @@ key + MFA retained) and must be rewritten as part of §10.15._
 Google account only reaches `/admin` when it is on an explicit allow-list. Customer accounts are **not** in
 scope: nothing in the storefront changes.
 
-**Status: 🟡 IN PROGRESS — the cutover has landed.** §10.1–§10.7 are **✅ DONE**, verified against the hosted
-project and (for the fail-closed half) against a running production build on 2026-09-26; §10.15 is 🟡 (its
-additions landed, its deletions belong with the code they cover); §10.8–§10.14 remain ❌ and are pure
-removals, plus the two open decisions (§10.16/§10.17). The panel now authenticates with Supabase Auth: the
-bespoke HMAC cookie, the shared key and the emailed-MFA step are **no longer on any request path** — the
-files still compile and ship until §10.8–§10.12 delete them, so the remaining risk is clutter, not exposure.
-The Supabase CLI **is** authenticated in this environment (`supabase --version` 2.118.0; `db query --linked`
-works), so the live-database half of this plan's convention is checkable and was used throughout. §10.7's
-columns were applied early (migration `067`). Both tables §10.12 will drop still exist and held
-**1** `admin_mfa_codes` row and **28** `exp_admin_sessions` rows on 2026-09-26 — re-check immediately before
-dropping.
+**Status: ✅ COMPLETE except one environment step and two decisions.** §10.8–§10.12 and §10.14–§10.15
+landed on 2026-09-26, so of the fifteen build/removal items **fourteen are ✅ and one (§10.13) is 🟡** — its
+repository half is done, and only the corresponding Vercel environment variables are outstanding (they need
+dashboard access). The retired stack is gone in code *and* in the database: the file set was deleted (MFA
+store, three endpoints, challenge page, custom session module, its two routes, the deprecated `AALGuard`,
+`fingerprint.ts`), and `admin_mfa_codes` (1 row), `exp_admin_sessions` (28 rows) and
+`cleanup_expired_mfa_codes()` were dropped after a JSON copy-out to `%TEMP%`. Verified after the removal:
+`grep -ril "mfa" src/` returns only documentation of the removal, `npm run type-check` clean, **34 files /
+228 tests** green, `npm run build` succeeds with `/admin/login` and `/admin/not-authorized` the only admin
+entry routes, `npm run lint` unchanged at its 9 pre-existing errors, and `npm run test:security:rls` passes.
+Still open: §10.16 (is a *second* factor wanted at all?) and §10.17 (per-session management).
 
 ### 10.0 Decision record — what is removed, what replaces it
 
@@ -1039,7 +1048,7 @@ green throughout — it is the safety net for §10.3.
 
 ### 10.8–10.11 — Remove
 
-8. **§10.8 Delete the MFA code store and its endpoints.** ❌ **NOT DONE.** `src/lib/admin/mfa-store.ts`
+8. **§10.8 Delete the MFA code store and its endpoints.** ✅ **DONE** — deleted 2026-09-26. `src/lib/admin/mfa-store.ts`
    (66 matching lines: `createMFACode:107`, `verifyMFACode:80`, stored-code hashing keyed off
    `MFA_CODE_HASH_KEY_SEED:33`), `src/app/api/admin/send-mfa/route.ts` (Resend email delivery + a
    `verifyAdminSessionToken(sessionToken, adminKey, false)` pre-check at `:30`),
@@ -1048,12 +1057,18 @@ green throughout — it is the safety net for §10.3.
    reports env presence), and `src/app/api/admin/verify-mfa/route.test.ts` (13 MFA references). Also delete
    `src/lib/fingerprint.ts` — its header states it exists "for MFA verification" (`:2`) and its only consumer
    is the MFA page. §1.4 (dead `ip` fallback) is closed by deletion rather than by repair.
-9. **§10.9 Delete `/admin/mfa-challenge`.** ❌ **NOT DONE.** `src/app/admin/mfa-challenge/page.tsx`
+   **Deleted (2026-09-26):** the five files above, `src/lib/fingerprint.ts`, and the empty
+   `src/app/api/admin/debug-totp/` directory a TOTP experiment had left behind. One correction while
+   deleting: `mfa-debug` was **not** production-reachable — `route.ts:30-37` returned `403` whenever
+   `isProd()`, so its exposure was dev/preview only. `grep -ril "mfa" src/` now returns only this
+   documentation, the "no longer exempt" assertions in `edge-gate.test.ts`, and the unrelated
+   `failClosed` comment at `lib/rate-limit.ts:87`.
+9. **§10.9 Delete `/admin/mfa-challenge`.** ✅ **DONE** — deleted 2026-09-26, together with its Edge exemption (the exemption list is now just `/admin/login` + `/admin/not-authorized`, asserted by `edge-gate.test.ts`). `src/app/admin/mfa-challenge/page.tsx`
    (197 lines: `send-mfa` at `:57`, `verify-mfa` at `:85`, fingerprint collection at `:28`, countdown,
    `router.push('/admin')` at `:105`), its middleware exemption (`middleware.ts:180`) and the
    `redirect('/admin/mfa-challenge?next=…')` target in `auth.ts:124`. Nothing else links to it once §10.4 and
    §10.6 land.
-10. **§10.10 Delete the custom admin session system.** ❌ **NOT DONE.** `src/lib/admin/session.ts` in full:
+10. **§10.10 Delete the custom admin session system.** ✅ **DONE** — deleted 2026-09-26. `src/lib/admin/session.ts` in full:
     `ADMIN_COOKIE_NAME:6`, `SESSION_VERSION='v2':10`, `createAdminSessionToken`, `verifyAdminSessionToken:117`,
     `revokeAdminSession`/`revokeOtherAdminSessions`/`listAdminSessions:188-246`, `extractJtiFromToken:251`,
     `extractMfaFlagFromToken:263`, `getAdminSessionMaxAgeSeconds:270`, and the HKDF seeding from
@@ -1063,14 +1078,20 @@ green throughout — it is the safety net for §10.3.
     it as a thin wrapper is the alternative. Delete `/api/admin/sessions` outright — it lists and revokes
     `exp_admin_sessions` rows and has **no UI caller** (only its own file matches: `sessions/route.ts:47,66`),
     so it is dead authenticated surface.
-11. **§10.11 Delete the deprecated client guard.** ❌ **NOT DONE.** `src/components/admin/AALGuard.tsx`
+    **Deleted:** `src/lib/admin/session.ts` (+ `session.test.ts`), `src/app/api/admin/session/`
+    (+ its test), `src/app/api/admin/sessions/`, the three orphaned helpers in `lib/admin/auth.ts`
+    (`getExpectedAdminKey`, `hasValidAdminKey`, `extractAdminSessionToken`), and `AdminShell`'s
+    sign-out now calls the Supabase client's `signOut()` — **which closes §1.6**: signing out
+    revokes the refresh token instead of merely blanking a cookie. `/api/admin/session` was kept
+    *out* of the Edge exemption list in the same change, so no unauthenticated path to it remains.
+11. **§10.11 Delete the deprecated client guard.** ✅ **DONE** — `src/components/admin/AALGuard.tsx` deleted 2026-09-26; it had 16 matching lines, was imported nowhere, and still shipped a client-side `fetch('/api/admin/session')` guard. No client-side guard that makes an auth decision remains.
     (16 matching lines) is self-declared `@deprecated` and imported nowhere (`:1-9`) yet still ships a
     client-side `fetch('/api/admin/session')` guard and a `/admin/mfa-challenge` push (`:39,47,89`). Any
     client-side guard that survives should read `useAuth()` for display only and never make an auth decision.
 
 ### 10.12–10.15 — Database, config & docs
 
-12. **§10.12 Drop the MFA and custom-session tables.** ❌ **NOT DONE.** One migration dropping
+12. **§10.12 Drop the MFA and custom-session tables.** ✅ **DONE** — dropped live 2026-09-26. One migration dropping
     `admin_mfa_codes` (created `040_admin_mfa_codes.sql:5`, extended by `041_admin_mfa_challenge_token.sql:11-23`)
     together with its `cleanup_expired_mfa_codes()` function (`040:29-38`), and `exp_admin_sessions`
     (`045_admin_sessions.sql:10`, defensively re-created in `048_missing_schema_fixes.sql:103` and
@@ -1078,19 +1099,39 @@ green throughout — it is the safety net for §10.3.
     **`admin_mfa_codes` = 1 row, `exp_admin_sessions` = 28 rows** (re-check immediately before the `DROP`; the
     session count grows on every login until §10.10 lands). Then update `docs/Database.md`, which is the
     canonical schema reference and still documents both tables.
-13. **§10.13 Environment and test-seed cleanup.** ❌ **NOT DONE.** Remove `ADMIN_LOGIN_KEY`,
+    **Executed:** the rows were copied out first (JSON, outside the repo — `%TEMP%\rrs-admin-auth-tables-backup-2026-09-26.json`),
+    then `drop table if exists public.admin_mfa_codes`, `drop table if exists public.exp_admin_sessions`
+    and `drop function if exists public.cleanup_expired_mfa_codes()` were run through `db query --linked`.
+    Verified afterwards: **0** of the two tables remain, the function is gone, `pg_cron` is not installed
+    (so no scheduled job referenced it), and no FK pointed at either table. Both `docs/Database.md`
+    sections were removed with the tables. Note: migration `040`/`041`/`048`/`049` still *create* these
+    objects — that is the historical record and stays; dropping them is a manual step until §1.1's
+    migration history is baselined.
+13. **§10.13 Environment and test-seed cleanup.** 🟡 **PARTIAL** — the repository half is done
+    (2026-09-26); the Vercel half is outstanding. Remove `ADMIN_LOGIN_KEY`,
     `ADMIN_MFA_EMAIL`, `MFA_CODE_HASH_KEY_SEED`, `SESSION_SIGNING_KEY_SEED`, `SESSION_HASH_KEY_SEED` and
     `ALLOW_LEGACY_ADMIN_SESSION_FALLBACK` from `.env`, `.env.example`, the Vercel environments (all three) and
     the `src/test-setup.ts` seeds. `ADMIN_TOTP_SECRET` is *already* stale: it is set in `.env` but nothing
     reads it (there is no `debug-totp` route — only `mfa-debug`), so delete it too. This closes the seed half
     of §1.2, leaving only that item's `NEXT_PUBLIC_SITE_URL` gap — which the Google OAuth `redirectTo` needs
     anyway, so fix both together.
-14. **§10.14 Dependency sweep.** ❌ **NOT DONE.** `bcryptjs` (`package.json:29`) has **zero** usages in `src/`
+    **Done:** all seven variables removed from `.env` (local) and the five that appeared there removed
+    from `.env.example`, whose admin section now points at the allow-list instead;
+    `src/test-setup.ts` reduced to an empty setup entry point; `scripts/generate-totp-secret.js` deleted
+    (it was the only remaining producer of `ADMIN_TOTP_SECRET`, which is why that variable looked
+    orphaned-but-not-quite in the §10 review). **Outstanding:** the same variables still exist in the
+    three Vercel environments — that needs dashboard access (`npx vercel env rm <name> production`), and
+    until it happens production keeps inert secrets. `NEXT_PUBLIC_SITE_URL` is now set locally and still
+    needs to be set to the production origin in Vercel.
+14. **§10.14 Dependency sweep.** ✅ **DONE** — `bcryptjs` removed 2026-09-26. `bcryptjs` (`package.json:29`) has **zero** usages in `src/`
     or `scripts/` (verified by grep) — it was the password hasher for the customer accounts removed in
     `042_remove_customer_accounts.sql`, so this switch is the moment to drop it. Re-run
     `npm audit --audit-level=high` afterwards; §1.5's `@xmldom/xmldom` high advisory is separate and remains.
-15. **§10.15 Test-suite rework (ships with §10.3–§10.5, not after).** 🟡 **PARTIAL** — additions landed
-    2026-09-26; the deletions are deliberately deferred to the §10.8/§10.10 commit.
+    **Verified:** `npm uninstall bcryptjs` removed it from `package.json` and the lockfile, and
+    `git grep -i bcrypt` returns nothing. `npm run audit` still reports exactly one high advisory
+    (`@xmldom/xmldom`, 4 GHSA entries) — unchanged, as expected, and still tracked by §1.5.
+15. **§10.15 Test-suite rework (ships with §10.3–§10.5, not after).** ✅ **DONE** — the additions landed
+    2026-09-26 and the deletions followed in the same commit as the code they covered.
     `src/lib/admin/session.test.ts` (26 matching lines), `verify-mfa/route.test.ts`, and the
     key-specific cases in `session/route.test.ts`. Add: (a) an edge-claim gate test — missing claim, wrong
     role, expired token → 401 for APIs and redirect for pages, plus an explicit `app_metadata` vs
@@ -1105,9 +1146,11 @@ green throughout — it is the safety net for §10.3.
     gate's three redirect outcomes + the once-per-sign-in `last_login_at` stamp) and `redirect.admin.test.ts`
     (5 cases for the `/admin/**` confinement). Suite: **33 files / 216 tests → 37 files / 255 tests, green**,
     with `auth-route-pattern.test.ts` untouched and still passing.
-    **Deferred on purpose:** deleting `session.test.ts`, `verify-mfa/route.test.ts` and the key-specific cases
-    in `session/route.test.ts` now would remove the only coverage of code that *still ships* until §10.8/§10.10
-    delete it. Tests are deleted with the code they cover, not before it.
+    **Deleted with their code (2026-09-26):** `session.test.ts`, `verify-mfa/route.test.ts` and
+    `session/route.test.ts`. Tests went out with the code they covered, which is why they were not deleted
+    in the earlier commit. Suite after the removal: **34 files / 228 tests, green**, with
+    `auth-route-pattern.test.ts` still passing and still asserting that every route using
+    `requireAdminApiSession` checks `!auth.ok`.
 
 ### 10.16–10.17 — Deferred decisions
 

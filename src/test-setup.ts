@@ -1,11 +1,12 @@
-// Central test environment defaults for cryptographic secrets that must be
-// present at module-load time.
-if (!process.env.SESSION_SIGNING_KEY_SEED) {
-  process.env.SESSION_SIGNING_KEY_SEED = '0'.repeat(64)
-}
-if (!process.env.SESSION_HASH_KEY_SEED) {
-  process.env.SESSION_HASH_KEY_SEED = '1'.repeat(64)
-}
-if (!process.env.MFA_CODE_HASH_KEY_SEED) {
-  process.env.MFA_CODE_HASH_KEY_SEED = '2'.repeat(64)
-}
+/**
+ * Vitest setup entry point (`vitest.config.ts` → `setupFiles`).
+ *
+ * The admin session/MFA seeds that used to be injected here
+ * (`SESSION_SIGNING_KEY_SEED`, `SESSION_HASH_KEY_SEED`, `MFA_CODE_HASH_KEY_SEED`)
+ * were removed with the custom session stack in SEPT_IMPLEMENTATION_PLAN §10.13.
+ * Suites that need environment variables set them themselves; this file stays so
+ * the config keeps a single, obvious place for shared test setup.
+ */
+
+export {}
+

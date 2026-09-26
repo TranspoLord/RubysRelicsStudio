@@ -15,11 +15,9 @@
  * Fails closed at every step, including on database errors.
  */
 
-import { timingSafeEqual } from 'node:crypto'
 import { redirect } from 'next/navigation'
 import { NextResponse } from 'next/server'
 
-import { ADMIN_COOKIE_NAME } from '@/lib/admin/session'
 import { hasAdminRole, readAuthClaims, type AuthClaims } from '@/lib/auth/claims'
 import { sanitizeAdminNextPath } from '@/lib/auth/redirect'
 import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
@@ -124,42 +122,11 @@ function stampLastLoginIfNewSignIn(claims: AuthClaims, row: AdminAllowListRow): 
   })()
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Legacy helpers — key + MFA stack, scheduled for deletion (§10.8 / §10.10)
-//
-// These three exist only so `/api/admin/{session,send-mfa,verify-mfa}` still
-// compile until that removal commit lands. Nothing in the new gates uses them,
-// and every one of those routes is now unreachable without an admin claim.
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** @deprecated Retired with the shared-key login (§10.8/§10.10). */
-export function extractAdminSessionToken(cookieHeader: string | null): string | undefined {
-  if (!cookieHeader) return undefined
-
-  return cookieHeader
-    .split(';')
-    .map((entry) => entry.trim())
-    .find((entry) => entry.startsWith(`${ADMIN_COOKIE_NAME}=`))
-    ?.split('=')
-    .slice(1)
-    .join('=')
-}
-
-/** @deprecated Retired with the shared-key login (§10.8/§10.10). */
-export function getExpectedAdminKey(): string {
-  const adminKey = process.env.ADMIN_LOGIN_KEY
-  if (!adminKey) {
-    throw new Error('ADMIN_LOGIN_KEY must be set for admin operations.')
-  }
-
-  return adminKey
-}
-
-/** @deprecated Retired with the shared-key login (§10.8/§10.10). */
-export function hasValidAdminKey(candidate: string, expectedKey: string): boolean {
-  if (!candidate || candidate.length !== expectedKey.length) return false
-  return timingSafeEqual(Buffer.from(candidate), Buffer.from(expectedKey))
-}
+// The shared-key helpers (`extractAdminSessionToken`, `getExpectedAdminKey`,
+// `hasValidAdminKey`) lived here until §10.8/§10.10 deleted the key + MFA routes
+// that were their only consumers. Admin authorization is now entirely
+// `readVerifiedClaims()` + `loadAllowListRow()` above — there is no shared
+// secret left in the request path.
 
 
 /**
