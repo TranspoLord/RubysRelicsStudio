@@ -1,16 +1,42 @@
-import { cookies } from 'next/headers'
-import { redirect } from 'next/navigation'
+/**
+ * Admin authorization gates (SEPT_IMPLEMENTATION_PLAN §10.3 / §10.4).
+ *
+ * Replaces the shared-key + emailed-MFA model. An account may act as an admin
+ * only when both gates agree:
+ *
+ *   1. the verified Supabase JWT carries `app_metadata.role === 'admin'`
+ *   2. the `exp_admin_users` row is active and not revoked (§10.1)
+ *
+ * The row is the **revocation authority**: a JWT stays valid until it expires,
+ * so a claim-only check would let a revoked admin keep working for up to the
+ * access-token lifetime. This is the same split the Edge gate documents
+ * (`src/lib/admin/edge-gate.ts`) — Edge reads the claim, Node re-checks the DB.
+ *
+ * Fails closed at every step, including on database errors.
+ */
+
 import { timingSafeEqual } from 'node:crypto'
+import { redirect } from 'next/navigation'
 import { NextResponse } from 'next/server'
 
-import { ADMIN_COOKIE_NAME, verifyAdminSessionToken } from '@/lib/admin/session'
+import { ADMIN_COOKIE_NAME } from '@/lib/admin/session'
+import { hasAdminRole, readAuthClaims, type AuthClaims } from '@/lib/auth/claims'
+import { sanitizeAdminNextPath } from '@/lib/auth/redirect'
 import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 import { requireCsrf } from '@/lib/security/csrf'
+import { safeLogError } from '@/lib/security/logger'
+import { getSupabaseAdmin } from '@/lib/supabase/client'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
+
+/** Allow-list table created by migration `066`. */
+const ADMIN_ALLOWLIST_TABLE = 'exp_admin_users'
 
 export interface AdminApiContext {
-  adminKey: string
+  /** `auth.users.id` of the acting admin — the audit trail's actor (§10.7). */
+  actorUserId: string
+  /** Display copy; the allow-list row's email is the record. */
+  actorEmail: string | null
   clientIp: string
-  sessionToken?: string
 }
 
 interface AdminRateLimitOptions {
@@ -19,6 +45,94 @@ interface AdminRateLimitOptions {
   windowMs: number
 }
 
+interface AdminAllowListRow {
+  user_id: string
+  email: string
+  is_active: boolean
+  revoked_at: string | null
+  last_login_at: string | null
+}
+
+function unauthorizedResponse(): Response {
+  return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 })
+}
+
+/**
+ * Reads and verifies the Supabase session for this request.
+ * Returns `null` for an absent, expired or forged session — all of which are
+ * treated identically by the callers.
+ */
+async function readVerifiedClaims(): Promise<AuthClaims | null> {
+  const supabase = await createServerSupabaseClient()
+  const { data, error } = await supabase.auth.getClaims()
+  if (error) return null
+  return readAuthClaims(data?.claims)
+}
+
+/**
+ * Reads the allow-list row with the service role (`exp_admin_users` has RLS
+ * enabled and no policies, so the cookie-bound client cannot read it).
+ * Throws when the database cannot answer — callers fail closed.
+ */
+async function loadAllowListRow(userId: string): Promise<AdminAllowListRow | null> {
+  const supabase = getSupabaseAdmin()
+  const { data, error } = await supabase
+    .from(ADMIN_ALLOWLIST_TABLE)
+    .select('user_id, email, is_active, revoked_at, last_login_at')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(`Allow-list read failed: ${error.message}`)
+  }
+
+  return (data as AdminAllowListRow | null) ?? null
+}
+
+/** A row only grants access while it is active and not revoked. */
+function isActiveAdminRow(row: AdminAllowListRow | null): row is AdminAllowListRow {
+  if (!row) return false
+  if (!row.is_active) return false
+  if (row.revoked_at) return false
+  return true
+}
+
+/**
+ * §10.1's `last_login_at`, stamped once per sign-in: the page gate already has
+ * the row in hand, and a JWT whose `iat` is newer than the stored timestamp
+ * means this request is carrying a freshly minted token. Best-effort — a write
+ * failure must never block the panel.
+ */
+function stampLastLoginIfNewSignIn(claims: AuthClaims, row: AdminAllowListRow): void {
+  if (!claims.issuedAt) return
+
+  const previous = row.last_login_at ? new Date(row.last_login_at).getTime() : 0
+  if (claims.issuedAt * 1000 <= previous) return
+
+  void (async () => {
+    try {
+      const supabase = getSupabaseAdmin()
+      const { error } = await supabase
+        .from(ADMIN_ALLOWLIST_TABLE)
+        .update({ last_login_at: new Date().toISOString() })
+        .eq('user_id', claims.sub)
+
+      if (error) throw new Error(error.message)
+    } catch (error) {
+      safeLogError('[admin:auth] last_login_at update failed', error)
+    }
+  })()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Legacy helpers — key + MFA stack, scheduled for deletion (§10.8 / §10.10)
+//
+// These three exist only so `/api/admin/{session,send-mfa,verify-mfa}` still
+// compile until that removal commit lands. Nothing in the new gates uses them,
+// and every one of those routes is now unreachable without an admin claim.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** @deprecated Retired with the shared-key login (§10.8/§10.10). */
 export function extractAdminSessionToken(cookieHeader: string | null): string | undefined {
   if (!cookieHeader) return undefined
 
@@ -31,6 +145,7 @@ export function extractAdminSessionToken(cookieHeader: string | null): string | 
     .join('=')
 }
 
+/** @deprecated Retired with the shared-key login (§10.8/§10.10). */
 export function getExpectedAdminKey(): string {
   const adminKey = process.env.ADMIN_LOGIN_KEY
   if (!adminKey) {
@@ -40,11 +155,20 @@ export function getExpectedAdminKey(): string {
   return adminKey
 }
 
+/** @deprecated Retired with the shared-key login (§10.8/§10.10). */
 export function hasValidAdminKey(candidate: string, expectedKey: string): boolean {
   if (!candidate || candidate.length !== expectedKey.length) return false
   return timingSafeEqual(Buffer.from(candidate), Buffer.from(expectedKey))
 }
 
+
+/**
+ * Route-handler / server-action gate (§10.3).
+ *
+ * Order is deliberate: CSRF first (unchanged model), then the identity claim,
+ * then the allow-list row, then the rate limit. Fails closed on every failure,
+ * including a database error during the allow-list read.
+ */
 export async function requireAdminApiSession(
   request: Request,
   rateLimitOptions?: AdminRateLimitOptions
@@ -61,15 +185,17 @@ export async function requireAdminApiSession(
       }
     }
 
-    const adminKey = getExpectedAdminKey()
-    const sessionToken = extractAdminSessionToken(request.headers.get('cookie'))
+    const claims = await readVerifiedClaims()
+    if (!claims || !hasAdminRole(claims)) {
+      return { ok: false, response: unauthorizedResponse() }
+    }
 
-    // SEC-047: requireMfa=true (default) — the token must have mfaFlag='1'
-    if (!(await verifyAdminSessionToken(sessionToken, undefined, true))) {
-      return {
-        ok: false,
-        response: NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 }),
-      }
+    // Revocation authority: a valid JWT is not enough — a revoked or
+    // deactivated admin keeps a working token until it expires.
+    const row = await loadAllowListRow(claims.sub)
+    if (!isActiveAdminRow(row)) {
+      safeLogError('[admin:auth] allow-list rejected', `user=${claims.sub}`)
+      return { ok: false, response: unauthorizedResponse() }
     }
 
     const clientIp = getClientIp(request)
@@ -92,44 +218,57 @@ export async function requireAdminApiSession(
     return {
       ok: true,
       context: {
-        adminKey,
+        actorUserId: claims.sub,
+        actorEmail: row.email ?? claims.email,
         clientIp,
-        sessionToken,
       },
     }
   } catch (error) {
-    console.error('[admin:auth]', error)
+    safeLogError('[admin:auth]', error)
     return {
       ok: false,
-      response: NextResponse.json({ error: 'Admin authentication is not configured.' }, { status: 500 }),
+      response: NextResponse.json({ error: 'Admin authorization check failed.' }, { status: 500 }),
     }
   }
 }
 
-export async function requireAdminPageSessionOrRedirect(nextPath = '/admin', requireMFA = true) {
-  const adminKey = getExpectedAdminKey()
-  const cookieStore = await cookies()
-  const token = cookieStore.get(ADMIN_COOKIE_NAME)?.value
+/**
+ * Server-component gate for the panel (§10.4).
+ *
+ * - no session → `/admin/login?next=…` (sanitized to `/admin/**`)
+ * - session without the admin claim, without an allow-list row, or with a
+ *   deactivated/revoked row → `/admin/not-authorized`
+ *
+ * A signed-in non-admin therefore never bounces between `/admin` and
+ * `/admin/login`: the two outcomes are distinct pages, and
+ * `/admin/not-authorized` is exempt from the Edge gate so it can actually be
+ * rendered (see `ADMIN_AUTH_EXEMPT_PATHS`).
+ */
+export async function requireAdminPageSessionOrRedirect(nextPath = '/admin') {
+  const target = sanitizeAdminNextPath(nextPath)
+  const claims = await readVerifiedClaims()
 
-  // SEC-047: MFA verification is now cryptographically bound to the session token.
-  // verifyAdminSessionToken with requireMfa=true rejects tokens without mfaFlag='1'.
-  // No separate admin_mfa_verified cookie is needed.
-  if (!await verifyAdminSessionToken(token, undefined, requireMFA)) {
-    // If MFA is required and the token doesn't have it, redirect to MFA challenge.
-    // Otherwise redirect to login.
-    if (requireMFA) {
-      // Check if the token is valid without MFA to determine the right redirect
-      const validWithoutMfa = await verifyAdminSessionToken(token, undefined, false)
-      if (validWithoutMfa) {
-        redirect(`/admin/mfa-challenge?next=${encodeURIComponent(nextPath)}`)
-      }
-    }
-    redirect(`/admin/login?next=${encodeURIComponent(nextPath)}`)
+  if (!claims) {
+    redirect(`/admin/login?next=${encodeURIComponent(target)}`)
   }
 
+  let row: AdminAllowListRow | null = null
+  try {
+    row = await loadAllowListRow(claims.sub)
+  } catch (error) {
+    // Fail closed: a database outage must never grant access.
+    safeLogError('[admin:auth:page] allow-list read failed', error)
+    redirect('/admin/not-authorized')
+  }
+
+  if (!hasAdminRole(claims) || !isActiveAdminRow(row)) {
+    redirect('/admin/not-authorized')
+  }
+
+  stampLastLoginIfNewSignIn(claims, row)
+
   return {
-    adminKey,
-    token,
-    mfa: requireMFA,
+    actorUserId: claims.sub,
+    actorEmail: row.email ?? claims.email,
   }
 }

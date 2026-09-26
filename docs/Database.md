@@ -521,6 +521,8 @@
 | `details` | `jsonb` |  |
 | `branch` | `text` |  |
 | `created_at` | `timestamptz` |  |
+| `actor_user_id` | `uuid` |  Nullable |
+| `actor_email` | `text` |  Nullable |
 
 ## Table `exp_stripe_webhook_events`
 
@@ -875,6 +877,26 @@
 | `event_type` | `text` |  |
 | `received_at` | `timestamptz` |  |
 | `processed` | `bool` |  |
+
+## Table `exp_admin_users`
+
+The admin allow-list (migration `066`, `SEPT_IMPLEMENTATION_PLAN.md` §10.1).
+Keyed by `auth.users.id` — never by email, so an email change on an admin's
+Google account neither grants nor revokes access. Service role only (RLS
+enabled, no policies, all access revoked from `anon` / `authenticated`).
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `user_id` | `uuid` | Primary · FK `auth.users(id)` on delete cascade |
+| `email` | `text` |  |
+| `role` | `text` |  |
+| `is_active` | `bool` |  |
+| `created_at` | `timestamptz` |  |
+| `created_by` | `text` |  Nullable |
+| `last_login_at` | `timestamptz` |  Nullable |
+| `revoked_at` | `timestamptz` |  Nullable |
 
 ## Table `exp_admin_sessions`
 

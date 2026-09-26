@@ -331,20 +331,22 @@ Rules that keep this safe and repeatable:
 
 ## 11. Where the findings will go
 
-Findings are **not in this file**. When they are planned out, they belong in their own document
-(e.g. `UI_AUDIT_FINDINGS.md`) grouped as: correctness → layout/visual → accessibility/polish →
-conversion ideas. Keep this file as the *method* so the two can be re-read independently, and
-reference the evidence directory (`%TEMP%\rrs-shots3\`) rather than pasting numbers that will go
-stale.
+**Findings are not in this file — they are in `UI_AUDIT_FINDINGS.md`** (delivered): **Part 1** = the storefront
+pass, **Part 2** = the admin panel pass (see §15/§15.10 for its method and the key-derivation trap).
+When more are planned out, they belong in that document, grouped as: correctness → layout/visual →
+accessibility/polish → conversion ideas. Keep this file as the *method* so the two can be re-read
+independently, and reference the evidence directory (`%TEMP%\rrs-shots3\`, or the newer
+`rrs-shots4|5|6\` sets) rather than pasting numbers that will go stale.
 
 ## 12. Scope actually covered
 
 - **Route:** the homepage (`src/app/page.tsx`) in full, at three viewports.
 - **Also probed (shallow, for cross-page consistency):** `/shop`, `/shop/all`, `/future-products`.
-- **Not covered in that pass:** `/admin` and any authenticated flow, the product designer, cart →
-  Square checkout, email templates, and any real-device (iOS Safari / Android Chrome) rendering.
-  Re-run the same harness against those routes if they are in scope later — only the URL and the
-  viewport list change. **`/admin` now has its own recipe: §15.**
+- `/admin` and any authenticated flow, the product designer, cart → Square checkout, email templates, and
+  any real-device (iOS Safari / Android Chrome) rendering.
+- **`/admin` is now covered by its own pass — see §15**, and the findings are in **Part 2** of
+  `UI_AUDIT_FINDINGS.md` (23 routes, 3 viewports, 69 captures). The remaining gaps (the customer-facing
+  product designer, Square's hosted checkout, email templates, real devices) still apply.
 
 ## 13. Evidence inventory
 
@@ -352,13 +354,22 @@ stale.
 |---|---|
 | `%TEMP%\rrs-shots3\01|02|03-*-tile-NN.png` | 16 full-page tiles — desktop 1440, tablet 834, mobile 390 |
 | `%TEMP%\rrs-shots3\audit.json` | the structural audit for all three viewports (36 KB) |
+| `%TEMP%\rrs-shots4\` | homepage only — 3 viewports, tiled, + `audit.json` (the pass the findings are based on) |
+| `%TEMP%\rrs-shots5\` | `/shop`, `/shop/all`, `/future-products`, `/custom-orders`, `/cart` × 3 viewports + `audit.json` |
+| `%TEMP%\rrs-shots6\` | sippy-cup PDP and `/checkout` × 3 viewports + `audit.json` |
+| `%TEMP%\rrs-admin\` | **admin pass (Part 2 findings)** — 23 `/admin` routes × 3 viewports = 69 tiled captures + `audit.json`, plus `summary.txt` (derived route×viewport matrix + aggregates), `matrix.md` (the same matrix as markdown), and `probe-*.json` / `a11y-*.json` (live-DOM probes; the overflow hide-and-measure runs printed to stdout). **Confidential** — contains real customer/order rows; never commit or share. |
 | `%TEMP%\rrs-small\`, `%TEMP%\rrs-shots2\` | zoomed crops and earlier iterations (before/after comparisons) |
 | `%TEMP%\rrs-dev.out.log`, `rrs-dev.err.log` | dev-server output — check these when a page looks dead |
 | `%TEMP%\rrs-edge-profile\` | throwaway Edge profile created by the harness |
 
-**Trust `rrs-shots3` (and `rrs-small`) only.** `rrs-shots` / `rrs-shots2` were captured over
-`http://127.0.0.1:3210` before the origin trap in §3 was identified, so they show an unhydrated
-page and must not be used as evidence.
+**Trust `rrs-shots3`–`rrs-shots6`, `rrs-small` and `%TEMP%\rrs-admin\`.** `rrs-shots` / `rrs-shots2` were
+captured over `http://127.0.0.1:3210` before the origin trap in §3 was identified, so they show an
+unhydrated page and must not be used as evidence.
+
+Two caveats apply to the automated contrast/tap numbers in every `audit.json` — both are explained in
+§0 of `UI_AUDIT_FINDINGS.md`, and both mean a raw flagged count is not a finding on its own: gradient
+fills report a transparent `background-color` (so the ancestor walk lands on the wrong colour), and the
+text sampler skips any element with element children (so every icon-bearing button is invisible to it).
 
 ## 14. Repeat-it-later checklist
 
@@ -451,6 +462,17 @@ the admin sessions list and **cannot** be revoked from the UI. It lives until it
 | `NEXT_PUBLIC_APP_ENV=development`, not on Vercel, `NODE_ENV !== 'production'` | `allowLegacySessionFallback()` returns `false` otherwise. |
 | `SESSION_SIGNING_KEY_SEED` is a 64-char hex string | The mint script derives the HMAC key from it. |
 | The dev server is reached at `http://localhost:<port>` | The origin trap (§3) still applies; a token cannot rescue an unhydrated page. |
+| **The Edge verifier derives the same key the signer uses** | ⚠️ This was **false** until 2026-09-24 — see §15.10. A token signed by `session.ts` (32-byte HKDF output) was rejected by `middleware.ts` (`deriveKey()` → SHA-256 *block* size = 64 bytes), so every `/admin/*` navigation 307'd to `/admin/login` no matter how valid the session was. |
+
+**Diagnostic that separates the two gates** (used to find the above):
+
+| Symptom | Which layer refused |
+|---|---|
+| `307 → /admin/login` **without** `?next=` | Edge middleware (`verifyTokenEdge`) |
+| `307 → /admin/login?next=%2Fadmin` | page layer (`requireAdminPageSessionOrRedirect`) |
+| `401 {"error":"Unauthorized"}` on `/api/admin/*` | Edge middleware |
+| `401 {"error":"Unauthorized admin request."}` on `/api/admin/*` | route-level `requireAdminApiSession` |
+| `200 {"authenticated":true,"mfaVerified":true}` on `GET /api/admin/session` | that endpoint is auth-exempt — it proves **nothing** about the Edge gate |
 
 ### 15.4 Mint the token — `.tmp-admin-session.mjs`
 
@@ -533,6 +555,46 @@ await send('Network.setCookie', {
 the `localhost` URL. Set the cookie once per browser session — it persists across navigations — but
 re-inject it if the run uses a fresh `--user-data-dir` profile.
 
+**⚠️ Verify at the *page* level, not just the API.** `GET /api/admin/session` is an auth-exempt route
+(`middleware.ts` §15.2 table), so `{"authenticated":true}` there does **not** prove the Edge gate accepted
+the token. The check that matters is a real page:
+
+```powershell
+# must be 200 — NOT 307 to /admin/login
+node -e "const fs=require('fs');const t=fs.readFileSync(process.env.TEMP+'/rrs-admin-session.txt','utf8').trim();fetch('http://localhost:3210/admin',{headers:{cookie:'rr_admin_session='+t},redirect:'manual'}).then(r=>console.log(r.status,r.headers.get('location')))"
+```
+
+If that comes back `307 → /admin/login` while the API said `authenticated: true`, **stop and read §15.10** —
+the two gates are deriving different signing keys and no token can satisfy both.
+
+### 15.10 The signing-key trap (found 2026-09-24) — why a "correct" token can still be refused
+
+The mint script above signs with `hkdfSync('sha256', seed, salt, info, 32)` — exactly what
+`src/lib/admin/session.ts:27-29` does. The Edge verifier used to derive its key with
+`crypto.subtle.deriveKey(… { name: 'HMAC', hash: 'SHA-256' } …)`, and for **HKDF → HMAC** key derivation
+`deriveKey` defaults to the hash **block** size, not the digest size: **64 bytes for SHA-256, not 32**.
+HKDF-Expand is a stream, so the 64-byte key *starts with* the 32-byte key — but as an HMAC key it is a
+different key, and every signature differs.
+
+Consequence (before the fix): a token minted by §15.4 was accepted by the server-side layer and refused by
+the Edge middleware, so `/admin/*` redirected to `/admin/login` and pages could not be captured at all. The
+same defect made the panel unreachable for a **real** login, because `createAdminSessionToken` signs with the
+32-byte key too.
+
+Fixed in `src/middleware.ts` by deriving 32 bytes (`deriveBits(..., 256)`) and importing them as the HMAC
+key. When touching session code, remember there are **two** implementations of this derivation and they must
+agree byte-for-byte; `audit.json`/`vitest` will not catch a divergence, a cross-check like this will:
+
+```js
+// same seed → both sides must produce the same key bytes
+const bits = Buffer.from(await crypto.subtle.deriveBits({ name:'HKDF', hash:'SHA-256',
+  salt: nonce.encode('rr-admin-session-signing-v1'), info: nonce.encode('rr-admin') }, baseKey, 256))
+bits.equals(Buffer.from(hkdfSync('sha256', seed, Buffer.from('rr-admin-session-signing-v1'), Buffer.from('rr-admin'), 32)))
+```
+
+Prefer `deriveBits(..., 256)` + `importKey('raw', …)` over `deriveKey` for this reason, and keep the
+`length` argument identical to `session.ts` (32 bytes / 256 bits).
+
 ```powershell
 node .tmp-admin-session.mjs
 node .tmp-admin-capture.mjs http://localhost:3210/admin   # -> %TEMP%\rrs-admin\
@@ -561,6 +623,33 @@ node .tmp-admin-capture.mjs http://localhost:3210/admin   # -> %TEMP%\rrs-admin\
 - **Read-only.** No `POST` / `PUT` / `PATCH` / `DELETE` against `/api/admin/*` during an admin audit.
   If a probe ever genuinely must, the middleware has already set the CSRF cookie and
   `AdminCsrfFetchBridge` supplies the header — but the default is: don't.
+
+**Lessons from the 2026-09-24 run (make the next one cheaper):**
+
+- **Merge, don't overwrite, `audit.json`.** 69 captures is ~6.5 min of wall clock and comfortably more than
+  one command's output window, so the run is done in batches. The harness must load the existing
+  `audit.json` and replace records by `route|viewport` — the first version started from `[]` and each batch
+  silently clobbered the previous one (9 of 69 records survived).
+- **Tile name prefixes are batch-local.** The index in `NN-<route>-<vp>-tile-NN.png` is the index *within the
+  selected routes*, so a `--routes=5-9` batch writes `01-catalog-product-detail-…`. List the folder before
+  quoting a tile name.
+- **Run probes sequentially.** Each probe launches its own Edge on `--remote-debugging-port=9223`; two probes
+  started in parallel race for the port and the second one silently attaches to the first browser, so both
+  "results" describe whichever page loaded last. Sequential (`;`), one probe at a time. Check the port is
+  actually free first (`Get-NetTCPConnection -LocalPort 9223 -State Listen`) — other software on this machine
+  exposes a CDP-ish listener on 9223, and attaching to *its* browser would silently measure the wrong page.
+- **Expect two console messages and ignore them.** `/favicon.ico` 404s (no icon asset) and the CSP blocks
+  `https://va.vercel-scripts.com/v1/script.debug.js` (Vercel Analytics' debug script vs. the panel's own
+  `script-src`) on every page. Neither is a finding; `failedRequests: ["Script csp"]` is this, not a bug.
+- **MUI internals are not findings.** `MuiSelect-nativeInput` is `aria-hidden` + `tabindex="-1"`; the
+  autosize textarea is `visibility: hidden` at 0 height. Check the *visible* sibling (`role="combobox"`)
+  instead — that is where the real missing-name problem is (§Part 2 A9).
+- **Gradient cards hide their own contrast.** Cards paint with the `background:` shorthand
+  (`AdminShell.tsx:49-51`), so `background-color` is transparent and any automated contrast walk falls back
+  to the body void. Sample the PNG instead: mean RGB of a text-free strip *inside* the card (a ~10 px wide
+  column just inside the card's left edge works) → the panel's card backdrop measures **(27,21,15)**, which
+  turns the 11.2 px module descriptions into **4.06:1**, not the 5.7:1 the walk reported. Then compute the
+  composite the way a browser does: `text = alpha·fg + (1 − alpha)·backdrop`.
 
 ### 15.7 Guardrails
 

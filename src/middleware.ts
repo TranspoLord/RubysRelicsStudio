@@ -1,25 +1,34 @@
 /**
- * Admin auth middleware (SEC-012) + CSP nonce generation (SEC-047).
+ * Admin auth gate (SEC-012, SEPT_IMPLEMENTATION_PLAN §10.5) + CSP nonce
+ * generation (SEC-047).
  *
- * Blocks all /admin/* and /api/admin/* routes (except /admin/login,
- * /admin/mfa-challenge, and /api/admin/* auth endpoints) unless a valid
- * rr_admin_session cookie is present. Per-route requireAdminApiSession()
- * calls remain as defense-in-depth.
+ * /admin/* and /api/admin/* require a Supabase Auth session whose verified JWT
+ * carries `app_metadata.role === 'admin'`. The sign-in entry points listed in
+ * ADMIN_AUTH_EXEMPT_PATHS are the only exceptions. Per-route
+ * requireAdminApiSession() / requireAdminPageSessionOrRedirect() calls remain
+ * the revocation authority, because this file runs on the Edge Runtime and
+ * cannot query Postgres.
+ *
+ * The bespoke HMAC `rr_admin_session` verifier and its MFA-flag branch were
+ * removed here as part of the Google-OAuth switch. That also retires the
+ * 2026-09-17 bug class (UI_AUDIT.md §15.10) in which the Edge verifier derived
+ * a different key from the signer and *no* login could reach the panel: there is
+ * no longer a second signing implementation to keep in sync.
  *
  * SEC-047: Also generates a per-request CSP nonce for all routes and sets
  * the Content-Security-Policy header dynamically (replacing the static
  * placeholder in next.config.ts).
- *
- * NOTE: This runs in the Edge Runtime, so we use the Web Crypto API
- * (crypto.subtle) instead of node:crypto for HMAC verification.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import {
+  decideAdminEdgeAccess,
+  isAdminAuthExemptPath,
+  type AdminEdgeDecision,
+} from '@/lib/admin/edge-gate'
 import { CSRF_COOKIE_NAME } from '@/lib/security/csrf'
 import { isProd } from '@/lib/security/env'
-
-// SEC-047: Updated to v2 to match the new token format (5 parts with mfaFlag)
-const SESSION_VERSION = 'v2'
+import { refreshSupabaseSession, updateSupabaseSession } from '@/lib/supabase/update-session'
 
 function ensureCsrfCookie(request: NextRequest, response: NextResponse): NextResponse {
   const existing = request.cookies.get(CSRF_COOKIE_NAME)?.value
@@ -37,80 +46,11 @@ function ensureCsrfCookie(request: NextRequest, response: NextResponse): NextRes
   return response
 }
 
-/**
- * Edge-compatible HMAC-SHA256 verification using the Web Crypto API.
- * Returns true if the token's signature matches the expected HMAC.
- * SEC-047: Updated for v2 token format (version.exp.jti.mfaFlag.sig).
- * SEC-BATCH1-H2: Derives the signing key from SESSION_SIGNING_KEY_SEED via HKDF
- * so the human-typed ADMIN_LOGIN_KEY is never used as an HMAC key.
- */
-async function verifyTokenEdge(token: string): Promise<boolean> {
-  if (!token) return false
-
-  const parts = token.split('.')
-  if (parts.length !== 5) return false // v2: version.exp.jti.mfaFlag.sig
-
-  const [version, expRaw, jti, mfaFlag, signature] = parts
-  if (version !== SESSION_VERSION) return false
-
-  const exp = Number.parseInt(expRaw, 10)
-  if (!Number.isFinite(exp)) return false
-  if (exp < Math.floor(Date.now() / 1000)) return false
-
-  const seedHex = process.env.SESSION_SIGNING_KEY_SEED
-  if (!seedHex) return false
-  if (!/^[0-9a-fA-F]{64}$/.test(seedHex)) return false
-
-  // Verify HMAC signature using Web Crypto API + HKDF-derived key
-  const payload = `${version}.${exp}.${jti}.${mfaFlag}`
-  const encoder = new TextEncoder()
-
-  function hexToBuffer(hex: string): ArrayBuffer {
-    const bytes = new Uint8Array(hex.length / 2)
-    for (let i = 0; i < hex.length; i += 2) {
-      bytes[i / 2] = Number.parseInt(hex.slice(i, i + 2), 16)
-    }
-    return bytes.buffer
-  }
-
-  try {
-    const seed = hexToBuffer(seedHex)
-    const baseKey = await crypto.subtle.importKey(
-      'raw',
-      seed,
-      { name: 'HKDF' },
-      false,
-      ['deriveBits', 'deriveKey']
-    )
-    const key = await crypto.subtle.deriveKey(
-      {
-        name: 'HKDF',
-        hash: 'SHA-256',
-        salt: encoder.encode('rr-admin-session-signing-v1'),
-        info: encoder.encode('rr-admin'),
-      },
-      baseKey,
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign']
-    )
-
-    const expectedSig = await crypto.subtle.sign('HMAC', key, encoder.encode(payload))
-    const expectedHex = Array.from(new Uint8Array(expectedSig))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('')
-
-    // Timing-safe comparison
-    if (signature.length !== expectedHex.length) return false
-    let result = 0
-    for (let i = 0; i < signature.length; i++) {
-      result |= signature.charCodeAt(i) ^ expectedHex.charCodeAt(i)
-    }
-    return result === 0
-  } catch {
-    return false
-  }
-}
+// The bespoke `verifyTokenEdge()` HMAC verifier lived here (80 lines of
+// Web-Crypto HKDF + HMAC). It was deleted in §10.5: the panel's credential is
+// now the Supabase session cookie, verified through `refreshSupabaseSession()`
+// below, and the claim decision lives in src/lib/admin/edge-gate.ts where it is
+// unit-tested.
 
 /**
  * SEC-047-FIX: The nonce is generated here in middleware and set as both
@@ -149,6 +89,32 @@ function buildCspHeader(nonce: string): string {
 // SEC-047-FIX: Cookie name for CSP nonce, readable by the root layout
 const CSP_NONCE_COOKIE = 'rrs_csp_nonce'
 
+/**
+ * Applies the CSP header, the nonce (response header + cookie) and the CSRF
+ * cookie to an admin-branch response.
+ *
+ * Every branch writes the same decorations, so the SEC-047 nonce contract holds
+ * for allow, deny and exempt responses alike — a missing nonce presents exactly
+ * like an unhydrated page, which is the failure mode §7.1 warns about.
+ */
+function decorateAdminResponse(
+  request: NextRequest,
+  response: NextResponse,
+  csp: string,
+  nonce: string
+): NextResponse {
+  response.headers.set('Content-Security-Policy', csp)
+  response.headers.set('x-nonce', nonce)
+  response.cookies.set(CSP_NONCE_COOKIE, nonce, {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: isProd(),
+    path: '/',
+    maxAge: 60, // short-lived, matches request lifecycle
+  })
+  return ensureCsrfCookie(request, response)
+}
+
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
@@ -160,106 +126,50 @@ export async function middleware(request: NextRequest) {
   const isAdminRoute = pathname.startsWith('/admin') || pathname.startsWith('/api/admin')
 
   if (isAdminRoute) {
-    // SEC-047-FIX: Allow MFA challenge page (uses a pre-MFA session token)
-    // Allow login page, MFA challenge page, and auth API endpoints
-    const isAuthEndpoint =
-      pathname === '/admin/login' ||
-      pathname === '/admin/mfa-challenge' ||
-      pathname === '/api/admin/session' ||
-      pathname === '/api/admin/send-mfa' ||
-      pathname === '/api/admin/verify-mfa'
-
-    if (isAuthEndpoint) {
-      const response = NextResponse.next()
-      response.headers.set('Content-Security-Policy', csp)
-      response.headers.set('x-nonce', nonce)
-      // SEC-047-FIX: Also set nonce as a cookie so the root layout can read it
-      // via cookies() — more reliable than relying on headers() seeing the
-      // response header set by middleware.
-      response.cookies.set(CSP_NONCE_COOKIE, nonce, {
-        httpOnly: true,
-        sameSite: 'strict',
-        secure: isProd(),
-        path: '/',
-        maxAge: 60, // short-lived, matches request lifecycle
-      })
-      return ensureCsrfCookie(request, response)
+    // SEC-047-FIX: sign-in entry points stay reachable without an admin claim
+    // (ADMIN_AUTH_EXEMPT_PATHS). The Google OAuth round trip itself lands on
+    // /auth/callback, which is not under /admin and never reaches this branch.
+    if (isAdminAuthExemptPath(pathname)) {
+      return decorateAdminResponse(request, NextResponse.next(), csp, nonce)
     }
 
-    // Check for valid admin session cookie
-    const cookie = request.cookies.get('rr_admin_session')
+    // §10.5: the panel is reachable only with a Supabase session whose verified
+    // JWT carries `app_metadata.role === 'admin'`. This claim check is an
+    // Edge-safe optimisation — the DB re-check in src/lib/admin/auth.ts stays
+    // the revocation authority. The same refresh the storefront uses runs here
+    // too, otherwise a panel-only session could never rotate its access token
+    // and would be signed out every hour.
+    let decision: AdminEdgeDecision = 'redirect-login'
 
-    if (!cookie || !(await verifyTokenEdge(cookie.value))) {
-      if (pathname.startsWith('/api/')) {
-        const response = NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        response.headers.set('Content-Security-Policy', csp)
-        response.cookies.set(CSP_NONCE_COOKIE, nonce, {
-          httpOnly: true,
-          sameSite: 'strict',
-          secure: isProd(),
-          path: '/',
-          maxAge: 60,
-        })
-        return ensureCsrfCookie(request, response)
+    try {
+      const { claims, response } = await refreshSupabaseSession(request)
+      decision = decideAdminEdgeAccess(claims, pathname)
+
+      if (decision === 'allow') {
+        // Carry the rotated Supabase cookies out on this same response.
+        return decorateAdminResponse(request, response, csp, nonce)
       }
-      const response = NextResponse.redirect(new URL('/admin/login', request.url))
-      response.headers.set('Content-Security-Policy', csp)
-      response.cookies.set(CSP_NONCE_COOKIE, nonce, {
-        httpOnly: true,
-        sameSite: 'strict',
-        secure: isProd(),
-        path: '/',
-        maxAge: 60,
-      })
-      return ensureCsrfCookie(request, response)
+    } catch (error) {
+      // Fail closed: an unreachable Auth service must not admit anyone.
+      console.error('[admin:edge-gate]', error)
     }
 
-    // Defense-in-depth: enforce MFA flag at the Edge for admin routes.
-    // Pre-MFA tokens may only reach the MFA challenge flow; all other admin
-    // pages/APIs require mfaFlag='1'. Route-level requireAdminApiSession remains
-    // the revocation authority because Edge cannot query the DB.
-    const [, , , mfaFlag] = cookie.value.split('.')
-    if (mfaFlag !== '1') {
-      if (pathname.startsWith('/api/')) {
-        const response = NextResponse.json({ error: 'MFA required' }, { status: 401 })
-        response.headers.set('Content-Security-Policy', csp)
-        response.cookies.set(CSP_NONCE_COOKIE, nonce, {
-          httpOnly: true,
-          sameSite: 'strict',
-          secure: isProd(),
-          path: '/',
-          maxAge: 60,
-        })
-        return ensureCsrfCookie(request, response)
-      }
-      const response = NextResponse.redirect(new URL('/admin/mfa-challenge', request.url))
-      response.headers.set('Content-Security-Policy', csp)
-      response.cookies.set(CSP_NONCE_COOKIE, nonce, {
-        httpOnly: true,
-        sameSite: 'strict',
-        secure: isProd(),
-        path: '/',
-        maxAge: 60,
-      })
-      return ensureCsrfCookie(request, response)
-    }
+    const denied =
+      decision === 'unauthorized-api'
+        ? NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        : NextResponse.redirect(new URL('/admin/login', request.url))
 
-    // Ensure CSRF cookie exists for authenticated admin pages/API usage.
-    const response = NextResponse.next()
-    response.headers.set('Content-Security-Policy', csp)
-    response.headers.set('x-nonce', nonce)
-    response.cookies.set(CSP_NONCE_COOKIE, nonce, {
-      httpOnly: true,
-      sameSite: 'strict',
-      secure: isProd(),
-      path: '/',
-      maxAge: 60,
-    })
-    return ensureCsrfCookie(request, response)
+    return decorateAdminResponse(request, denied, csp, nonce)
   }
 
+  // SUPABASE-AUTH: Rotate the Supabase session cookies for storefront routes.
+  // Server Components cannot write cookies, so without this an expiring access
+  // token could never be refreshed. Returns null when Supabase is not
+  // configured; authorization is always decided per-request server side, so a
+  // skipped refresh only affects session convenience, never security.
+  const response = (await updateSupabaseSession(request)) ?? NextResponse.next()
+
   // SEC-047: Set CSP header on all responses (non-admin)
-  const response = NextResponse.next()
   response.headers.set('Content-Security-Policy', csp)
   response.headers.set('x-nonce', nonce)
   response.cookies.set(CSP_NONCE_COOKIE, nonce, {

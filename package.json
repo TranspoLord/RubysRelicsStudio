@@ -13,7 +13,10 @@
     "test:security:rls": "node ./scripts/test-rls-lockdown.mjs",
     "test:security": "npm run test:security:rls && npm run audit",
     "test:square": "node ./scripts/test-square-checkout.mjs",
-    "audit": "npm audit --audit-level=high"
+    "audit": "npm audit --audit-level=high",
+    "db:types": "npx supabase gen types typescript --linked --schema public > src/types/database.ts",
+    "admin:grant": "node ./scripts/grant-admin.mjs",
+    "admin:revoke": "node ./scripts/revoke-admin.mjs"
   },
   "dependencies": {
     "@emotion/cache": "^11.14.0",
@@ -21,7 +24,8 @@
     "@emotion/styled": "^11.14.0",
     "@mui/icons-material": "^6.4.0",
     "@mui/material": "^6.4.0",
-    "@supabase/supabase-js": "^2.49.0",
+    "@supabase/ssr": "0.12.7",
+    "@supabase/supabase-js": "^2.117.1",
     "@vercel/analytics": "^1.4.0",
     "@xmldom/xmldom": "^0.9.10",
     "bcryptjs": "^3.0.3",

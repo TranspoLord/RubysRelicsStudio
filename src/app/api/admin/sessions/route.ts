@@ -1,76 +1,34 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { requireAdminApiSession } from '@/lib/admin/auth'
-import {
-  listAdminSessions,
-  revokeAdminSession,
-  revokeOtherAdminSessions,
-  extractJtiFromToken,
-} from '@/lib/admin/session'
-import { writeAdminAuditLog } from '@/lib/admin/audit'
 
 /**
- * SEC-011: Admin session management API.
- * GET  — list all active admin sessions
- * POST — revoke all other sessions (keep current)
+ * Retired with the custom admin-session model (SEPT_IMPLEMENTATION_PLAN §10.10).
+ *
+ * The actions this route exposed (`revoke_one`, `revoke_others`) were keyed off
+ * the JTI inside the bespoke `rr_admin_session` token, which no longer exists
+ * now that the panel authenticates with Supabase Auth. Real revocation happens
+ * in the allow-list instead — `npm run admin:revoke` sets
+ * `exp_admin_users.is_active = false`, and `requireAdminApiSession` re-checks
+ * that row on every request, so revocation takes effect immediately rather than
+ * at the next token expiry. A hard cut is available through Supabase's own
+ * `auth.admin.signOut(jwt, scope)` (§10.17).
+ *
+ * The route still authenticates so it cannot be probed anonymously, and answers
+ * `410 Gone` so a forgotten caller fails loudly instead of believing a session
+ * was revoked. The file is deleted with the rest of the stack in §10.10.
  */
+const RETIRED_MESSAGE = 'Session management moved to the admin allow-list.'
 
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   const auth = await requireAdminApiSession(request)
   if (!auth.ok) return auth.response
 
-  const sessions = await listAdminSessions()
-  return NextResponse.json({ sessions }, { status: 200 })
+  return NextResponse.json({ error: RETIRED_MESSAGE, code: 'retired' }, { status: 410 })
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   const auth = await requireAdminApiSession(request)
   if (!auth.ok) return auth.response
 
-  const body = await request.json().catch(() => ({}))
-  const action = typeof body.action === 'string' ? body.action : ''
-
-  if (action === 'revoke_others') {
-    // Revoke all sessions except the current one
-    const currentJti = extractJtiFromToken(auth.context.sessionToken)
-    if (!currentJti) {
-      return NextResponse.json({ error: 'Could not identify current session.' }, { status: 400 })
-    }
-
-    const success = await revokeOtherAdminSessions(currentJti)
-    if (!success) {
-      return NextResponse.json({ error: 'Failed to revoke sessions.' }, { status: 500 })
-    }
-
-    await writeAdminAuditLog({
-      action: 'admin.session.revoke_others',
-      entityType: 'admin_session',
-      route: '/api/admin/sessions',
-      request,
-      status: 'success',
-      details: { currentJti },
-    })
-
-    return NextResponse.json({ ok: true, message: 'Other sessions revoked.' }, { status: 200 })
-  }
-
-  if (action === 'revoke_one' && typeof body.jti === 'string') {
-    // Revoke a specific session by JTI
-    const success = await revokeAdminSession(body.jti)
-    if (!success) {
-      return NextResponse.json({ error: 'Failed to revoke session.' }, { status: 500 })
-    }
-
-    await writeAdminAuditLog({
-      action: 'admin.session.revoke',
-      entityType: 'admin_session',
-      route: '/api/admin/sessions',
-      request,
-      status: 'success',
-      details: { jti: body.jti },
-    })
-
-    return NextResponse.json({ ok: true, message: 'Session revoked.' }, { status: 200 })
-  }
-
-  return NextResponse.json({ error: 'Unsupported action.' }, { status: 400 })
+  return NextResponse.json({ error: RETIRED_MESSAGE, code: 'retired' }, { status: 410 })
 }

@@ -5,6 +5,7 @@ import { Analytics } from '@vercel/analytics/react'
 import { ThemeRegistry } from '@/theme/ThemeRegistry'
 import { SkipToMain } from '@/components/common/SkipToMain'
 import { CookieBanner } from '@/components/common/CookieBanner'
+import { AuthProvider } from '@/components/auth/AuthProvider'
 import { CartProvider } from '@/components/cart/CartProvider'
 import './globals.css'
 
@@ -78,10 +79,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en" className={`${cinzel.variable} ${inter.variable}`}>
       <body nonce={nonce}>
         <ThemeRegistry>
-          <CartProvider>
-            <SkipToMain />
-            {children}
-          </CartProvider>
+          <AuthProvider>
+            <CartProvider>
+              <SkipToMain />
+              {children}
+            </CartProvider>
+          </AuthProvider>
         </ThemeRegistry>
         {/* Vercel Analytics — aggregate only, no PII in events */}
         <Analytics />
