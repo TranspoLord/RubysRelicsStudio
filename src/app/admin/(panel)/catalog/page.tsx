@@ -98,7 +98,7 @@ export default function CatalogDashboardPage() {
                   Total Products
                 </Typography>
                 <Typography variant="h5">{stats.totalProducts}</Typography>
-                <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.5), mt: 0.5 }}>
+                <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.5 }}>
                   {stats.activeProducts} active | {stats.draftProducts} draft
                 </Typography>
               </CardContent>
@@ -112,7 +112,7 @@ export default function CatalogDashboardPage() {
                   Categories
                 </Typography>
                 <Typography variant="h5">{stats.totalCategories}</Typography>
-                <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.5), mt: 0.5 }}>
+                <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.5 }}>
                   {stats.visibleCategories} visible
                 </Typography>
               </CardContent>
@@ -126,7 +126,7 @@ export default function CatalogDashboardPage() {
                   Promotions
                 </Typography>
                 <Typography variant="h5">{stats.activeDeals + stats.activePromoCodes}</Typography>
-                <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.5), mt: 0.5 }}>
+                <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.5 }}>
                   {stats.activeDeals} deals | {stats.activePromoCodes} codes
                 </Typography>
               </CardContent>
@@ -140,7 +140,7 @@ export default function CatalogDashboardPage() {
                   Archived
                 </Typography>
                 <Typography variant="h5">{stats.archivedProducts}</Typography>
-                <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.5), mt: 0.5 }}>
+                <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.5 }}>
                   products
                 </Typography>
               </CardContent>

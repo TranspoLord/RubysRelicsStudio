@@ -469,6 +469,11 @@ export default function ProductPageEditorPage({ params }: { params: Promise<{ id
 
   return (
     <Box sx={{ display: 'grid', gap: 1.2, overflowX: 'hidden' }}>
+      {/* §9.11: the page had no h1 at all and started at h6. */}
+      <Typography variant="h4" component="h1" sx={{ mb: 0.2 }}>
+        {product.title || 'Product'}
+      </Typography>
+
       {error && <Alert severity="error">{error}</Alert>}
       {success && <Alert severity="success">{success}</Alert>}
 
@@ -492,6 +497,7 @@ export default function ProductPageEditorPage({ params }: { params: Promise<{ id
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
         <Select
           size="small"
+          aria-label="Product category"
           value={product.category_key}
           onChange={(event) => updateProduct('category_key', event.target.value)}
           sx={{ minWidth: 220 }}
@@ -560,7 +566,7 @@ export default function ProductPageEditorPage({ params }: { params: Promise<{ id
       </Box>
 
       <Box sx={{ borderTop: `1px solid ${alpha(brandTokens.parchment, 0.16)}`, pt: 1.2, display: 'grid', gap: 1 }}>
-        <Typography variant="h6">Media</Typography>
+        <Typography variant="h6" component="h2">Media</Typography>
 
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
           <TextField
@@ -673,7 +679,7 @@ export default function ProductPageEditorPage({ params }: { params: Promise<{ id
       </Box>
 
       <Box sx={{ borderTop: `1px solid ${alpha(brandTokens.parchment, 0.16)}`, pt: 1.2, display: 'grid', gap: 1 }}>
-        <Typography variant="h6">Options</Typography>
+        <Typography variant="h6" component="h2">Options</Typography>
 
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
           <TextField
@@ -819,7 +825,7 @@ export default function ProductPageEditorPage({ params }: { params: Promise<{ id
         )}
       </Box>
 
-      <Typography sx={{ color: alpha(brandTokens.parchment, 0.6), fontSize: '0.78rem' }}>
+      <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.78rem' }}>
         Advanced bulk-edit controls remain available at /admin/catalog/products.
       </Typography>
     </Box>

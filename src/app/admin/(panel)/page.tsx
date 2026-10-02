@@ -159,7 +159,15 @@ function StatCard({ label, value }: { label: string; value: number }) {
         p: 1.1,
       }}
     >
-      <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.55), mb: 0.2 }}>
+      <Typography
+        sx={{
+          // §8.5 (Batch 8): was 0.72rem = 11.52px, below the 12px floor. This is
+          // the last sub-12px site in the panel (4 StatCards on /admin).
+          fontSize: '0.75rem',
+          color: alpha(brandTokens.parchment, 0.62),
+          mb: 0.2,
+        }}
+      >
         {label}
       </Typography>
       <Typography sx={{ fontWeight: 700, fontSize: '1.25rem', fontFamily: 'var(--font-cinzel, serif)' }}>

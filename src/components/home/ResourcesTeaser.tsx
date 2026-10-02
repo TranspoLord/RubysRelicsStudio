@@ -153,7 +153,7 @@ export function ResourcesTeaser() {
               </Box>
               <Box sx={{ flex: 1 }}>
                 <Typography
-                  variant="subtitle2"
+                  variant="subtitle2" component="span"
                   sx={{ color: 'text.primary', mb: 0.5, fontSize: '0.9rem' }}
                 >
                   {res.title}
@@ -164,7 +164,7 @@ export function ResourcesTeaser() {
               </Box>
               <ArrowForwardIcon
                 aria-hidden="true"
-                sx={{ fontSize: '0.9rem', color: alpha(brandTokens.parchment, 0.3), flexShrink: 0, mt: 0.5 }}
+                sx={{ fontSize: '0.9rem', color: alpha(brandTokens.parchment, 0.62), flexShrink: 0, mt: 0.5 }}
               />
             </Box>
           ))}

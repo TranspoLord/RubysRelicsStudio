@@ -129,7 +129,7 @@ export default async function ShopAllPage({ searchParams }: ShopAllPageProps) {
               </Box>
             )}
 
-            <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.5), mb: { xs: 2.5, md: 3 } }}>
+            <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62), mb: { xs: 2.5, md: 3 } }}>
               {filteredProducts.length} product{filteredProducts.length !== 1 ? 's' : ''} available
               {processKey && filteredProducts.length === 0 && ' — no products have been tagged with this process yet.'}
             </Typography>
@@ -235,7 +235,7 @@ export default async function ShopAllPage({ searchParams }: ShopAllPageProps) {
                         <Typography
                           variant="body2"
                           sx={{
-                            color: alpha(brandTokens.parchment, 0.55),
+                            color: alpha(brandTokens.parchment, 0.62),
                             fontSize: '0.8rem',
                             lineHeight: 1.55,
                             mb: 1.5,

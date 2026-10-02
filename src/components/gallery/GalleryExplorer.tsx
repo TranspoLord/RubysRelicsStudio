@@ -115,7 +115,7 @@ export function GalleryExplorer({ items }: GalleryExplorerProps) {
         />
       </Box>
 
-      <Typography sx={{ color: alpha(brandTokens.parchment, 0.55), mb: 2, fontSize: '0.85rem' }}>
+      <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), mb: 2, fontSize: '0.85rem' }}>
         {filtered.length} piece{filtered.length !== 1 ? 's' : ''} shown
       </Typography>
 
@@ -226,7 +226,7 @@ function FilterGroup({
         p: 1,
       }}
     >
-      <Typography sx={{ fontSize: '0.72rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: alpha(brandTokens.parchment, 0.55), mb: 0.8 }}>
+      <Typography sx={{ fontSize: '0.72rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: alpha(brandTokens.parchment, 0.62), mb: 0.8 }}>
         {title}
       </Typography>
 

@@ -74,7 +74,7 @@ export default async function ResourceDocumentPage({ params }: Props) {
             <Typography sx={{ color: alpha(brandTokens.parchment, 0.72), maxWidth: 740, mb: 1.25 }}>
               {page.summary}
             </Typography>
-            <Typography sx={{ fontSize: '0.74rem', color: alpha(brandTokens.parchment, 0.5) }}>
+            <Typography sx={{ fontSize: '0.74rem', color: alpha(brandTokens.parchment, 0.62) }}>
               Last updated: {page.lastUpdated}
             </Typography>
           </Container>

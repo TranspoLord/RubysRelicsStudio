@@ -162,9 +162,9 @@ export default function FutureProductsAdminPage() {
 
       <Box sx={{ borderRadius: 1.4, border: `1px solid ${alpha(brandTokens.parchment, 0.16)}`, backgroundColor: alpha(brandTokens.bgSurface, 0.52), p: 1.3, display: 'grid', gap: 1 }}>
         {loading ? (
-          <Typography sx={{ color: alpha(brandTokens.parchment, 0.6) }}>Loading roadmap items...</Typography>
+          <Typography sx={{ color: alpha(brandTokens.parchment, 0.62) }}>Loading roadmap items...</Typography>
         ) : items.length === 0 ? (
-          <Typography sx={{ color: alpha(brandTokens.parchment, 0.6) }}>No roadmap items yet.</Typography>
+          <Typography sx={{ color: alpha(brandTokens.parchment, 0.62) }}>No roadmap items yet.</Typography>
         ) : (
           <Box sx={{ display: 'grid', gap: 0.8 }}>
             {items.map((item) => (

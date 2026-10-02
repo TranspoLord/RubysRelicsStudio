@@ -22,8 +22,8 @@ export interface SupabaseSessionRefresh {
  *
  * Why this exists: Next.js Server Components cannot write cookies, so an
  * expired access token can never be rotated during a render. Calling this from
- * middleware/proxy is what keeps a signed-in session alive — including on
- * `/admin`, which is why the admin branch of the middleware uses it too.
+ * the proxy (src/proxy.ts) is what keeps a signed-in session alive — including
+ * on `/admin`, which is why the admin branch of the proxy uses it too.
  */
 export async function refreshSupabaseSession(request: NextRequest): Promise<SupabaseSessionRefresh> {
   let response = NextResponse.next({ request })

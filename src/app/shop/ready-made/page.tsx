@@ -62,7 +62,7 @@ export default async function ReadyMadePage() {
 
         <Box sx={{ py: { xs: 5, md: 7 }, backgroundColor: brandTokens.bgVoid }}>
           <Container maxWidth="lg">
-            <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.5), mb: { xs: 2.5, md: 3 } }}>
+            <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62), mb: { xs: 2.5, md: 3 } }}>
               {products.length} ready-made item{products.length !== 1 ? 's' : ''}
             </Typography>
 
@@ -223,7 +223,7 @@ export default async function ReadyMadePage() {
                           <Typography
                             variant="body2"
                             sx={{
-                              color: alpha(brandTokens.parchment, 0.55),
+                              color: alpha(brandTokens.parchment, 0.62),
                               fontSize: '0.8rem',
                               lineHeight: 1.55,
                               mb: 1.5,
@@ -248,7 +248,7 @@ export default async function ReadyMadePage() {
                           }}
                         >
                           <Box>
-                            <Typography sx={{ color: alpha(brandTokens.parchment, 0.45), fontSize: '0.64rem', mb: 0.15 }}>
+                            <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.64rem', mb: 0.15 }}>
                               Price
                             </Typography>
                             <Typography sx={{ fontWeight: 700, color: brandTokens.parchment, fontSize: '1.1rem', fontFamily: 'var(--font-cinzel, serif)' }}>
@@ -256,7 +256,7 @@ export default async function ReadyMadePage() {
                             </Typography>
                           </Box>
 
-                          <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.45, color: alpha(brandTokens.parchment, 0.45) }}>
+                          <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.45, color: alpha(brandTokens.parchment, 0.62) }}>
                             <AccessTimeIcon sx={{ fontSize: 13 }} />
                             <Typography sx={{ fontSize: '0.7rem' }}>
                               {product.production_estimate_band}

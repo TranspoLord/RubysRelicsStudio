@@ -324,7 +324,7 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
 
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.55), mr: 1 }}>Qty</Typography>
+          <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62), mr: 1 }}>Qty</Typography>
           <Box component="button" onClick={() => handleQuantityChange(-1)} disabled={state.quantity <= 1} aria-label="Decrease quantity"
             sx={{ width: 32, height: 32, borderRadius: 1, border: `1px solid ${alpha(brandTokens.parchment, 0.18)}`, background: 'none', color: brandTokens.parchment, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', '&:disabled': { opacity: 0.35, cursor: 'not-allowed' }, '&:hover:not(:disabled)': { backgroundColor: alpha(brandTokens.parchment, 0.07) } }}
           >−</Box>
@@ -340,7 +340,7 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
       </Box>
 
       {pricing.activeBulkTier?.description && (
-        <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.5), mt: -1, mb: 0.5 }}>
+        <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.62), mt: -1, mb: 0.5 }}>
           {pricing.activeBulkTier.description}
         </Typography>
       )}
@@ -349,7 +349,7 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
         <Box sx={{ mt: -1, p: 1.25, borderRadius: 1, border: `1px solid ${alpha(brandTokens.forgeGold, 0.32)}`, backgroundColor: alpha(brandTokens.forgeGold, 0.1) }}>
           <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: brandTokens.forgeGold, mb: 0.35 }}>Bulk Tier Applied</Typography>
           <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.72) }}>{formatBulkTierLabel(pricing.activeBulkTier)} — You save ${pricing.discount.toFixed(2)} on this quantity.</Typography>
-          <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.55), mt: 0.35 }}>Subtotal ${pricing.subtotal.toFixed(2)} → Total ${pricing.total.toFixed(2)}</Typography>
+          <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.35 }}>Subtotal ${pricing.subtotal.toFixed(2)} → Total ${pricing.total.toFixed(2)}</Typography>
         </Box>
       )}
 
@@ -368,10 +368,10 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
 
       {(product.bulk_discounts?.length ?? 0) > 0 && (
         <Box sx={{ mt: -0.5 }}>
-          <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.46), mb: 0.55 }}>Volume pricing</Typography>
+          <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.62), mb: 0.55 }}>Volume pricing</Typography>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.65 }}>
             {(product.bulk_discounts ?? []).map((tier) => (
-              <Box key={tier.id} sx={{ px: 0.75, py: 0.35, borderRadius: 1, border: `1px solid ${alpha(brandTokens.parchment, 0.15)}`, color: alpha(brandTokens.parchment, 0.6), fontSize: '0.66rem' }}>
+              <Box key={tier.id} sx={{ px: 0.75, py: 0.35, borderRadius: 1, border: `1px solid ${alpha(brandTokens.parchment, 0.15)}`, color: alpha(brandTokens.parchment, 0.62), fontSize: '0.66rem' }}>
                 {formatBulkTierLabel(tier)}
               </Box>
             ))}
@@ -385,7 +385,7 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
           <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', md: 'row' } }}>
             <FormControlLabel
               control={<Checkbox checked={state.nfcEnabled} onChange={(e) => setState((prev) => ({ ...prev, nfcEnabled: e.target.checked }))}
-                sx={{ color: alpha(brandTokens.parchment, 0.4) }} />}
+                sx={{ color: alpha(brandTokens.parchment, 0.62) }} />}
               label={<Typography variant="body2">Add NFC tag (adds ${nfcPriceDelta.toFixed(2)})</Typography>}
             />
             {state.nfcEnabled && (
@@ -397,7 +397,7 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
                 />
                 <FormControlLabel
                   control={<Checkbox checked={state.leaveUnlocked} onChange={(e) => setState((prev) => ({ ...prev, leaveUnlocked: e.target.checked }))}
-                    sx={{ color: alpha(brandTokens.parchment, 0.4) }} />}
+                    sx={{ color: alpha(brandTokens.parchment, 0.62) }} />}
                   label={<Typography variant="body2" sx={{ fontSize: '0.8rem' }}>Leave unlocked (writable)</Typography>}
                 />
               </>
@@ -410,7 +410,7 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
         <Box>
           <FormLabel sx={{ display: 'block', mb: 1.25, fontWeight: 600, fontSize: '0.875rem', color: brandTokens.parchment }}>
             Choose Your Process
-            {combo_discounts.length > 0 && <Typography component="span" sx={{ color: alpha(brandTokens.parchment, 0.5), fontSize: '0.75rem', ml: 1 }}>(Select one or more)</Typography>}
+            {combo_discounts.length > 0 && <Typography component="span" sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.75rem', ml: 1 }}>(Select one or more)</Typography>}
           </FormLabel>
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             {process_pricing.map((process) => {
@@ -453,7 +453,7 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
       </Box>
 
       {!isValid && requiredOptions.length > 0 && (
-        <Typography variant="caption" sx={{ textAlign: 'center', color: alpha(brandTokens.parchment, 0.4), mt: -1 }}>Please fill in all required fields above</Typography>
+        <Typography variant="caption" sx={{ textAlign: 'center', color: alpha(brandTokens.parchment, 0.62), mt: -1 }}>Please fill in all required fields above</Typography>
       )}
     </Box>
   )
@@ -549,15 +549,15 @@ function OptionField({ option, value, onChange }: OptionFieldProps) {
   if (option.option_type === 'select') {
     return (
       <FormControl fullWidth size="small">
-        <FormLabel sx={labelSx}>{option.label}{option.is_required && <Typography component="span" sx={{ color: '#CF4040', ml: 0.4 }}>*</Typography>}</FormLabel>
+        <FormLabel sx={labelSx}>{option.label}{option.is_required && <Typography component="span" sx={{ color: brandTokens.rubyRedText, ml: 0.4 }}>*</Typography>}</FormLabel>
         <Select value={value} onChange={(e) => onChange(e.target.value)} displayEmpty
           sx={{ backgroundColor: alpha(brandTokens.bgSurface, 0.8), '& .MuiOutlinedInput-notchedOutline': { borderColor: alpha(brandTokens.parchment, 0.18) } }}>
-          <MenuItem value="" disabled><Typography sx={{ color: alpha(brandTokens.parchment, 0.4) }}>{option.placeholder ?? 'Select an option'}</Typography></MenuItem>
+          <MenuItem value="" disabled><Typography sx={{ color: alpha(brandTokens.parchment, 0.62) }}>{option.placeholder ?? 'Select an option'}</Typography></MenuItem>
           {(option.values ?? []).map((v) => (
             <MenuItem key={v.id} value={v.value}>{v.label}{v.price_delta > 0 && <Typography component="span" sx={{ ml: 1, opacity: 0.6, fontSize: '0.75rem' }}>+${v.price_delta.toFixed(2)}</Typography>}</MenuItem>
           ))}
         </Select>
-        {option.help_text && <FormHelperText sx={{ color: alpha(brandTokens.parchment, 0.4), mx: 0, mt: 0.5 }}>{option.help_text}</FormHelperText>}
+        {option.help_text && <FormHelperText sx={{ color: alpha(brandTokens.parchment, 0.62), mx: 0, mt: 0.5 }}>{option.help_text}</FormHelperText>}
         {stickerSizeGuidance && <FormHelperText sx={{ color: alpha(brandTokens.forgeGold, 0.9), mx: 0, mt: 0.4 }}>{stickerSizeGuidance}</FormHelperText>}
       </FormControl>
     )
@@ -566,10 +566,10 @@ function OptionField({ option, value, onChange }: OptionFieldProps) {
   if (option.option_type === 'text') {
     return (
       <FormControl fullWidth>
-        <FormLabel sx={labelSx}>{option.label}{option.is_required && <Typography component="span" sx={{ color: '#CF4040', ml: 0.4 }}>*</Typography>}</FormLabel>
+        <FormLabel sx={labelSx}>{option.label}{option.is_required && <Typography component="span" sx={{ color: brandTokens.rubyRedText, ml: 0.4 }}>*</Typography>}</FormLabel>
         <TextField value={value} onChange={(e) => onChange(e.target.value)} placeholder={option.placeholder ?? ''} size="small"
           inputProps={{ maxLength: 120 }} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderColor: alpha(brandTokens.parchment, 0.18) }, '& input': { color: brandTokens.parchment } }} />
-        {option.help_text && <FormHelperText sx={{ color: alpha(brandTokens.parchment, 0.4), mx: 0, mt: 0.5 }}>{option.help_text}</FormHelperText>}
+        {option.help_text && <FormHelperText sx={{ color: alpha(brandTokens.parchment, 0.62), mx: 0, mt: 0.5 }}>{option.help_text}</FormHelperText>}
       </FormControl>
     )
   }
@@ -577,10 +577,10 @@ function OptionField({ option, value, onChange }: OptionFieldProps) {
   if (option.option_type === 'number') {
     return (
       <FormControl fullWidth>
-        <FormLabel sx={labelSx}>{option.label}{option.is_required && <Typography component="span" sx={{ color: '#CF4040', ml: 0.4 }}>*</Typography>}</FormLabel>
+        <FormLabel sx={labelSx}>{option.label}{option.is_required && <Typography component="span" sx={{ color: brandTokens.rubyRedText, ml: 0.4 }}>*</Typography>}</FormLabel>
         <TextField type="number" value={value} onChange={(e) => onChange(e.target.value)} placeholder={option.placeholder ?? ''} size="small"
           inputProps={{ min: 1 }} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderColor: alpha(brandTokens.parchment, 0.18) }, '& input': { color: brandTokens.parchment } }} />
-        {option.help_text && <FormHelperText sx={{ color: alpha(brandTokens.parchment, 0.4), mx: 0, mt: 0.5 }}>{option.help_text}</FormHelperText>}
+        {option.help_text && <FormHelperText sx={{ color: alpha(brandTokens.parchment, 0.62), mx: 0, mt: 0.5 }}>{option.help_text}</FormHelperText>}
       </FormControl>
     )
   }
@@ -588,10 +588,10 @@ function OptionField({ option, value, onChange }: OptionFieldProps) {
   if (option.option_type === 'textarea') {
     return (
       <FormControl fullWidth>
-        <FormLabel sx={labelSx}>{option.label}{option.is_required && <Typography component="span" sx={{ color: '#CF4040', ml: 0.4 }}>*</Typography>}</FormLabel>
+        <FormLabel sx={labelSx}>{option.label}{option.is_required && <Typography component="span" sx={{ color: brandTokens.rubyRedText, ml: 0.4 }}>*</Typography>}</FormLabel>
         <TextField value={value} onChange={(e) => onChange(e.target.value)} placeholder={option.placeholder ?? ''} multiline rows={3} size="small"
           inputProps={{ maxLength: 500 }} sx={{ '& .MuiOutlinedInput-notchedOutline': { borderColor: alpha(brandTokens.parchment, 0.18) }, '& textarea': { color: brandTokens.parchment } }} />
-        {option.help_text && <FormHelperText sx={{ color: alpha(brandTokens.parchment, 0.4), mx: 0, mt: 0.5 }}>{option.help_text}</FormHelperText>}
+        {option.help_text && <FormHelperText sx={{ color: alpha(brandTokens.parchment, 0.62), mx: 0, mt: 0.5 }}>{option.help_text}</FormHelperText>}
       </FormControl>
     )
   }
@@ -599,14 +599,14 @@ function OptionField({ option, value, onChange }: OptionFieldProps) {
   if (option.option_type === 'file') {
     return (
       <Box>
-        <FormLabel sx={labelSx}>{option.label}{option.is_required && <Typography component="span" sx={{ color: '#CF4040', ml: 0.4 }}>*</Typography>}</FormLabel>
+        <FormLabel sx={labelSx}>{option.label}{option.is_required && <Typography component="span" sx={{ color: brandTokens.rubyRedText, ml: 0.4 }}>*</Typography>}</FormLabel>
         <Box sx={{ border: `1px dashed ${alpha(brandTokens.parchment, 0.2)}`, borderRadius: 1, p: 2.5, textAlign: 'center', backgroundColor: alpha(brandTokens.bgSurface, 0.5) }}>
-          <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.5), mb: 1 }}>{value ? `File selected: ${value}` : 'No file chosen'}</Typography>
+          <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62), mb: 1 }}>{value ? `File selected: ${value}` : 'No file chosen'}</Typography>
           <Button component="label" variant="outlined" size="small" sx={{ borderColor: alpha(brandTokens.parchment, 0.25), color: alpha(brandTokens.parchment, 0.65) }}>
             Choose File
             <input type="file" hidden accept=".svg,.png,.jpg,.jpeg,.pdf" onChange={(e) => { const file = e.target.files?.[0]; if (file) onChange(file.name) }} />
           </Button>
-          {option.help_text && <Typography variant="caption" sx={{ display: 'block', mt: 1, color: alpha(brandTokens.parchment, 0.35), textTransform: 'none' }}>{option.help_text}</Typography>}
+          {option.help_text && <Typography variant="caption" sx={{ display: 'block', mt: 1, color: alpha(brandTokens.parchment, 0.62), textTransform: 'none' }}>{option.help_text}</Typography>}
         </Box>
       </Box>
     )
@@ -615,9 +615,9 @@ function OptionField({ option, value, onChange }: OptionFieldProps) {
   if (option.option_type === 'checkbox') {
     return (
       <FormControl>
-        <FormControlLabel control={<Checkbox checked={value === 'true'} onChange={(e) => onChange(e.target.checked ? 'true' : 'false')} sx={{ color: alpha(brandTokens.parchment, 0.4) }} />}
-          label={<Typography variant="body2">{option.label}{option.is_required && <Typography component="span" sx={{ color: '#CF4040', ml: 0.4 }}>*</Typography>}</Typography>} />
-        {option.help_text && <FormHelperText sx={{ color: alpha(brandTokens.parchment, 0.4), mx: 0, mt: -0.5 }}>{option.help_text}</FormHelperText>}
+        <FormControlLabel control={<Checkbox checked={value === 'true'} onChange={(e) => onChange(e.target.checked ? 'true' : 'false')} sx={{ color: alpha(brandTokens.parchment, 0.62) }} />}
+          label={<Typography variant="body2">{option.label}{option.is_required && <Typography component="span" sx={{ color: brandTokens.rubyRedText, ml: 0.4 }}>*</Typography>}</Typography>} />
+        {option.help_text && <FormHelperText sx={{ color: alpha(brandTokens.parchment, 0.62), mx: 0, mt: -0.5 }}>{option.help_text}</FormHelperText>}
       </FormControl>
     )
   }

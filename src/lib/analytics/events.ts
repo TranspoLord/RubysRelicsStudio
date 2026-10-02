@@ -23,6 +23,13 @@ export const Analytics = {
     track('collection_clicked', { collection_id: collectionId, title })
   },
 
+  // User clicks a hero call to action (§7.8). The hero used to fire
+  // `categoryClicked('all', 'shop')`, which mislabelled a hero click as a
+  // category click and made the funnel unreadable in analytics.
+  heroCtaClicked(destination: string) {
+    track('hero_cta_clicked', { destination })
+  },
+
   // ─── Search ─────────────────────────────────────────────────────────────────
   searchQuery(query: string, scope: SearchScope, resultCount: number) {
     track('search_query', { query, scope, result_count: resultCount })

@@ -403,7 +403,7 @@ export default function StorePricingPage() {
             </Stack>
 
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
-              <Select size="small" value={promoDiscountType} onChange={(event) => setPromoDiscountType(event.target.value as PromoDiscountType)} sx={{ minWidth: 180 }}>
+              <Select size="small" aria-label="Promo discount type" value={promoDiscountType} onChange={(event) => setPromoDiscountType(event.target.value as PromoDiscountType)} sx={{ minWidth: 180 }}>
                 {DISCOUNT_TYPE_CHOICES.map((kind) => (
                   <MenuItem key={kind} value={kind}>{kind}</MenuItem>
                 ))}
@@ -471,7 +471,7 @@ export default function StorePricingPage() {
             </Stack>
 
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
-              <Select size="small" value={dealTriggerType} onChange={(event) => setDealTriggerType(event.target.value as TriggerType)} sx={{ minWidth: 160 }}>
+              <Select size="small" aria-label="Bundle deal trigger" value={dealTriggerType} onChange={(event) => setDealTriggerType(event.target.value as TriggerType)} sx={{ minWidth: 160 }}>
                 {TRIGGER_TYPE_CHOICES.map((kind) => (
                   <MenuItem key={kind} value={kind}>{kind}</MenuItem>
                 ))}

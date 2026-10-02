@@ -61,18 +61,38 @@ function makeSupabase(data: unknown[] | null, error: { message: string } | null 
   }
 }
 
-function makeSupabaseUpdateError() {
+/**
+ * PATCH goes through `saveHomepageSection()` (§7.3), which chains
+ * `update().eq().select()` and falls back to `upsert().select()`. This mock models
+ * both branches so "matched nothing" and "nothing written" are expressible.
+ */
+function makeWriteSupabase(
+  plan: {
+    updatedRows?: unknown[] | null
+    updateError?: { message: string } | null
+    insertedRows?: unknown[] | null
+    insertError?: { message: string } | null
+  } = {}
+) {
+  const updateSelect = vi.fn(async (_columns: string) =>
+    plan.updateError
+      ? { data: null, error: plan.updateError }
+      : { data: plan.updatedRows ?? [{ section_key: 'updated' }], error: null }
+  )
+  const upsertSelect = vi.fn(async (_columns: string) =>
+    plan.insertError
+      ? { data: null, error: plan.insertError }
+      : { data: plan.insertedRows ?? [{ section_key: 'created' }], error: null }
+  )
+  const eqFn = vi.fn((_column: string, _value: string) => ({ select: updateSelect }))
+  const updateFn = vi.fn((_values: Record<string, unknown>) => ({ eq: eqFn }))
+  const upsertFn = vi.fn((_values: Record<string, unknown>, _options: { onConflict: string }) => ({
+    select: upsertSelect,
+  }))
+
   return {
-    from: vi.fn(() => ({
-      select: vi.fn(() => ({
-        in: vi.fn(() => ({
-          order: vi.fn(async () => ({ data: [], error: null })),
-        })),
-      })),
-      update: vi.fn(() => ({
-        eq: vi.fn(async () => ({ error: { message: 'db error' } })),
-      })),
-    })),
+    from: vi.fn((_table: string) => ({ update: updateFn, upsert: upsertFn })),
+    calls: { updateFn, upsertFn, updateSelect, upsertSelect },
   }
 }
 
@@ -144,7 +164,7 @@ describe('PATCH /api/admin/homepage/sections', () => {
   })
 
   it('saves visibility for all provided section keys', async () => {
-    mocks.getSupabaseAdmin.mockReturnValue(makeSupabase([]))
+    mocks.getSupabaseAdmin.mockReturnValue(makeWriteSupabase())
 
     const request = new Request('http://localhost/api/admin/homepage/sections', {
       method: 'PATCH',
@@ -161,7 +181,52 @@ describe('PATCH /api/admin/homepage/sections', () => {
 
     expect(response.status).toBe(200)
     expect(payload.ok).toBe(true)
+    expect(payload.created).toEqual([])
     expect(mocks.writeAdminAuditLog).toHaveBeenCalledOnce()
+  })
+
+  it('creates and reports a row for a key that has none (§7.3)', async () => {
+    const { from, calls } = makeWriteSupabase({ updatedRows: [] })
+    mocks.getSupabaseAdmin.mockReturnValue({ from })
+
+    const request = new Request('http://localhost/api/admin/homepage/sections', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sections: [{ key: 'shop_all_preview', is_visible: true }] }),
+    })
+    const response = await PATCH(request)
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    // Previously this key reported {ok:true} and stored nothing.
+    expect(payload.created).toEqual(['shop_all_preview'])
+    expect(calls.upsertFn.mock.calls[0][0]).toMatchObject({
+      section_key: 'shop_all_preview',
+      sort_order: 45,
+    })
+    expect(mocks.writeAdminAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'success',
+        details: expect.objectContaining({ created: ['shop_all_preview'] }),
+      })
+    )
+  })
+
+  it('returns 500 when a key cannot be written at all', async () => {
+    // 0 rows matched and the create wrote nothing — the silent no-op §7.3 filed.
+    mocks.getSupabaseAdmin.mockReturnValue(makeWriteSupabase({ updatedRows: [], insertedRows: [] }))
+
+    const request = new Request('http://localhost/api/admin/homepage/sections', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sections: [{ key: 'hero', is_visible: true }] }),
+    })
+    const response = await PATCH(request)
+    const payload = await response.json()
+
+    expect(response.status).toBe(500)
+    expect(payload.error).toMatch(/failed to update/i)
+    expect(mocks.writeAdminAuditLog).not.toHaveBeenCalled()
   })
 
   it('returns 400 for an unrecognised section key', async () => {
@@ -193,7 +258,9 @@ describe('PATCH /api/admin/homepage/sections', () => {
   })
 
   it('returns 500 when a database update fails', async () => {
-    mocks.getSupabaseAdmin.mockReturnValue(makeSupabaseUpdateError())
+    mocks.getSupabaseAdmin.mockReturnValue(
+      makeWriteSupabase({ updateError: { message: 'db error' } })
+    )
 
     const request = new Request('http://localhost/api/admin/homepage/sections', {
       method: 'PATCH',

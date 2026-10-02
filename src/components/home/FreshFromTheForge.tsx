@@ -144,7 +144,7 @@ export function FreshFromTheForge({ items }: FreshFromTheForgeProps = {}) {
                     </Typography>
                   )}
                 </Box>
-                <Typography variant="subtitle2" sx={{ color: 'text.primary', mb: 0.5, fontSize: '0.9rem' }}>
+                <Typography variant="subtitle2" component="span" sx={{ color: 'text.primary', mb: 0.5, fontSize: '0.9rem' }}>
                   {item.title}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', lineHeight: 1.6 }}>

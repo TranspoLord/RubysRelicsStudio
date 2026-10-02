@@ -49,3 +49,6 @@ Thumbs.db
 supabase/config.toml
 supabase/.temp/cli-latest
 .agents/*
+
+# UI-audit harness (UI_AUDIT.md §10) — throwaway, never staged
+.tmp-*

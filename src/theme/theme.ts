@@ -15,6 +15,36 @@ const BG_SURFACE = '#161210'
 const BG_ELEVATED = '#1E1A15'
 const BG_CARD = '#231F19'
 
+// ─── Contrast floors (SEPT_IMPLEMENTATION_PLAN §8.1 / §8.3 / §9.5 / §9.12) ─────
+
+/**
+ * Text-safe semantic tones.
+ *
+ * The vivid `main` values above are for *surfaces* (filled buttons and chips).
+ * Used as **text** on a dark card they measure only 2.9–3.5:1 — error `#CF4040`
+ * is 3.48:1 on `BG_CARD` — so labels, glyphs and outlined/text variants use these
+ * lighter tones instead. All four clear 5:1 on `BG_CARD`, the app's lightest
+ * surface. Asserted in `src/theme/theme.test.ts`.
+ */
+const RUBY_RED_TEXT = '#E0706F'
+const WARNING_TEXT = '#E0A24A'
+const SUCCESS_TEXT = '#7FB86E'
+const INFO_TEXT = '#6FA6C9'
+
+/**
+ * The minimum alpha for muted text (the helper/instruction tier).
+ *
+ * `alpha(parchment, 0.35…0.5)` was the de-facto helper-text tier and measured
+ * 2.72–4.36:1 — below the 4.5:1 floor for text at these sizes. 0.62 keeps every
+ * site at ≥5.6:1 on `BG_CARD` and ≥6:1 on the storefront void, which is why this
+ * single value is the whole fix for §8.3.
+ *
+ * Components pass the value inline (`sx={{ color: alpha(parchment, 0.62) }}`);
+ * `src/theme/contrast-floor.test.ts` enforces the floor across `src/` so a new
+ * component cannot quietly reintroduce a lower one.
+ */
+export const MIN_MUTED_TEXT_ALPHA = 0.62
+
 const theme = createTheme({
   palette: {
     mode: 'dark',
@@ -40,15 +70,27 @@ const theme = createTheme({
     },
     error: {
       main: '#CF4040',
+      // Explicit, because MUI derives `contrastText` with a 3:1 threshold and
+      // can therefore choose an unreadable pairing (§9.5: white on warning, and
+      // the `Pending` chips measured 1.84:1).
+      light: RUBY_RED_TEXT,
+      contrastText: '#FFFFFF',
     },
     warning: {
       main: '#C97B22',
+      light: WARNING_TEXT,
+      // 5.97:1 — MUI's auto-derivation picked white here, which is 3.31:1.
+      contrastText: '#0C0A07',
     },
     success: {
       main: '#4A7C3F',
+      light: SUCCESS_TEXT,
+      contrastText: '#FFFFFF',
     },
     info: {
       main: '#3A6B8A',
+      light: INFO_TEXT,
+      contrastText: '#FFFFFF',
     },
     divider: alpha(PARCHMENT, 0.12),
   },
@@ -109,7 +151,9 @@ const theme = createTheme({
       textTransform: 'uppercase' as const,
     },
     overline: {
-      fontSize: '0.7rem',
+      // §7.12: was 0.7rem (11.2px), below the 12px floor the audit measures. One
+      // theme edit fixes all 11 overline sites on the homepage at once.
+      fontSize: '0.75rem',
       letterSpacing: '0.12em',
       textTransform: 'uppercase' as const,
       fontWeight: 600,
@@ -156,6 +200,18 @@ const theme = createTheme({
             outline: `2px solid ${FORGE_GOLD}`,
             outlineOffset: '3px',
           },
+          // §8.1 / §9.12 — the disabled floor, in one place.
+          //
+          // MUI's dark default is `color: rgba(255,255,255,0.3)`, which is ≈2.3:1
+          // on a card, and `opacity` is left to the component — so a disabled
+          // primary CTA kept painting the gold gradient with a near-invisible
+          // label and still read as the live action. Both halves are fixed here:
+          // a readable muted label and no fade.
+          '&.Mui-disabled': {
+            opacity: 1,
+            color: alpha(PARCHMENT, MIN_MUTED_TEXT_ALPHA),
+            borderColor: alpha(PARCHMENT, 0.18),
+          },
         },
         containedPrimary: {
           background: `linear-gradient(135deg, ${FORGE_GOLD_DARK} 0%, ${FORGE_GOLD} 60%, ${FORGE_GOLD_LIGHT} 100%)`,
@@ -169,6 +225,16 @@ const theme = createTheme({
           '@media (prefers-reduced-motion: reduce)': {
             '&:hover': { transform: 'none' },
           },
+          // Stop the *gradient*, not the label: an explicit surface keeps the
+          // computed contrast deterministic (5.6:1 for the label) instead of
+          // depending on what is painted underneath.
+          '&.Mui-disabled': {
+            background: 'none',
+            backgroundColor: BG_ELEVATED,
+            color: alpha(PARCHMENT, MIN_MUTED_TEXT_ALPHA),
+            boxShadow: `inset 0 0 0 1px ${alpha(PARCHMENT, 0.18)}`,
+            '&:hover': { transform: 'none', boxShadow: `inset 0 0 0 1px ${alpha(PARCHMENT, 0.18)}` },
+          },
         },
         outlinedPrimary: {
           borderColor: alpha(FORGE_GOLD, 0.6),
@@ -177,10 +243,30 @@ const theme = createTheme({
             borderColor: FORGE_GOLD,
             backgroundColor: alpha(FORGE_GOLD, 0.08),
           },
+          '&.Mui-disabled': {
+            color: alpha(PARCHMENT, MIN_MUTED_TEXT_ALPHA),
+            borderColor: alpha(PARCHMENT, 0.18),
+          },
         },
+        // §9.5: destructive actions are outlined/text more often than filled, and
+        // `error.main` (#CF4040) is only 3.48:1 as text on a card.
+        textError: { color: RUBY_RED_TEXT },
+        outlinedError: { color: RUBY_RED_TEXT, borderColor: alpha(RUBY_RED_TEXT, 0.6) },
         sizeLarge: {
           padding: '14px 32px',
           fontSize: '1rem',
+        },
+      },
+    },
+
+    MuiIconButton: {
+      styleOverrides: {
+        root: {
+          // §9.12: the disabled `Add Media` / `Upload file` controls were 30 %
+          // white on a card (≈2.3:1). Same floor as text.
+          '&.Mui-disabled': {
+            color: alpha(PARCHMENT, MIN_MUTED_TEXT_ALPHA),
+          },
         },
       },
     },
@@ -266,6 +352,14 @@ export const brandTokens = {
   forgeGoldLight: FORGE_GOLD_LIGHT,
   forgeGoldDark: FORGE_GOLD_DARK,
   rubyRed: RUBY_RED,
+  /**
+   * Text-safe ruby red (§9.5). Use this — not `rubyRed`/`#CF4040` — whenever the
+   * colour is a label or glyph on a dark surface (3.48:1 vs 5.24:1 on BG_CARD).
+   */
+  rubyRedText: RUBY_RED_TEXT,
+  warningText: WARNING_TEXT,
+  successText: SUCCESS_TEXT,
+  infoText: INFO_TEXT,
   copper: COPPER,
   parchment: PARCHMENT,
   parchmentMuted: PARCHMENT_MUTED,

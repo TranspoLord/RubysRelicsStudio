@@ -502,7 +502,7 @@ export default function AdminCustomRequestsPage() {
               <Typography sx={{ color: alpha(brandTokens.parchment, 0.65), fontSize: '0.77rem' }}>
                 {row.customer_name} · {row.customer_email} · {row.item_type} · Qty {row.quantity}
               </Typography>
-              <Typography sx={{ color: alpha(brandTokens.parchment, 0.58), fontSize: '0.75rem', mt: 0.2 }}>
+              <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.75rem', mt: 0.2 }}>
                 Status: {prettyStatus(row.status)}
                 {isRowCancelled(row) && (
                   <Typography component="span" sx={{ ml: 1, color: '#F1B4B4', fontSize: '0.7rem' }}>
@@ -511,7 +511,7 @@ export default function AdminCustomRequestsPage() {
                 )}
               </Typography>
               {row.design_id && (
-                <Typography sx={{ color: alpha(brandTokens.parchment, 0.56), fontSize: '0.72rem', mt: 0.15 }}>
+                <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.72rem', mt: 0.15 }}>
                   Design: {row.design_id}
                 </Typography>
               )}
@@ -521,7 +521,7 @@ export default function AdminCustomRequestsPage() {
                 </Typography>
               )}
               {row.quote_expires_at && (
-                <Typography sx={{ color: alpha(brandTokens.parchment, 0.54), fontSize: '0.73rem' }}>
+                <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.73rem' }}>
                   Quote expires: {new Date(row.quote_expires_at).toLocaleString()} · Resent {row.quote_resend_count}x
                 </Typography>
               )}
@@ -531,7 +531,7 @@ export default function AdminCustomRequestsPage() {
                 </Typography>
               )}
               {row.recovery_reminder_sent_at && (
-                <Typography sx={{ color: alpha(brandTokens.parchment, 0.54), fontSize: '0.73rem' }}>
+                <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.73rem' }}>
                   Recovery reminder sent: {new Date(row.recovery_reminder_sent_at).toLocaleString()}
                 </Typography>
               )}
@@ -556,7 +556,7 @@ export default function AdminCustomRequestsPage() {
                     </Button>
                   )}
                   {artworkUrls[row.id] === 'loading' && (
-                    <Typography sx={{ fontSize: '0.77rem', color: alpha(brandTokens.parchment, 0.55) }}>
+                    <Typography sx={{ fontSize: '0.77rem', color: alpha(brandTokens.parchment, 0.62) }}>
                       Generating signed URLs…
                     </Typography>
                   )}

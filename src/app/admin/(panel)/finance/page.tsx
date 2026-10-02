@@ -289,6 +289,7 @@ export default function AdminFinancePage() {
 
         <Select
           size="small"
+          aria-label="Filter by order path"
           value={orderPath}
           onChange={(e) => setOrderPath(e.target.value as OrderPath)}
         >
@@ -337,7 +338,7 @@ export default function AdminFinancePage() {
                   p: 1,
                 }}
               >
-                <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.55), mb: 0.2 }}>
+                <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.62), mb: 0.2 }}>
                   {card.label}
                 </Typography>
                 <Typography sx={{ fontFamily: 'var(--font-cinzel, serif)', fontWeight: 700 }}>
@@ -368,7 +369,7 @@ export default function AdminFinancePage() {
                 ]}
               />
               {finance.itemContributions.length === 0 ? (
-                <Typography sx={{ color: alpha(brandTokens.parchment, 0.55), fontSize: '0.82rem' }}>
+                <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.82rem' }}>
                   No contribution rows for this range.
                 </Typography>
               ) : (
@@ -410,7 +411,7 @@ export default function AdminFinancePage() {
                     backgroundColor: alpha(brandTokens.bgVoid, 0.35),
                   }}
                 >
-                  <Typography sx={{ fontSize: '0.7rem', color: alpha(brandTokens.parchment, 0.55), textTransform: 'uppercase' }}>
+                  <Typography sx={{ fontSize: '0.7rem', color: alpha(brandTokens.parchment, 0.62), textTransform: 'uppercase' }}>
                     {stage.stage}
                   </Typography>
                   <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.8) }}>
@@ -458,6 +459,7 @@ export default function AdminFinancePage() {
           />
           <Select
             size="small"
+            aria-label="Labor stage"
             value={laborStage}
             onChange={(e) => setLaborStage(e.target.value as LaborStage)}
           >
@@ -511,7 +513,7 @@ export default function AdminFinancePage() {
             <CircularProgress size={22} />
           </Box>
         ) : laborEntries.length === 0 ? (
-          <Typography sx={{ color: alpha(brandTokens.parchment, 0.55), fontSize: '0.82rem' }}>
+          <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.82rem' }}>
             No labor entries in this range yet.
           </Typography>
         ) : (
@@ -547,7 +549,7 @@ function RowHeader({ columns }: { columns: string[] }) {
       }}
     >
       {columns.map((col) => (
-        <Typography key={col} sx={{ fontSize: '0.68rem', color: alpha(brandTokens.parchment, 0.5), textTransform: 'uppercase' }}>
+        <Typography key={col} sx={{ fontSize: '0.68rem', color: alpha(brandTokens.parchment, 0.62), textTransform: 'uppercase' }}>
           {col}
         </Typography>
       ))}

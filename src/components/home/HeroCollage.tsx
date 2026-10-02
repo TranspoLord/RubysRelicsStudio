@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Box from '@mui/material/Box'
+import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
 import { brandTokens } from '@/theme/theme'
 
@@ -55,6 +56,20 @@ function generateLayouts(count: number): CardLayout[] {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+/**
+ * §7.11: the CMS stored absolute production URLs
+ * (`https://rubysrelicsstudio.vercel.app/...`), so a click in local dev left the
+ * dev server. Reduce any absolute URL to its path — same origin, by construction.
+ */
+function toLocalHref(href: string): string {
+  try {
+    const url = new URL(href)
+    return `${url.pathname}${url.search}${url.hash}`
+  } catch {
+    return href // already a relative path
+  }
+}
+
 interface HeroCollageProps {
   config?: HeroCollageConfig | null
 }
@@ -65,7 +80,12 @@ export function HeroCollage({ config }: HeroCollageProps) {
 
   const isEnabled = config?.is_enabled ?? true
   const imageCount = config?.image_count ?? 4
-  const images = config?.images?.length ? config.images : DEFAULT_IMAGES
+  const configured = config?.images?.length ? config.images : DEFAULT_IMAGES
+  // §7.11: the live config listed 6 slots of which 4 had `url: ""`, so four
+  // "cards" were empty space. Prefer the real images when there are enough of
+  // them; otherwise render labelled placeholders rather than blanks.
+  const realImages = configured.filter((image) => Boolean(image.url))
+  const images = realImages.length >= 2 ? realImages : configured
   const count = Math.min(imageCount, images.length, 6)
 
   const layouts = useMemo(() => generateLayouts(count), [count])
@@ -106,7 +126,6 @@ export function HeroCollage({ config }: HeroCollageProps) {
 
   return (
     <Box
-      aria-hidden="true"
       sx={{
         position: 'absolute',
         right: { xs: '-5%', md: '2%' },
@@ -120,11 +139,18 @@ export function HeroCollage({ config }: HeroCollageProps) {
       {images.slice(0, count).map((image, index) => {
         const layout = layouts[index]
         const isVisible = visibleIndices.includes(index)
-        const hasLink = Boolean(image.href)
+        // §7.11/§8.6: normalise the stored absolute URL, and give the link a name
+        // — its only child is an <img alt="">, so it used to announce as "link".
+        const href = image.href ? toLocalHref(image.href) : null
+        const hasLink = Boolean(href)
+        const isPlaceholder = !image.url
 
         return (
           <Box
             key={index}
+            // Placeholders are decoration; the real image cards carry the links
+            // and therefore must stay in the accessibility tree (§8.6).
+            aria-hidden={isPlaceholder ? true : undefined}
             sx={{
               position: 'absolute',
               top: layout.top,
@@ -157,7 +183,8 @@ export function HeroCollage({ config }: HeroCollageProps) {
               image.href ? (
                 <Box
                   component="a"
-                  href={image.href}
+                  href={href ?? undefined}
+                  aria-label={image.alt || 'View product'}
                   sx={{
                     width: '100%',
                     height: '100%',
@@ -195,14 +222,23 @@ export function HeroCollage({ config }: HeroCollageProps) {
                   width: '100%',
                   height: '100%',
                   display: 'flex',
+                  flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  gap: 0.5,
                   background: `linear-gradient(135deg, ${alpha(brandTokens.bgSurface, 0.6)} 0%, ${alpha(brandTokens.bgVoid, 0.8)} 100%)`,
-                  color: alpha(brandTokens.parchment, 0.3),
+                  color: alpha(brandTokens.parchment, 0.62),
                   fontSize: '2rem',
                 }}
               >
-                {['🥤', '🪡', '☕', '🪵', '💎', '🎴'][index] ?? '✨'}
+                <Box component="span" aria-hidden="true">
+                  {['🥤', '🪡', '☕', '🪵', '💎', '🎴'][index] ?? '✨'}
+                </Box>
+                {/* §7.11: a placeholder now says what it stands for instead of
+                    reading as empty space. */}
+                <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), textAlign: 'center', px: 1 }}>
+                  {image.alt}
+                </Typography>
               </Box>
             )}
 

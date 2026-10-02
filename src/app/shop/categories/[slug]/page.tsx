@@ -156,7 +156,7 @@ export default async function CategoryPage({ params }: Props) {
                 >
                   <Typography
                     variant="body2"
-                    sx={{ color: alpha(brandTokens.parchment, 0.5) }}
+                    sx={{ color: alpha(brandTokens.parchment, 0.62) }}
                   >
                     {products.length} product{products.length !== 1 ? 's' : ''}
                   </Typography>
@@ -310,7 +310,7 @@ function ProductCard({ product, categorySlug }: ProductCardProps) {
           <Typography
             variant="body2"
             sx={{
-              color: alpha(brandTokens.parchment, 0.55),
+              color: alpha(brandTokens.parchment, 0.62),
               fontSize: '0.8rem',
               lineHeight: 1.55,
               mb: 1.5,
@@ -337,7 +337,7 @@ function ProductCard({ product, categorySlug }: ProductCardProps) {
           <Box>
             <Typography
               variant="body2"
-              sx={{ color: alpha(brandTokens.parchment, 0.4), fontSize: '0.65rem', mb: 0.15 }}
+              sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.65rem', mb: 0.15 }}
             >
               Starting from
             </Typography>
@@ -353,7 +353,7 @@ function ProductCard({ product, categorySlug }: ProductCardProps) {
             </Typography>
           </Box>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: alpha(brandTokens.parchment, 0.35) }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: alpha(brandTokens.parchment, 0.62) }}>
             <AccessTimeIcon sx={{ fontSize: 13 }} />
             <Typography sx={{ fontSize: '0.7rem' }}>
               {product.production_estimate_band}
@@ -406,7 +406,7 @@ function EmptyCategory({ categoryName }: { categoryName: string }) {
       </Typography>
       <Typography
         variant="body1"
-        sx={{ color: alpha(brandTokens.parchment, 0.55), maxWidth: 480, mx: 'auto', mb: 3 }}
+        sx={{ color: alpha(brandTokens.parchment, 0.62), maxWidth: 480, mx: 'auto', mb: 3 }}
       >
         No products listed yet in <strong>{categoryName}</strong>. Check back soon — or submit a
         custom order request if you already know what you want.
@@ -438,7 +438,7 @@ function EmptyCategory({ categoryName }: { categoryName: string }) {
             py: 1.25,
             borderRadius: 1,
             backgroundColor: 'transparent',
-            color: alpha(brandTokens.parchment, 0.6),
+            color: alpha(brandTokens.parchment, 0.62),
             border: `1px solid ${alpha(brandTokens.parchment, 0.15)}`,
             textDecoration: 'none',
             fontWeight: 600,

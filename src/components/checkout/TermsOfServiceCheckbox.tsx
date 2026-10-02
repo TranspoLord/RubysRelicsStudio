@@ -16,7 +16,7 @@ export function TermsOfServiceCheckbox({ checked, onChange }: TermsOfServiceChec
         <Checkbox
           checked={checked}
           onChange={(e) => onChange(e.target.checked)}
-          sx={{ color: alpha(brandTokens.parchment, 0.4) }}
+          sx={{ color: alpha(brandTokens.parchment, 0.62) }}
         />
       }
       label={

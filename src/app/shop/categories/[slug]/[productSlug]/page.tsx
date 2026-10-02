@@ -169,7 +169,7 @@ export default async function ProductDetailPage({ params }: Props) {
               <Box sx={{ mb: 3 }}>
                 <Typography
                   variant="caption"
-                  sx={{ color: alpha(brandTokens.parchment, 0.4), display: 'block', mb: 0.25 }}
+                  sx={{ color: alpha(brandTokens.parchment, 0.62), display: 'block', mb: 0.25 }}
                 >
                   Starting from
                 </Typography>
@@ -263,7 +263,7 @@ function ProductTrustBlock({ estimateBand }: TrustBlockProps) {
           <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.1 }}>
             Production time
           </Typography>
-          <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.55) }}>
+          <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62) }}>
             {estimateBand} after order confirmation
           </Typography>
         </Box>
@@ -275,19 +275,19 @@ function ProductTrustBlock({ estimateBand }: TrustBlockProps) {
           <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.1 }}>
             Quality review
           </Typography>
-          <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.55) }}>
+          <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62) }}>
             Every piece is inspected before it ships
           </Typography>
         </Box>
       </Box>
 
       <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
-        <InfoOutlinedIcon sx={{ fontSize: 18, color: alpha(brandTokens.parchment, 0.4), flexShrink: 0, mt: 0.1 }} />
+        <InfoOutlinedIcon sx={{ fontSize: 18, color: alpha(brandTokens.parchment, 0.62), flexShrink: 0, mt: 0.1 }} />
         <Box>
           <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.1 }}>
             Made to order
           </Typography>
-          <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.55) }}>
+          <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62) }}>
             One-dragon studio — nothing sits in a warehouse
           </Typography>
         </Box>

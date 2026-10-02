@@ -31,8 +31,9 @@ export async function createServerSupabaseClient(): Promise<SupabaseClient<Datab
           })
         } catch {
           // Server Components cannot write cookies. The refresh performed by
-          // src/middleware.ts is what keeps the session alive; swallowing the
-          // write here is the documented @supabase/ssr pattern.
+          // src/proxy.ts (the Next 16 name for middleware) is what keeps the
+          // session alive; swallowing the write here is the documented
+          // @supabase/ssr pattern.
         }
       },
     },

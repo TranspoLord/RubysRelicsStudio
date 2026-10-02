@@ -35,35 +35,184 @@ App. B / App. D). Both are mirrored into §7–§9 here, so nothing actionable l
 where the two documents differ, **this file wins** (two counts were corrected here first, on 2026-09-24: §9.4
 and §9.7).
 
+## Batch execution log (October — open issues live in `OCT_IMPLEMENTATION_PLAN.md`)
+
+- **Batch 1 — 2026-09-30 (§7.1 + §7.6, ✅ shipped).** The CSP analytics origin and the
+  `middleware.ts` → `proxy.ts` migration, deliberately landing together because they are the same file and
+  the same header. The policy and the nonce contract moved into a unit-tested `src/lib/security/csp.ts`;
+  `src/proxy.ts` keeps the handler (exported as `proxy`) and `config.matcher`. Tests:
+  `src/lib/security/csp.test.ts` (12 cases) + `src/proxy.test.ts` (8 cases). Suite **34 files / 228 tests →
+  36 files / 248 tests**, `npm run type-check` clean, `npm run build` clean with no deprecation warning, and
+  the headers verified against a running production server. Issues found while implementing are in
+  `OCT_IMPLEMENTATION_PLAN.md` (OCT-1 was fixed in this batch).
+- **Batch 2 — 2026-09-30 (§8.2 + §9.2 + §9.3 + §9.6, ✅ shipped).** Landmarks and the consent banner: the
+  panel content column is `main#main-content` (so §9.3's skip link finally has a target), the rail is a
+  labelled `nav` with `aria-current` resolved by **longest match** (`src/lib/admin/module-nav.ts`), and the
+  banner is storefront-only (`shouldShowCookieBanner()` in `src/lib/cookie-consent.ts`) with the theme's
+  dark-on-gold primary CTA, 44 px touch targets and `scroll-padding-bottom` so it cannot bury a focused
+  field. Tests: `module-nav.test.ts` (9), `cookie-consent.test.ts` (4), `theme.test.ts` (3, incl. a computed
+  contrast ratio), plus source-contract guards `admin-shell.contract.test.ts` (3) and
+  `cookie-banner.contract.test.ts` (5) built on the new `src/lib/testing/source-contract.ts`. Suite
+  **36 files / 248 tests → 41 files / 272 tests**, `type-check` and `build` clean, `eslint` clean on every
+  touched file, and a production server re-checked (`/` 200 with `main#main-content` and 0 nonce-less
+  scripts, `/admin` 307, `/api/admin/orders` 401). §9.4 was deliberately **not** touched here even though the
+  same box was edited — its fix needs measurement, so it stays in Batch 5.
+- **Batch 3 — 2026-09-30 (§7.3, ✅ shipped).** Homepage-section writes can no longer silently no-op: one
+  helper (`src/lib/homepage/section-write.ts`) asks for the written rows back, creates the missing row
+  (`upsert` on `section_key`, no schema change), reports `created`, and turns a 0-row match that cannot be
+  created into a **500 + failure audit**. The section key list and the default order for a new row moved to
+  `src/lib/homepage/sections.ts` (`shop_all_preview` 45, `future_products_notify` 105) so a new row cannot
+  inherit `sort_order = 0`. Tests: `section-write.test.ts` (8) + `sections.test.ts` (6) + §7.3 cases in both
+  route suites. Suite **41 files / 272 tests → 43 files / 294 tests**, type-check/eslint/build clean. Live
+  evidence (`supabase db query --linked`, read-only): 16 rows, both target keys absent. §7.4/§7.5 were
+  deliberately **not** taken here — they need live DB writes and a taxonomy read.
+- **Batch 4 — 2026-09-30 (§8.1 + §8.3 + §9.5 + §9.12, ✅ shipped).** The contrast layer, in the theme so both
+  surfaces change once: the disabled CTA **stops the gradient** instead of the label (explicit surface +
+  `alpha(parchment, 0.62)` label = 5.6:1) and `MuiIconButton` shares that floor; the semantic palette pins
+  `contrastText` (MUI's 3:1 auto-derivation was painting white on `warning` — the `Pending` chips) and adds a
+  text-safe `light` tone per semantic, with `textError`/`outlinedError` routed through it; and 151 sub-floor
+  text colours across 45 files were raised to one enforced floor by a **number-only** sweep (1:1 line diffs).
+  Tests: `theme.test.ts` grew to 14 cases (composited ratios + "the old value failed" assertions) and
+  `contrast-floor.test.ts` (3) enforces the floor across `src/` with a planted-offence case. Suite
+  **43 files / 294 tests → 44 files / 308 tests**, type-check/build clean, and the 16 eslint problems in the
+  touched files were proven to sit on **0** changed lines. `OCT-IMPLEMENTATION_PLAN` files the one thing this
+  batch could not verify here (§8.1's `aria-describedby` caption link — a component change, not a token).
+- **Batch 5 — 2026-09-30 (§8.7 + §9.7 + §9.10 + §9.11, ✅ shipped; §9.4 deferred).** A11y structure and names:
+  all 13 `subtitle1|2` sites now declare `component` (MUI was emitting `h6`s, incl. a price under a card `h3`);
+  the 17 visibility switches, four tile-editor icon buttons, the global search field and 14 filter selects got
+  accessible names; the header label and document title now follow the active module; and the five `h1`-less
+  routes gained one while 10 `h6` sections became `h2` (no more `h1` → `h6` skips). Tests: `module-nav.test.ts`
+  (+3), `admin-a11y.contract.test.ts` (14, incl. repo-wide source scans for stray `subtitle` headings and
+  unnamed `IconButton`s), and a shared `listSourceFiles()` helper now used by the contrast scan too. Suite
+  **44 files / 308 tests → 45 files / 325 tests**, type-check/build clean, 0 lint problems on changed lines
+  (18 baseline problems, 0 on my lines). **§9.4 was deliberately not attempted:** its acceptance test is a
+  layout measurement, and at the time of this batch the harness had not been stood up (it was in Batch 7 —
+  see OCT-19's correction).
+- **Batch 6 — 2026-09-30 (§7.2 + §7.4 + §7.5 + §7.10 + §3.4, ✅ shipped; two items PARTIAL).** The
+  homepage/CMS batch: `sort_order` is now **real** (a new pure `orderHomepageSections()` with all four safety
+  rules, and `page.tsx` loops over a key→element map instead of a fixed JSX sequence — with the old order
+  pinned by tests using the live row values, in place of the un-runnable audit.json diff); the announcement
+  banner is **CMS-driven** (no `STATIC_FALLBACK`, so clearing `is_active` actually removes it, which also
+  deletes the 404 CTA instance); a generated favicon **and** OG image ship and were verified live over HTTP
+  (200 / image/png / 979 bytes / PNG magic); and the Shop All Preview + Future Products Notify editors are
+  rendered, so §3.4's dead handlers are now reachable and persist (thanks to §7.3).
+  Tests: `section-order.test.ts` (11), `homepage-page.contract.test.ts` (10). Suite **45 files / 325 tests →
+  47 files / 346 tests**, type-check/build clean, 0 lint problems on changed lines (18 baseline).
+  **Two items deliberately left PARTIAL:** §7.4's admin panel + duplicate active row (OCT-22) and §7.5's
+  unverified Footer slug (OCT-23) — both because they need a DB write or a live read I could not get
+  (`db query --linked` hung twice), and I would rather leave a filed gap than repoint a link on a guess.
+- **Batch 7 — 2026-09-30 (§7.7–§7.15, ✅ shipped; §7.15 data ships as SQL).** The storefront pass, executed
+  **with the audit's own harness** — and the first batch whose claims are measured rather than argued:
+  - §7.8 hero CTAs now go to `/custom-orders` + `/shop/ready-made` (were both `/shop`) with a correctly-named
+    `hero_cta_clicked` event; §7.11 collage hrefs are **relative** (0 absolute URLs, was 2), tiles are
+    **named**, and the 4 empty placeholder slots no longer render; §7.9's no-op toggle is gone and the
+    emptied-grid empty state was **proven by clicking**; §7.12's `overline` floor lifted sub-12px nodes
+    **11 → 1**; §7.13 measured hero **742.72 → 693.08** (mobile) / **978.55 → 800.63** (tablet); §7.14's
+    query limits raised; §7.7's validator now normalises off-brand accents and reports them.
+  - **Evidence:** `%TEMP%\rrs-shots7\` (before) and `%TEMP%\rrs-shots8\` (after) — tiled captures +
+    `audit.json` at 1440/834/390, plus DOM probes (hydration, filter click, accessible names). Harnesses were
+    throwaway `.tmp-*.mjs` files, deleted in teardown; `.tmp-*` is now gitignored (UI_AUDIT.md §10).
+  - **Harness outcome worth knowing:** hydration reported `true` at all three viewports, `overflow` stayed
+    **0** everywhere, and the baseline matched the recorded audit (mobile 9077 vs the audit's 9073), so the
+    before/after comparison is sound.
+  - Tests: 47 files / 348 tests (was 45/325), type-check/build clean. Two earlier claims in these docs were
+    **wrong and are corrected**: the browser *is* present (see OCT-19), and the plan's "no browser" notes are
+    struck.
+- **Batch 8 — 2026-10-01 (§9.4 + §8.5's admin scope, ✅ shipped; the admin half of the harness now runs).**
+  The first **admin-authenticated** capture — the thing that unblocks every remaining panel claim (§9.7/§9.11
+  leftovers, OCT-20/21):
+  - **A dev-only sign-in helper** (`src/app/api/dev/session/route.ts`, guards in `src/lib/dev/dev-signin.ts`):
+    `auth.admin.generateLink({ type: 'magiclink' })` (service role, so **no email is sent**) → `verifyOtp` on
+    the cookie-bound server client, so the session is written exactly the way `/auth/callback` writes one. It
+    signs in **only** an account already active on `exp_admin_users` (§10.1), never creates or promotes one,
+    and returns no token, secret or key — the session lands in cookies. Three independent gates (`NODE_ENV`,
+    `VERCEL`/`VERCEL_ENV`, `ADMIN_DEV_SIGNIN_ENABLED`) plus a loopback check make it `404` like a missing
+    route anywhere else. `UI_AUDIT.md` §15 is rewritten around it; the dead dev-token method (and its
+    HKDF/`deriveBits` trap) is kept as *history*, not instructions.
+  - **§9.4 fixed and measured.** The cause was the section-card grid's `repeat(2, 1fr)`: a `1fr` track is
+    `minmax(auto, 1fr)`, so each card's `whiteSpace: 'nowrap'` description (~590 px) forced 1191 px tracks
+    inside a 1060 px column, pushing the panel to 1241.34 px. `repeat(2, minmax(0, 1fr))` →
+    **`/admin/homepage` 140 → 0 px** at 1440 (0 at 834/390 too). One wrong lever en route (pinning the
+    *page-root* grid) measured **worse** — 158 px — and was reverted; `min-width: 0` on the grid items fixed
+    nothing. Recorded in `UI_AUDIT.md` §15.7 as the diagnostic pattern.
+  - **§8.5's admin scope done** — no sub-12px text remains anywhere the capture reaches: `AdminShell` module
+    descriptions (0.7rem = 11.2px, on all 23 routes), the `/admin` StatCard labels (0.72rem), the homepage
+    editor's tile-editor captions (0.68/0.72rem), plus **3 latent** shell sites that only render with
+    notification bodies/links or an open search modal. Sub-12 nodes **12 → 0** on every route and **31 → 0**
+    on `/admin/homepage`.
+  - **Evidence:** `%TEMP%\rrs-admin2\` — 18 captures (6 routes × 3 viewports) + `audit.json`, with
+    `audit-before.json` kept so the before/after diff is reproducible. Throwaway harnesses
+    (`.tmp-admin-capture.mjs`, `.tmp-probe-admin.mjs`) deleted in teardown.
+  - Tests: **49 files / 370 tests** (was 47/348), type-check/build clean, eslint 0 on every changed file.
+  - **§8.5 stays open for the storefront:** 49 `fontSize` string sites in `src/` are still below 0.75rem
+    (24 in `shop/categories/[slug]`, 4 in `ProductConfigurator`), so the floor sweep needs the same treatment
+    on the customer-facing pages.
+- **Batch 9 (next) — the remaining admin + non-UI work.** §8.5's storefront floor sweep, §8.4 (inline-link
+  targets), §8.6 (collage alt data), §8.9 (wordmark forced-colours), §9.8 (obsolete — close), §1.1
+  (migration history), §1.5 (npm audit), §2.10 (sitemap/structured data), OCT-20/21/22/23/24/26/27, and
+  §10.16/§10.17's two open decisions.
+- **Batch 5 — §9.4, §9.7, §9.10, §9.11, §8.7.** Overflow, control names, per-route titles, heading levels.
+  §9.4 needs a layout measurement tool picked first (see OCT-5).
+- **Batch 6 — §7.2 + §7.4 + §7.5 + §7.10 + §3.4.** Section ordering (`sort_order` made real — it can now use
+  the registry from §7.3), the banner switch/CTA/link, favicon + OG image, and the Shop All Preview editor
+  that §7.3 just unblocked.
+
 ## Summary (2026-09-16 audit; §7 added 2026-09-19; §8, §9 and §10 added 2026-09-24)
 
 | Section | ✅ Done | 🟡 Partial | ❌ Not done | Other |
 |---|---|---|---|---|
 | 1. Security & deployment | 3 | 0 | 3 | — |
 | 2. Retention & notification | 6 | 3 | 5 | 1 unverified |
-| 3. Future-products / homepage | 5 | 2 | 5 | — |
+| 3. Future-products / homepage | 6 | 3 | 3 | — |
 | 4. Product designer / 3D | 0 | 2 | 2 | — |
 | 5. General hygiene | 2 | 0 | 0 | — |
 | 6. Live DB follow-ups | 1 | 0 | 2 | 1 corrected, 2 informational |
-| 7. Storefront UI (added 2026-09-19) | 0 | 0 | 15 | 4 informational |
-| 8. Storefront UI, 2nd pass (added 2026-09-24) | 0 | 0 | 9 | — |
-| 9. Admin panel UI (added 2026-09-24) | 1 | 0 | 16 | 1 unverified area (interactions) |
+| 7. Storefront UI (added 2026-09-19) | 12 | 3 | 0 | 4 informational |
+| 8. Storefront UI, 2nd pass (added 2026-09-24) | 4 | 0 | 5 | — |
+| 9. Admin panel UI (added 2026-09-24) | 7 | 2 | 8 | 1 unverified area (interactions) |
 | 10. Admin auth switch: MFA → Google OAuth (added 2026-09-24) | 14 | 1 | 0 | 2 open decisions |
-| **Total** | **32** | **8** | **57** | **11** |
+| **Total** | **55** | **14** | **28** | **11** |
 
 Highest-value open items: **the admin panel's blocking redirect is fixed** — the Edge verifier had been
 deriving a different session-signing key than the signer, so *no* login could reach `/admin` (§9.1) — which
-leaves the following as the top work: the storefront cookie banner rendering inside the panel and burying two
-modules plus the `Accept` button at 1.67:1 (§9.2, same defect as §8.2), the panel's missing `main`
-landmark/skip-link target (§9.3 + §9.6), the `/admin/homepage` editor scrolling sideways at every viewport
-(§9.4), the muted-text contrast floor on both surfaces (§9.5 + §8.3), the panel's nameless switches/selects
-(§9.7), the two conversion-blocking storefront contrast defects — the unreadable disabled state on
-`Add to Cart` / `Pay with Square` (§8.1, and the same mechanism in the panel at §9.12) and the cookie
-`Accept` button (§8.2) — plus the CSP block that disables **all** analytics (§7.1 — also blocks §3.11 before
-any dashboard work is meaningful), the silent no-op section writes that will discard the Shop All Preview
-editor's input (§7.3, a prerequisite for §3.4), the section-ordering refactor that finally makes `sort_order`
+leaves the following as the top work: the `/admin/homepage` editor scrolling sideways at every viewport
+(§9.4), the panel's nameless switches/selects
+(§9.7), the section-ordering refactor that finally makes `sort_order`
 real (§7.2), `npm audit` high CVE (§1.5), the migration-history baseline (§1.1/§6.1 — blocks any future
-`db push`), and the dead `ip` fallback removal (§1.4/§6.3). One further item outranks that list on **risk**
+`db push`), and the dead `ip` fallback removal (§1.4/§6.3). **Updated 2026-09-30 (Batch 1): §7.1 and §7.6
+are ✅ DONE** — the CSP now allowlists the analytics loader origin in dev and prod (unblocking §3.11), and
+`src/middleware.ts` is `src/proxy.ts` with the Next 16 `proxy` export, so the deprecation warning is gone.
+The policy and the nonce contract moved into a unit-tested module (`src/lib/security/csp.ts`), and the new
+`src/proxy.test.ts` pins both the export name and the decoration of every branch — that suite found a
+latent bug in the deny branch, filed as OCT-1 in `OCT_IMPLEMENTATION_PLAN.md`. **Updated 2026-09-30 (Batch
+2): §8.2, §9.2, §9.3 and §9.6 are ✅ DONE** — the consent banner is storefront-only (so it can no longer sit
+over the panel's module rail), its `Accept` label is the theme's dark-on-gold `primary.contrastText` asserted
+*numerically* in `src/theme/theme.test.ts`, every banner action is a 44 px touch target on phones, the panel
+has `main#main-content` (which is what makes "Skip to main content" work on all 23 routes), and the module
+rail is a labelled `nav` with `aria-current` resolved by longest match. **Updated 2026-09-30 (Batch 3): §7.3
+is ✅ DONE** — every homepage-section write now proves a row was written and creates the missing one through
+one helper (`src/lib/homepage/section-write.ts`), so the Shop All Preview / Future Products editors can
+persist once §3.4 renders them; the live table's 16 rows and the two absent keys were confirmed with
+`supabase db query --linked`. **Corrected 2026-09-30 (Batch 7): a browser *is* available** —
+`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe` — and the audit harness was built and used in
+Batch 7, so the "no browser" notes in earlier batch entries are struck (see OCT-19). **Updated 2026-09-30 (Batch 4): §8.1, §8.3, §9.5 and §9.12 are ✅ DONE** — the
+disabled-CTA state stops the gold gradient instead of the label (with the label at 5.6:1), 151 sub-floor text
+colours were raised to one enforced floor (`MIN_MUTED_TEXT_ALPHA`, guarded by `contrast-floor.test.ts`), the
+semantic palette now pins `contrastText`/text-safe tones so the `Pending` chips and destructive buttons are
+readable, and `MuiIconButton` shares the disabled floor. One caveat that affects the remaining UI items: **this
+environment has no Edge/Chrome binary**, so the audit's CDP/pixel harness cannot be re-run here and pixel- or
+layout-verified items need a preview check (OCT-19). **Updated 2026-09-30 (Batch 5): §8.7, §9.10 are ✅ DONE
+and §9.7/§9.11 are 🟡 PARTIAL** — no `Typography` can emit a stray `h6` any more (scan-enforced), the panel's
+switches/search/tile buttons and the named filter selects are labelled, the header label and document title
+follow the active module, and the panel no longer skips `h1` → `h6`; what remains is 16 unnamed selects
+(OCT-20) and the `h1` size variance (OCT-21). §9.4 stays open on purpose: its acceptance test is a layout
+measurement and there is no browser in this environment. **Updated 2026-09-30 (Batch 6): §3.4, §7.2 and §7.10
+are ✅ DONE, with §7.4 and §7.5 🟡** — the homepage order is CMS-driven at last (`sort_order` decides what
+renders where, all four safety rules tested), a favicon + OG image ship and were fetched live (200 /
+`image/png`), and the Shop All Preview / Future Products Notify editors exist, so their save handlers are no
+longer dead code. §7.4/§7.5 are partial only where the work is a database write or an unverifiable live read
+(OCT-22/OCT-23): the banner is already data-driven and its 404 CTA is gone, but the duplicate
+`exp_announcement` row and the Footer's slug still need a verified answer. One further item outranks that list on **risk**
 rather than user impact: **§10** retires the whole bespoke admin-auth stack — shared key, emailed MFA, custom
 HMAC session cookie, plus §1.2's seeds, §1.4 and §1.6 — in favour of Google OAuth with an admin allow-list.
 Until it lands, the panel keeps a shared secret, an audit log that cannot name the actor, and a "Sign out" that
@@ -212,15 +361,21 @@ High/medium:
    `src/app/api/future-products/route.ts` imports it (line 6) and uses it at lines 18, 56,
    116, 122.
 4. Wire the Shop All Preview editor UI in the admin homepage page (state exists, no JSX).
-    ❌ **NOT DONE.** `src/app/admin/(panel)/homepage/page.tsx` is 903 lines (967 at the 2026-09-16 audit) with `return (` at
-   line 414; **every** `shopAllPreview` / `futureProductsNotify` reference sits at lines
-   110–375 (state + `handleSave*` handlers only). **Dependency (2026-09-19, §7.3):** this item must
-    ship together with the upsert fix — the `[key]` PATCH route only `.update()`s and never
-    inserts or verifies a matched row, so with no DB row for `shop_all_preview` a save returns
-    `{ok:true}` and stores nothing. Completing the UI alone yields an editor that looks like it
-    saves and silently discards input. The rendered panels are Section Visibility, Hero Collage and the tile editors — but **none**
-    for Shop All / Future Products (re-confirmed 2026-09-24). No editor fields are rendered — same for the
-   Future Products Notify card.
+    ✅ **DONE (2026-09-30, Batch 6).** The page had `shopAllPreview` / `futureProductsNotify` state, load
+    logic and both `handleSave*` handlers — and rendered **no JSX** for either, so the handlers were dead code.
+    **Added:** two editor cards (Shop All Preview: heading, subheading, products shown, show-filters and
+    visibility switches; Future Products Notify: heading, CTA label, subheading, visibility), each with its own
+    save button wired to the existing handler, an inline `Alert` for success/failure, and `aria-label`s on every
+    field (§9.7's standard). Every input is bounded (`maxLength`, `min`/`max` 1–50 on the product count) to match
+    the route's own validation.
+    **This item's prerequisite is satisfied:** §7.3 (Batch 3) is ✅, so a save now *persists* — the route
+    verifies the written row and creates `shop_all_preview` / `future_products_notify` when they are missing
+    (neither exists in the live table), which is exactly the "editor that looks like it saves and silently
+    discards input" trap the item warned about.
+    Guards: `src/lib/homepage/homepage-page.contract.test.ts` asserts both panels render, both handlers are
+    invoked from an `onClick` (no dead handler), and the new fields are named.
+    **Residual:** the panel copy is mine, not the owner's — worth a wording pass, and a visual check needs the
+    browser this environment lacks (OCT-19).
 5. Add `[id]` CRUD routes for future products / statuses / responses. ❌ **NOT DONE.**
    `api/admin/catalog/future-products/` and `future-product-statuses/` each contain only
    `route.ts` + `route.test.ts` — no `[id]/` directories.
@@ -244,11 +399,15 @@ High/medium:
 10. Decide/implement rich-text sanitization (Tiptap editor + server-side sanitize). ❌ **NOT
     DONE.** No Tiptap dependency or sanitize path found.
 11. Add analytics events and wire into `HomepageProductGrid` + `FutureProductsNotifyCard`.
-    ❌ **NOT DONE.** Zero analytics matches in either component. **Re-checked 2026-09-19 (§7):**
-    the grid's helpers already exist in `src/lib/analytics/events.ts`
-    (`homepageProductFilterApplied`, `homepageProductViewAllClicked`,
-    `homepageFutureProductsLinkClicked`) but are never called — and no event can be recorded at
-    all until §7.1 is fixed, so sequence this after §7.1.
+    🟡 **PARTIAL (2026-09-30, Batch 7).** The prerequisite (§7.1's CSP block) was fixed in Batch 1 — verified
+    live: the captures report **0 console messages and 0 blocked requests**, where the audit's baseline
+    expected the `va.vercel-scripts.com` CSP violation on every load.
+    **Wired now:** the grid's three existing helpers are actually called —
+    `homepageProductFilterApplied` on each visibility toggle, `homepageProductViewAllClicked` on "View All",
+    and `homepageFutureProductsLinkClicked` on "Future Products" — plus a new `heroCtaClicked` for §7.8.
+    **Still open:** `FutureProductsNotifyCard` is unchanged (its form already posts `source:
+    'homepage_notify_card'` server-side, but no client event), and nothing has been checked in the Vercel
+    dashboard, so "events are recorded" is proven only to the extent that the script now loads.
 12. Extend `scripts/test-rls-lockdown.mjs` with `exp_future_products` / statuses checks.
     ✅ **DONE.** `scripts/test-rls-lockdown.mjs:23-24` lists both tables.
 
@@ -350,147 +509,233 @@ than duplicated._
 
 Critical:
 
-1. **The CSP blocks the Vercel Analytics script — all analytics are currently dark.** ❌ **NOT
-   DONE.** `src/middleware.ts:131-133` builds `script-src 'self' 'nonce-…' https://vercel.live`,
-   but the script is served from `https://va.vercel-scripts.com`, and that console violation
-   fires on every page load. `connect-src` already lists `vitals.vercel-insights.com` (line 140),
-   so **only** the script origin is missing. `@vercel/analytics` exposes **no** `nonce` prop
-   (checked in the installed types), so allowlisting the origin is the fix — add it to **both**
-   the production and dev branches to keep dev/prod parity. The impact is not just pageviews:
-   `src/lib/analytics/events.ts` wraps `track()` and is imported by 12 files (~35 events,
-   including `checkout_started`, `checkout_completed`, `custom_request_submitted`). **Blocks
-   §3.11.** The violation also fires on every dev/preview load (observed in all 24 captures of
-   the second pass), so the dev console stays noisy and real errors hide behind it — allowlisting
-   the origin in both branches fixes dev/prod parity in the same change.
-2. **Homepage section order is code-driven; `sort_order` is never read.** ❌ **NOT DONE.**
-   `src/app/page.tsx:78-158` renders a fixed JSX sequence; `getHomepageSections()` returns
-   `sort_order` but only `is_visible` / `content` are consumed, so admin ordering is decorative.
-   Refactor to a shared key registry + pure ordering function + key→element render loop, with
-   four safety rules: (a) a key with **no DB row** stays **visible** at a default order
-   (`shop_all_preview` 45, `future_products_notify` 105 — their current JSX slots), (b) equal
-   `sort_order` breaks deterministically by default-order then key (Postgres tie order is
-   arbitrary), (c) `hero` is pinned first, (d) an empty/failed section map falls back to the full
-   default order, so a Supabase outage cannot blank the page. The live `sort_order` values
-   already mirror the current JSX order for every row-bearing key, so the refactor should render
-   identically — diffing `audit.json` before/after is the acceptance test.
-3. **Homepage-section writes silently no-op for keys without a DB row.** ❌ **NOT DONE.** Every
-   writer uses `.update().eq('section_key', …)` and never inserts, nor verifies that a row was
-   matched (`src/app/api/admin/homepage/sections/[key]/route.ts:204,241,277,308,355`; the batch
-   equivalent at `sections/route.ts:113-116`). Supabase returns no error on a 0-row match, so
-   saves for `shop_all_preview` / `future_products_notify` return `{ok:true}` and write a
-   **success** audit entry while storing nothing. `section_key` is `UNIQUE`
-   (`supabase/migrations/001_homepage_cms.sql:35`, re-confirmed in `049` and
-   `supabase/verification/schema_repair.sql`), so `upsert(…, { onConflict: 'section_key' })` is
-   available with **no schema change and no migration** (and therefore no `db push` — see §1.1).
-   Also make the audit log record a real failure when 0 rows match. **Prerequisite for §3.4 and
-   for items 9 and 15 below.**
-4. **The announcement banner cannot be turned off.** ❌ **NOT DONE.** Three independent layers:
-   `src/app/page.tsx:65` renders it unconditionally; `AnnouncementBanner.tsx:33` does
-   `data ?? STATIC_FALLBACK`, so clearing `exp_announcement.is_active` **still renders a
-   hard-coded banner**; and the admin homepage page has no announcement panel at all
-   (`ALL_SECTION_KEYS` in `sections/route.ts:8-26` deliberately excludes `announcement` — the
-   intended switch is `exp_announcement.is_active`). Separately, the live table holds **two
-   identical active rows**, and the newest-wins `limit(1)` query hides that landmine.
+1. **The CSP blocks the Vercel Analytics script — all analytics are currently dark.** ✅ **DONE
+   (2026-09-30, Batch 1).** The policy was inlined in `src/middleware.ts` with
+   `script-src 'self' 'nonce-…' https://vercel.live`, while the script is served from
+   `https://va.vercel-scripts.com` (confirmed in the installed package —
+   `@vercel/analytics/dist/react/index.js:103` returns `…/v1/script.debug.js`, which was also the
+   dev-console violation in all 24 captures), so the violation fired on every page load.
+   **Fix:** the policy moved to `src/lib/security/csp.ts` (`buildCspHeader()`), which allowlists the
+   origin in **both** branches through `CSP_SCRIPT_ORIGINS`; `applyCspToResponse()` now writes the
+   `Content-Security-Policy` header, the `x-nonce` header and the `rrs_csp_nonce` cookie from one
+   value, so a call site cannot decorrelate them. `src/lib/security/csp.test.ts` (12 cases) asserts
+   the origin in dev *and* prod, asserts the `vitals.vercel-insights.com` beacon is still allowed
+   (loading the loader without the beacon would drop every event), pins the nonce/cookie contract and
+   the hardening directives, and guards against a source list emitted without its directive name.
+   **Verified live** on a production build (`next start`): `GET /` returns
+   `script-src 'self' 'nonce-…' https://vercel.live https://va.vercel-scripts.com`, and the same
+   response's `<body nonce>` matches its `x-nonce` header with **0** script tags left without a
+   nonce. **§3.11 is unblocked** (events can now be recorded; nothing calls them yet).
+2. **Homepage section order is code-driven; `sort_order` is never read.** ✅ **DONE (2026-09-30, Batch 6).**
+   `src/app/page.tsx` no longer renders a fixed JSX sequence: it builds a key→element map and loops over
+   `orderHomepageSections(sections)` (new `src/lib/homepage/section-order.ts`), so the admin's `sort_order` now
+   decides what appears where. **All four safety rules shipped exactly as specified** and each is unit-tested:
+   (a) a row-less key stays visible at its default order (`shop_all_preview` 45, `future_products_notify` 105),
+   (b) equal `sort_order` breaks deterministically by default order then key (asserted to be map-order
+   independent, so a refresh cannot reorder the page), (c) `hero` is pinned first even when the CMS buries it,
+   (d) an empty/failed map degrades to the full default order rather than a blank page.
+   **Acceptance test, adapted:** the audit proposed diffing `audit.json` before/after, which needs the CDP
+   harness this environment lacks (OCT-19) — so equivalence is asserted instead from the **live** `sort_order`
+   values measured on 2026-09-30: `section-order.test.ts` pins the resulting sequence to the exact order the old
+   JSX had, and pins the visible subset. `hero_collage` is correctly excluded from the render set (it is the
+   hero's *content* row, read by `getHeroCollageConfig()`), which the test also states.
+   **Residual:** there is still no admin UI that *sets* `sort_order` (the CMS panel exposes visibility and
+   content only), so ordering is honoured but editable only in SQL — filed as OCT-24.
+3. **Homepage-section writes silently no-op for keys without a DB row.** ✅ **DONE (2026-09-30,
+   Batch 3).** Every writer used `.update().eq('section_key', …)` and looked only at `error`, so a save for a
+   key with no row reported success (and audited **success**) while storing nothing. **Confirmed live** with
+   `supabase db query --linked` on 2026-09-30: `exp_homepage_sections` holds **16** rows and **neither**
+   `shop_all_preview` **nor** `future_products_notify` is among them, so both keys were affected. **Fix:**
+   all five `[key]` writers and the batch writer now go through one helper,
+   `saveHomepageSection()` (`src/lib/homepage/section-write.ts`), which (a) asks for the written rows back
+   (`.select()`) so "no row matched" is observable, (b) creates the row when none matched — `upsert(…,
+   { onConflict: 'section_key' })`, exactly as this item proposed, so still **no schema change and no
+   migration** — and (c) reports `created` so the response (`{ok:true, created}`) and the audit entry
+   distinguish update from create. A 0-row match that cannot be created is now a **500 + failure audit**.
+   **Two deliberate safety decisions:** `sort_order` is written **only** on the create path (an update must
+   never overwrite the admin's ordering — §7.2), and a visibility-only toggle never sends `content`, so it
+   cannot wipe a section's content. The section key list moved to `src/lib/homepage/sections.ts` (one source
+   of truth for both routes) together with the default order for a newly created row — `shop_all_preview`
+   **45**, `future_products_notify` **105**, this item's own values — so a brand-new row cannot inherit the
+   column default `0` and jump to the top of the homepage. Tests: `src/lib/homepage/section-write.test.ts`
+   (8) + `sections.test.ts` (6) + new cases in both route suites (43 files / 294 tests green, type-check and
+   build clean). **Residual:** the end-to-end PATCH needs an authenticated admin session, which this
+   environment does not have — the proof is the mocked-chain route tests plus the live "row is absent"
+   evidence above. **No longer blocking: §3.4 and items 9 and 15 below can now create their rows.**
+4. **The announcement banner cannot be turned off.** 🟡 **PARTIAL (2026-09-30, Batch 6).** Two of the three
+   layers are fixed in code:
+   - `src/app/page.tsx` no longer renders it unconditionally — it renders only when `getActiveAnnouncement()`
+     (which filters `is_active = true`) returned a row;
+   - `AnnouncementBanner.tsx` no longer does `data ?? STATIC_FALLBACK`: with no data, or no `message`, it
+     renders nothing.
+   So clearing `exp_announcement.is_active` now genuinely removes the banner, which is the behaviour the item
+   asks for ("the intended switch is `exp_announcement.is_active`").
+   **Still open, and both are outside "change code":** (i) the admin homepage page has no announcement panel,
+   so the switch is SQL-only — filed as OCT-22; (ii) the live table holds **two identical active rows** and the
+   newest-wins `limit(1)` query hides it — a data cleanup that needs a write, so it stays filed rather than
+   done (OCT-22), consistent with this project's "no batch writes to the hosted DB without an explicit ask"
+   rule (OCT-18).
 
 High:
 
-5. **The banner and footer CTA point at a non-existent category (404).** ❌ **NOT DONE.**
-   `exp_announcement.cta_href` is `/shop/categories/engraved-drinkware`, which is **not** a key
-   in `exp_taxonomy` (the drinkware keys are `drinkware` and `powder_coated_tumbler`), and
-   `src/app/shop/categories/[slug]/page.tsx:52` calls `notFound()` for an unknown slug. The same
-   href appears in `src/components/layout/Footer.tsx:16` ("Engraved Drinkware") and in
-   `AnnouncementBanner.tsx:28` (`STATIC_FALLBACK`). Repoint all three at a real category.
-6. **Migrate `middleware.ts` → `proxy.ts` (Next 16 deprecation).** ❌ **NOT DONE.** Dev log,
-   verbatim: `⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.` →
-   `npx @next/codemod@canary middleware-to-proxy .`. `src/middleware.ts` is the only such file
-   (`src/proxy.ts` does not exist). Preserve the nonce contract — the `x-nonce` response header
-   **and** the `rrs_csp_nonce` cookie, both read at `src/app/layout.tsx:73-75` — plus
-   `config.matcher` (line 277) and the `CSP_NONCE_COOKIE` export. Verify afterwards: CSP header
-   still set, page still hydrates (a broken nonce presents *exactly* like an unhydrated page),
-   admin still redirects to `/admin/login`, `npm run type-check` clean. Do this together with
-   item 1 — same file, same header.
-7. **Brand-palette drift in section accents.** ❌ **NOT DONE.** `quick_picks.items[].glow_color`
-   holds `#C084FC` (violet), `#6B9E6B` (green) and `#6A7AC4` (indigo) with matching purple /
-   green / navy gradients; the hidden `process_picks` adds `#2ABCD4` (cyan) and `#8B4FBE`
-   (purple). `ShortcutSection.tsx:132,201` makes the "Shop now →" link inherit `glow_color`, so
-   a purple CTA renders beside a gold button. Also a green eyebrow (`#5A9A3A`) at
-   `src/app/shop/ready-made/page.tsx:48`, and `secondary.light` + `letterSpacing: 0.1em` at
-   `CustomOrderPitch.tsx:76-78`. Best fix: recolor the CMS values now (no deploy), then change
-   the CMS validator from free-form hex to a brand-hue enum so it cannot drift back. Second pass (2026-09-24): of the drifted accents only the violet fails contrast in place —
-   the `Unique Pieces` chip (`ShopOrderPaths.tsx:47-50`) measures **3.34:1** while the gold and
-   green chips in the same row pass (green 4.90:1) — so the chip pattern is sound and only its
-   colour token needs lightening. See §8.3.
-8. **Hero CTA redundancy and a mislabeled analytics event.** ❌ **NOT DONE.**
+5. **The banner and footer CTA point at a non-existent category (404).** 🟡 **PARTIAL — and the premise needs
+   re-verification (2026-09-30, Batch 6).** Two things changed:
+   - **The banner half is closed by deletion.** The offending instance was `STATIC_FALLBACK`'s `cta_href`, which
+     §7.4's fix removed with the fallback itself, so no code path can render that link any more.
+   - **The item's reasoning conflates key and slug.** `exp_taxonomy.slug` for the drinkware category in the repo
+     is `engraved-drinkware` (`supabase/seed/001_homepage_seed.sql:50` — key `engraved_drinkware`, slug
+     `engraved-drinkware`), and `/shop/categories/[slug]` resolves by **slug**, so the href is only a 404 if the
+     live row was later replaced. It is the *key* (`engraved_drinkware` vs `drinkware`) that differs, not
+     necessarily the slug.
+   **Not done, deliberately:** I could not read the live taxonomy to settle it — `supabase db query --linked`
+   hung twice (~5+ min each, OCT-18) — so I did **not** repoint `Footer.tsx:16` on an unverified premise. That
+   is the last code occurrence, pinned by a contract test that fails if another appears, and the one-line query
+   that settles it is filed as OCT-23. **The DB value** (`exp_announcement.cta_href`) likewise stays filed — a
+   write needs an explicit ask.
+6. **Migrate `middleware.ts` → `proxy.ts` (Next 16 deprecation).** ✅ **DONE (2026-09-30,
+   Batch 1).** The rename was applied to the file itself (`git mv src/middleware.ts src/proxy.ts`) and
+   the handler is now exported as `proxy` — the name Next 16's validator requires (verified in
+   `node_modules/next/dist/build/analysis/get-page-static-info.js:303`: the file must export `proxy` or
+   a default; a `middleware`-named export fails the production build with error E903). **Preserved
+   exactly:** the nonce contract (`x-nonce` response header + `rrs_csp_nonce` cookie, both read at
+   `src/app/layout.tsx:74-76`), `config.matcher`, and the `CSP_NONCE_COOKIE` re-export. **One change
+   worth recording:** a proxy runs on the **Node.js** runtime by default where middleware ran on Edge
+   (`next/dist/build/entries.js:231-234` → `onServer()`); everything the file uses is
+   runtime-agnostic, and the real decision is still made per request server side. **Verified:** build
+   log shows `ƒ Proxy (Middleware)` with **no** deprecation warning; `npm run type-check` clean;
+   `src/proxy.test.ts` (8 cases) pins the `proxy` export name, the matcher and the branch matrix; live
+   on a production build — `/admin` → `307 /admin/login`, `/api/admin/orders` → `401
+   {"error":"Unauthorized"}`, `/admin/login` and `/admin/not-authorized` → `200`, and **all five**
+   responses carry the CSP header, `x-nonce` and the nonce cookie. The codemod
+   (`npx @next/codemod@canary middleware-to-proxy`) was not used; the manual rename keeps the diff
+   reviewable. Same file, same header as item 1, as the plan required.
+7. **Brand-palette drift in section accents.** ✅ **DONE in code (2026-09-30, Batch 7); the data half
+   ships as SQL.** The API no longer accepts free-form hex: `[key]/route.ts` now holds a `BRAND_HEXES`
+   allow-list built from `brandTokens` and **normalises** on write — an off-brand `glow_color` becomes the
+   brand accent and an off-brand `gradient` is dropped (so the component's own brand gradient applies), with
+   every substitution reported in the response as `normalised` and recorded in the audit entry. Normalise
+   rather than reject, deliberately: a hard failure would block saving `quick_picks` while its stored values
+   are still off-brand, which is the "don't break a working feature" rule. Covered by two new route tests
+   (off-brand → normalised + reported; brand → untouched). **The stored values** (`#C084FC` violet,
+   `#6B9E6B` green, `#6A7AC4` indigo, `#2ABCD4` cyan, `#8B4FBE` purple, plus the ready-made page's `#5A9A3A`
+   eyebrow) are recoloured by `supabase/verification/2026-10-01_homepage_content_fixes.sql` — written and
+   previewed, **not run** (no batch writes to the hosted DB). The violet-chip contrast note is handled: the
+   chip's colour is data, and the accent token it should use is now enforced.
+8. **Hero CTA redundancy and a mislabeled analytics event.** ✅ **DONE (2026-09-30, Batch 7).** The hero
+   rendered "Shop the Hoard" (filled) **and** "Browse Shop" (outlined), both pointing at `/shop`, while the
+   copy above promises "Upload your artwork or choose from our ready-made designs" — so neither intent was
+   offered, and the first button fired `Analytics.categoryClicked('all','shop')`.
+   **Verified by capture before the fix:** both CTAs measured `/shop` (`224x56` and `188x58`).
+   **Fixed:** the pair is now `Start a Custom Order` → `/custom-orders` (273.7×56) and `Shop Ready-Made` →
+   `/shop/ready-made` (233.1×58) — the two intents the copy actually advertises — and each fires a new,
+   correctly-named `Analytics.heroCtaClicked('custom_order' | 'ready_made')` (`hero_cta_clicked`). The hero
+   still carries the `TODO` to source copy from the `hero` CMS row; that is a content decision, tracked
+   separately as OCT-26.
    `src/components/home/HeroSection.tsx:150-172` renders "Shop the Hoard" (filled) **and**
    "Browse Shop" (outlined), both pointing at `/shop`, while the copy directly above promises
    "Upload your artwork or choose from our ready-made designs" — neither intent is offered. The
    first button also fires `Analytics.categoryClicked('all', 'shop')`, mislabelling a hero click
    as a category click. Separately, `HeroSection.tsx:15` still carries the `TODO` to move hero
    copy into admin-managed content (the `hero` row already exists in `exp_homepage_sections`).
-9. **Shop All filter defaults and a missing empty state.** ❌ **NOT DONE.** No
-   `shop_all_preview` row exists, so the component defaults win at
-   `HomepageProductGrid.tsx:27-28` (`product_count: 6`, `show_filters: true`). All 9 live
-   `exp_products` rows are `is_ready_made=false` / `is_customizable=true`, which makes
-   "Show ready-made" a **no-op** and "Show customizable" OFF remove every product **with no
-   empty state** — the `if (!products.length) return null` guard at line 83 only covers the
-   pre-filter list. Depends on item 3 (the row cannot be created until writes can insert).
-10. **No favicon and no OG image.** ❌ **NOT DONE.** `public/` does not exist and there is no
-    `src/app/icon.*`, so `/favicon.ico` 404s on every page load (`middleware.ts:277` even
-    excludes it from the matcher). There is no `sitemap.ts` either — that part belongs to §2.10.
-    A programmatic `src/app/icon.tsx` using `ImageResponse` avoids waiting on artwork.
+9. **Shop All filter defaults and a missing empty state.** ✅ **DONE (2026-09-30, Batch 7).** No
+   `shop_all_preview` row exists, so the component defaults still win (`product_count: 6`,
+   `show_filters: true`). Two fixes, both **verified against the live DOM**:
+   - **Each toggle now renders only when its bucket has products** (`hasReadyMade` / `hasCustomizable`), so
+     "Show ready-made" is no longer a permanent no-op. Probe evidence: the DOM contains
+     `["Show customizable"]` and **no** `Show ready-made` label.
+   - **A post-filter empty state** explains an emptied grid and offers a way out. Probe evidence, by actually
+     clicking the switch: `{ clicked: true, cardsBefore: 15, emptyState: true, browseEverythingLink: true,
+     cardsAfter: 12 }` — all three grid cards disappeared and "No products match these filters … browse
+     everything" appeared (the remaining 12 links are footer/shortcut/order-path links, not grid cards).
+   The pre-filter `return null` guard is untouched (it still correctly hides the whole section when the
+   catalogue is empty).
+   **Bonus, same file:** §3.11's three ready-made analytics helpers are now **called** —
+   `homepageProductFilterApplied` on each toggle, `homepageProductViewAllClicked` on "View All",
+   `homepageFutureProductsLinkClicked` on "Future Products" — see §3 item 11.
+10. **No favicon and no OG image.** ✅ **DONE (2026-09-30, Batch 6).** There was no `public/`, no
+    `src/app/icon.*` and no OG image, so a share rendered as a bare link and no icon was advertised.
+    **Fix:** `src/app/icon.tsx` and `src/app/opengraph-image.tsx`, both generated at build time with
+    `ImageResponse` (this item's own suggestion) from brand tokens, so nothing waits on artwork.
+    **Verified live, not assumed:** on a production server `GET /icon` returns **200**, `content-type: image/png`,
+    **979 bytes**, PNG magic bytes, and the homepage HTML carries both the `rel="icon"` link and the OG image
+    reference; the build registers `/icon` and `/opengraph-image` as static routes.
+    **Two precise caveats:** `/favicon.ico` itself is still not served (the link tag is the authoritative
+    mechanism, and the middleware matcher excludes that path by design) — a file at that exact path is a
+    separate, optional step. And the item's `sitemap.ts` half belongs to §2.10, which remains open.
 
 Medium:
 
-11. **Hero collage renders 4 invisible placeholder tiles and absolute production URLs.** ❌
-    **NOT DONE.** The `hero_collage` content has `image_count: 6` with 4 entries at `url: ""`;
-    those fall into the placeholder branch (`HeroCollage.tsx:192-207`) at
-    `alpha(parchment, 0.3)`, which reads as empty space rather than intentional art. The 2 real
-    tiles link to absolute `https://rubysrelicsstudio.vercel.app/...` URLs, so in local dev
-    those clicks leave the dev server — make them relative. Second pass: the URLs are still absolute, and both real tiles are `<a>` whose only child
-    is an `<img alt="">`, so each link has **no accessible name** (WCAG 2.4.4 / 4.1.2) — see §8.6. The collage is also `lg`-only
-    (`display: { xs: 'none', lg: 'block' }`, line 117), so tablet and mobile get no imagery.
-    Real photos are the eventual fix; sizing the container to the real image count, and giving
-    the placeholder branch a label plus stronger contrast, are the interim options.
-12. **Eyebrow labels are hard-coded and `overline` sits below the 12px floor.** ❌ **NOT DONE.**
-    Roughly 30 `variant="overline"` sites across the app (most of them in
-    `src/components/home/`); `ShortcutSection.tsx:80-88` reuses the `ariaLabel` prop as the
-    visible eyebrow, so one string does accessibility and editorial duty and cannot be changed
-    independently. `theme.ts:111-116` sets `0.7rem` (11.2px) — a single theme edit fixes every
-    site at once. The CMS follow-up is a shared `SectionHeading` plus a `content.eyebrow` field
-    (validator + admin editor). Note the theme's `textTransform: 'uppercase'` already hides
-    source-case differences, so the real issues are hard-coding, colour drift, and tone
-    ("Shop preview" reads like internal jargon). See §2.8. Second pass: the sub-12px tier is wider than the eyebrows — 8 files use `0.65rem`
-    (10.4px) for badges and counters, and the homepage alone renders 16 sub-12px nodes (see §8.5).
-13. **Mobile hero wastes ~200px of vertical space.** ❌ **NOT DONE.** `HeroSection.tsx:28` sets
-    `minHeight: { xs: '88vh' }` = 743px at 390×844 with `py: 10` and vertically centred content;
-    the banner (73px) and header (64px) add ~137px of chrome above it, and the scroll cue is
-    20×32px at `opacity: 0.4` (lines 215-257). Reclaim it with
-    `minHeight: { xs: 'auto', sm: '72vh', md: '90vh' }`, a smaller `py` on xs, a tighter trust
-    row, and a higher-contrast cue. See §2.11.
-14. **Homepage section queries under-fetch their own content.** ❌ **NOT DONE.**
-    `src/app/page.tsx:54-55` calls `getVisibleTestimonials(3)` while 6 testimonial rows exist,
-    and `getPublishedGallery(6)` while 12 gallery rows exist — both sections would render
-    half-empty on the day they are re-enabled.
+11. **Hero collage renders 4 invisible placeholder tiles and absolute production URLs.** ✅ **DONE
+    (2026-09-30, Batch 7).** All three parts, **verified by capture**:
+    - **Absolute production URLs → 0.** Both real tiles were fetched as
+      `https://rubysrelicsstudio.vercel.app/shop/categories/...`; the component now reduces any absolute URL
+      to its path (`toLocalHref()`), and the after-capture shows the same two tiles as
+      `/shop/categories/apparel/sublimated-custom-t-shirt` and `/shop/categories/stickers/custom-sticker-sheet`
+      — same geometry (297×301, 255×247), so the real images still render and clicks stay on-origin.
+    - **Nameless tiles → named.** The links carry `aria-label` (`image.alt || 'View product'`), and the
+      wrapper's `aria-hidden="true"` — which had hidden focusable links from AT — was removed; only the
+      decorative placeholder cards are `aria-hidden` now. Probe evidence: `tileNames: ["View product", …]`.
+      **Data follow-up:** the label falls back to `View product` because the CMS `alt` is empty for both
+      images; filling those in is filed as OCT-27.
+    - **Placeholders.** The container now renders the **real** images when there are ≥2 of them, so the 4
+      empty slots no longer render as blanks at all; when placeholders are used they show their intended
+      subject as a caption (≥12 px) instead of an unlabelled emoji. (Contrast was already raised to
+      `alpha(parchment, 0.62)` by the Batch 4 sweep.)
+    **Still true and unchanged:** the collage is `lg`-only, so tablet/mobile get no imagery — real photos are
+    the eventual fix (OCT-27).
+12. **Eyebrow labels are hard-coded and `overline` sits below the 12px floor.** ✅ **DONE for the type
+    floor (2026-09-30, Batch 7); the CMS half is filed.** `theme.ts` set the `overline` variant to `0.7rem`
+    (11.2px), so **one theme edit** lifted every site: it is now `0.75rem` (12px).
+    **Verified by capture:** the homepage's sub-12px nodes went **11 → 1** at all three viewports
+    (desktop/tablet/mobile), and all **11** overline eyebrows now measure **12px**. The single remainder is
+    the 9.6px `Studio` wordmark, which is the known artifact from the audit (`background-clip: text` +
+    transparent fill — it is never painted; its forced-colours fix is §8.9).
+    **Still open, and genuinely separate:** the eyebrow *strings* are hard-coded and
+    `ShortcutSection` reuses `ariaLabel` as the visible eyebrow, so one string does accessibility and
+    editorial duty; "Shop preview" still reads as internal jargon. That needs the shared `SectionHeading` +
+    `content.eyebrow` field (validator + admin editor) — filed as OCT-26, together with the §8.5 badge tier
+    (8 files still use `0.65rem` for badges/counters), which is a separate sweep.
+13. **Mobile hero wastes ~200px of vertical space.** ✅ **DONE (2026-09-30, Batch 7), with the honest
+    number.** `minHeight` is now `{ xs: 'auto', sm: '72vh', md: '90vh' }`, `py` is `{ xs: 6, sm: 8, md: 14 }`,
+    the trust row moved to 12px and the scroll cue from `opacity: 0.4` to `0.62`.
+    **Measured before → after (same harness, same data):** hero height **742.72 → 693.08** at 390×844 and
+    **978.55 → 800.63** at 834×1112; page height **9077 → 8990** (mobile) and **7135 → 6972** (tablet);
+    desktop unchanged at 810 (the `md: 90vh` stage is intentional).
+    **So the reclaim is ~50px on a phone, not the ~200px the item hoped for** — because the hero is now
+    *content*-sized, and its content (h1 + promise + NSFW line + two CTAs + trust row) is ~693px on its own.
+    The remaining lever is copy/structure (a shorter promise, a single CTA row), not CSS; that is a wording
+    decision, filed with OCT-26. `overflow` stayed 0 at every viewport, and the page still hydrates.
+14. **Homepage section queries under-fetch their own content.** ✅ **DONE (2026-09-30, Batch 7).**
+    `src/app/page.tsx` now calls `getPublishedGallery(12)` (12 gallery rows exist) and
+    `getVisibleTestimonials(6)` (6 testimonial rows exist), so both sections render fully on the day they are
+    re-enabled instead of half-empty. **Not visually verifiable today:** both sections are `is_visible=false`
+    in the live table, so the capture shows no difference — the change is a query-limit fix, confirmed by
+    reading the two call sites.
 
 Content/data-only decisions (no deploy required):
 
-15. **Homepage content toggles, pending items 2/3 for anything order-related.** ❌ **NOT DONE.**
-    Hide `quick_picks`; enable `faq_preview` (it already sits above "The Forge's Codex" in the
-    JSX order and 8 `exp_faq` rows exist for `section='homepage'`); set the `order_paths` /
-    `shop_all_preview` `sort_order` values so "Three Ways to Claim Your Treasure" precedes the
-    product grid; repoint the banner CTA (item 5); delete the duplicate active `exp_announcement`
-    row; fill the null `exp_taxonomy.emoji` values (`wood_goods`, `pet_products`) and give
-    `signs_and_decor` its own glyph (🪵 is currently shared with `wood_basswood`, which is why a
-    slate product reads as a wood one); recolor the shortcut accents (item 7).
+15. **Homepage content toggles, pending items 2/3 for anything order-related.** 🟡 **PARTIAL (2026-09-30,
+    Batch 7) — the SQL is written, not run.** Everything here is a *data* change, and no batch in this
+    project writes to the hosted database (OCT-18), so it ships as a reviewable script you run:
+    **`supabase/verification/2026-10-01_homepage_content_fixes.sql`**, with a preview `SELECT` before each
+    statement. It covers: hide `quick_picks`; enable `faq_preview` (8 `exp_faq` rows exist for
+    `section='homepage'`); insert the missing `shop_all_preview` row at **45** and `future_products_notify`
+    at **105** so the grid follows "Three Ways to Claim Your Treasure" (§7.2's registry values); repoint the
+    banner CTA only if `engraved-drinkware` turns out not to be a live slug (§7.5); deactivate the duplicate
+    active `exp_announcement` row (§7.4); recolour the drifted shortcut accents (§7.7); and set the missing
+    `exp_taxonomy.emoji` values (`wood_goods`, `pet_products`) plus a distinct `signs_and_decor` glyph
+    (🪵 is shared with `wood_basswood`, which is why a slate product reads as wood).
+    **Ordering note:** run the §7.7 recolor *before* relying on the brand allow-list, or the next
+    `quick_picks` save will normalise its own stored values (harmless, but it reports `normalised` entries and
+    changes the colours).
 
 Informational (no action yet):
 
-- The NSFW line at `HeroSection.tsx:127-138` (`alpha(forgeGold, 0.65)` + italic) is deliberate
-  brand positioning — suggestive work is welcome — but it is styled like a compliance
-  disclaimer, sitting directly under the value proposition at every breakpoint. It should read
-  as confidence rather than fine print (higher contrast, no italic, or a chip in the trust row)
-  and link to the existing `faq-nsfw` entry / `/resources`. Refinement is pending a wording
-  decision.
+- The NSFW line at `HeroSection.tsx` (`alpha(forgeGold, 0.65)` + italic) was deliberate brand positioning
+  — suggestive work is welcome — but it was styled like a compliance disclaimer, sitting directly under the
+  value proposition at every breakpoint. **Batch 7 changed the styling, not the wording:** it is now
+  full-strength `forgeGoldLight` (≈5:1 instead of 3.53:1), no longer italic, and it links to
+  `/resources/faq` ("How that works"). A wording decision is still open (OCT-26).
 - `/gallery` exists but is not linked from the header nav, while the homepage gallery teaser
   (`fresh_from_forge`) is hidden.
 - The cookie banner does not gate analytics, and `@vercel/analytics` is cookieless — confirm the
@@ -532,36 +777,57 @@ never painted), but it is still worth fixing for forced-colours users, so it is 
 
 Critical:
 
-1. **The disabled state of the primary CTAs is illegible *and* looks enabled.** ❌ **NOT DONE.**
-   On the PDP (`ProductConfigurator.tsx:447-451`) the submit button is
-   `MuiButton-containedPrimary` + `disabled` with `opacity: 1`; the theme's gradient keeps
-   painting (`background-image`, `theme.ts:161`) while MUI's disabled rule only sets
-   `background-color: rgba(255,255,255,0.12)`, and the label drops to `rgba(255,255,255,0.3)`.
-   Composited over the gradient that is **≈1.4:1 (light end) to 1.8:1 (dark end)** — "Add to Cart"
-   is effectively invisible on a button that still reads as the live gold action. The same
-   combination governs `Pay with Square` (`CheckoutPageView.tsx:402`), `Checkout with Square`
-   (`SquareCheckoutButton.tsx:56`), `Submit Request`, `Clear Cart` and `Calculate Shipping`, and
-   the only explanation offered is a 12px caption at 3.16:1 (`ProductConfigurator.tsx:456`).
-   Fix: stop the **gradient**, not the label, in the disabled branch; codify one `&.Mui-disabled`
-   token in `MuiButton.styleOverrides.root` (`theme.ts:151`); link the caption to the button with
-   `aria-describedby`. Snippet in `UI_AUDIT_FINDINGS.md` §C1.
+1. **The disabled state of the primary CTAs is illegible *and* looks enabled.** ✅ **DONE (2026-09-30,
+   Batch 4).** The mechanism was exactly as filed: `MuiButton-containedPrimary` + `disabled` left
+   `opacity: 1` while the theme's gradient kept painting and MUI's own disabled rule only touched
+   `background-color`/`color` (30 % white) — composited, ≈1.4:1 at the light end of the gold. **Fix, in the
+   theme rather than at ~15 call sites:** `MuiButton.styleOverrides.containedPrimary['&.Mui-disabled']` now
+   stops the **gradient** (`background: 'none'`), paints an explicit surface (`BG_ELEVATED`), uses the muted
+   label floor (`alpha(parchment, 0.62)` → **5.6:1** on that surface, computed in
+   `src/theme/theme.test.ts`) and keeps the shape with an inset ring instead of the saturated fill; the root
+   token sets `opacity: 1` plus the muted label for every variant, and `outlinedPrimary` gets the same pair.
+   Because the rule lives on the variant, it reaches `Add to Cart`, `Pay with Square`,
+   `Checkout with Square`, `Submit Request`, `Clear Cart` and `Calculate Shipping` without touching them.
+   **Asserted, not eyeballed:** the theme test resolves the alpha over the actual surface (the compositing
+   step the pixel audit had to do) and also asserts the *old* pairing is under 2:1, so the measurement stays
+   in the repo. **Residual, and it is a real gap:** the plan also asked to link the 12px explanation caption
+   to the button with `aria-describedby`. That is a per-component change on the PDP (`ProductConfigurator`)
+   and is **not** done here — see `OCT_IMPLEMENTATION_PLAN.md` → OCT-19, because it belongs with the
+   `ProductConfigurator` edit rather than the token layer.
 2. **The cookie `Accept` button is white on gold (2.81:1) on every page — and the banner covers
-   the checkout form.** ❌ **NOT DONE.** `CookieBanner.tsx:130-131` hard-codes `color: '#fff'` on
-   `background: brandTokens.forgeGold`; the theme already defines the correct
-   `primary.contrastText` (`#0C0A07`, **7.03:1**). It is the lowest-contrast visible text on the
-   site and it appears in **24/24** captures, because the banner only dismisses permanently once a
-   choice is stored. The three buttons also measure 31px tall, and the `position: fixed; bottom: 0`
-   bar (`CookieBanner.tsx:74-79`) overlaps the Street / City / ZIP fields on `/checkout`.
-3. **The muted-text floor is systemic (2.72–4.36:1), and it is the instruction text.** ❌ **NOT
-   DONE.** `alpha(parchment, 0.35…0.5)` is the de-facto helper-text tier: `0.35` = **2.72:1**
-   (configurator art-slot help), `0.40` = **3.16:1** (`ProductConfigurator.tsx:456`,
-   `shop/categories/[slug]/page.tsx:340`, file-input "No file chosen"), `0.45` = **3.72:1**
-   (`app/shop/page.tsx:235`), `0.46–0.50` = **4.35–4.36:1** (`ProductConfigurator.tsx:371`,
-   `app/shop/page.tsx:307`, cart-empty copy, the four `/shop` trust captions) — all at 10.4–12px,
-   so no large-text allowance applies. Fix: adopt one floor, `alpha(parchment, 0.62)` (≈5.9:1) or
-   the existing `parchmentMuted` token `#9E8A6A` (5.93:1), and lighten the two tinted chip labels
-   (red `#E0706F`, violet `#B98BE0`) rather than raising the tints. Cross-refs: §7.7 and the NSFW
-   line in §7's informational block (3.53:1).
+   the checkout form.** ✅ **DONE (2026-09-30, Batch 2).** `CookieBanner.tsx` hard-coded
+   `color: '#fff'` on `background: brandTokens.forgeGold` while the theme already defines the correct
+   `primary.contrastText` (`#0C0A07`). **Fix:** the `Accept` button is now a plain
+   `variant="contained" color="primary"` with no colour override, so the gradient, hover state and
+   label all come from the theme; the two text actions moved onto tokens too (`parchmentMuted`
+   instead of a stray `#999`). The colour is now asserted **numerically** in `src/theme/theme.test.ts`
+   — the label equals `primary.contrastText` and clears 4.5:1 against the lightest gradient stop, while
+   the old white-on-gold pair is asserted to be under 3:1 — so "never white on gold" is a test, not a
+   convention. **Touch targets:** all three actions share one `bannerActionSx` (`minHeight` 44 px on
+   phones), guarded by `src/components/common/cookie-banner.contract.test.ts`. **Overlap: mitigated,
+   not eliminated** — while the bar is up the component sets `scroll-padding-bottom: 104px` on
+   `<html>`, so scrolling/focusing a field can no longer land underneath it; the bar is still
+   `position: fixed`, so it does visually overlay the last strip of the page. Reserving layout height
+   instead would change the storefront's bottom spacing everywhere, so it stays a deliberate tradeoff
+   (recorded in `OCT_IMPLEMENTATION_PLAN.md` → OCT-4).
+3. **The muted-text floor is systemic (2.72–4.36:1), and it is the instruction text.** ✅ **DONE
+   (2026-09-30, Batch 4).** As filed, `alpha(parchment, 0.35…0.5)` was the de-facto helper-text tier
+   (0.35 = 2.72:1 … 0.5 = 4.36:1) at 10.4–12px, so no large-text allowance applied. **Fix:** one floor,
+   `alpha(parchment, 0.62)` — this item's own first option — applied by a **mechanical, number-only sweep**
+   of every sub-floor *text* colour: **151 sites across 45 files**, each file a 1:1 line diff (the ≥0.62
+   values, and every low-alpha *border*/background tint the design depends on, are untouched). The floor is
+   now enforced, not just applied: `MIN_MUTED_TEXT_ALPHA` lives in `theme.ts` and
+   `src/theme/contrast-floor.test.ts` walks `src/` and fails on any new `color: alpha(parchment, < 0.62)`
+   (plus any text painted in a surface-only colour), with a planted-offence case so the scan cannot pass
+   vacuously. `theme.test.ts` proves the composited ratio on all four surfaces (≥5.6:1 worst case) and keeps
+   the old 0.4 value on record as failing.
+   **Chip half — split, deliberately:** the red label the item nominates (`#E0706F`) is now a real theme
+   token (`error.light` / `brandTokens.rubyRedText`) and the 7 literal `#CF4040` **text** uses (the
+   configurator's required-asterisk glyphs and the designer's upload error) moved onto it — `#CF4040` as
+   text was 3.48:1 on a card. The **violet** chip (`#B98BE0`/`#C084FC`) is a *taxonomy/CMS* value
+   (§7.7), so it stays a data change in Batch 6; nothing in `src/` holds that hex.
+   Cross-refs unchanged: §7.7 and the NSFW line in §7's informational block remain the fix sites for the
+   data-driven accents.
 
 High:
 
@@ -577,6 +843,15 @@ High:
    `MaterialsTeaser.tsx:156`, `ProcessStrip.tsx:145`, `shop/categories/[slug]/page.tsx:340`,
    `Header.tsx:231`), and the homepage alone renders 16 sub-12px nodes. The same single theme edit
    fixes both.
+   🟡 **PARTIAL (2026-10-01, Batch 8) — the admin half is done and measured; the storefront half is not.**
+   The sub-12px tier is now **0** on every captured admin route: `AdminShell`'s module descriptions (0.7rem,
+   on all 23 routes), the `/admin` StatCard labels (0.72rem) and the homepage editor's tile-editor captions
+   (0.68/0.72rem) moved to the 12px floor — measured **12 → 0** on every route, **31 → 0** on
+   `/admin/homepage`, plus 3 *latent* shell sites that only render with notification bodies/links or an open
+   search modal. **Still open:** the storefront sites listed above, plus a wider tier the original audit
+   never sampled — **49** `fontSize` string sites in `src/` remain below 0.75rem (24 in
+   `shop/categories/[slug]`, 4 in `ProductConfigurator`, 3 each in `CartProvider` / `FreshFromTheForge` /
+   `GalleryExplorer`, 2 in `Header`). Same single-floor sweep, on the customer-facing pages.
 
 Medium:
 
@@ -588,13 +863,19 @@ Medium:
 
 Low:
 
-7. **Stray `h6` headings and level skips from MUI's `subtitle` mapping.** ❌ **NOT DONE.**
-   `<Typography variant="subtitle1">` renders `<h6>` unless `component` is set, so the homepage
-   product grid emits a **price** as `h6` directly under the card's `h3` (a level skip), and six
-   footer-region link labels are headings too. **All 13 `subtitle1|2` usages in `src/` omit
-   `component`** — `HomepageProductGrid.tsx:191`, `ResourcesTeaser.tsx`, `FaqPreview.tsx`,
-   `FreshFromTheForge.tsx`, `CartPageView.tsx`, `SearchModal.tsx` (×2), `ProductDesigner.tsx`
-   (×2), `admin/…/catalog/products/[id]/builder/page.tsx` (×4). Add `component="span"` (or `"p"`).
+7. **Stray `h6` headings and level skips from MUI's `subtitle` mapping.** ✅ **DONE (2026-09-30,
+   Batch 5).** `<Typography variant="subtitle1|2">` renders `<h6>` unless `component` is set, so the homepage
+   product grid emitted a **price** as `h6` directly under the card's `h3`. **All 13 sites** the item lists
+   (exactly as enumerated — `HomepageProductGrid.tsx:191`, `ResourcesTeaser.tsx`, `FaqPreview.tsx`,
+   `FreshFromTheForge.tsx`, `CartPageView.tsx`, `SearchModal.tsx` ×2, `ProductDesigner.tsx` ×2, the builder
+   ×4) now declare `component="span"`, applied by a mechanical pass and **enforced repo-wide** by
+   `src/components/admin/admin-a11y.contract.test.ts`, which scans `src/` for any `variant="subtitle1|2"`
+   without a `component` (with a planted-offence case so the scan cannot pass vacuously).
+   **One sub-claim does not reproduce:** the item also says "six footer-region link labels are headings too".
+   In the current tree `Footer.tsx` uses no `subtitle` variant at all — its only heading-like element is the
+   `component="h3"` wordmark — so there was nothing to fix there. If that observation came from the
+   footer-region of a *page* (not `Footer.tsx`), it needs the audit's route list to re-locate; noted rather
+   than guessed.
 8. **Mobile funnel length.** ❌ **NOT DONE.** At 390×844 the homepage is **9,073px** (≈10.7
    screens, 9 sections, 65 focusables) with the "Want early access?" notify form as the **ninth**
    section — roughly nine swipes to the highest-intent action on the page, which has a working API
@@ -680,22 +961,25 @@ row plus the CSRF header `AdminCsrfFetchBridge` supplies (`UI_AUDIT.md` §15.6).
 
 Critical:
 
-2. **The storefront cookie banner renders inside the panel and covers the module rail.** ❌ **NOT DONE.**
-   `CookieBanner` lives in the root layout (`app/layout.tsx:89`), so it is `position: fixed; bottom: 0;
-   zIndex: 2000` (`CookieBanner.tsx:74-79`) over *every* admin page: at 1440×900 its rect is
-   `top 813 / height 87` and `elementFromPoint` on the "Abandoned Carts" and "Homepage" module links returns
-   the banner's own paragraph — two of twelve modules are unclickable until a *storefront* consent bar is
-   dismissed. (On `/admin/login` the same fixed bar does **not** overlap the form — measured — so the damage
-   is specific to the panel shell.) Its `Accept` button measures
-   **1.67:1** (white on solid `#C4921A`) and all three buttons are 31 px tall. Same defect as §8.2 with a
-   second blast radius — fix both in one change (skip the banner under `/admin`, `color:
-   'primary.contrastText'`, ≥44 px on touch).
-3. **"Skip to main content" has no target on any panel page.** ❌ **NOT DONE.** The root layout's
-   `SkipToMain` points at `#main-content` (`SkipToMain.tsx:10`), which exists on every storefront page and on
-   **none** of the 23 panel pages (`AdminShell` renders `aside` + `section`, no `main`, no id). It is the
-   first focusable element on every admin page and does nothing (WCAG 2.4.1). Fix: make the shell's content
-   column `component="main" id="main-content"` — one attribute, which also supplies the missing landmark
-   (§9.6).
+2. **The storefront cookie banner renders inside the panel and covers the module rail.** ✅ **DONE
+   (2026-09-30, Batch 2).** `CookieBanner` lives in the root layout (`app/layout.tsx:92`), so it was
+   `position: fixed; bottom: 0; zIndex: 2000` over *every* admin page: at 1440×900 its rect was
+   `top 813 / height 87` and `elementFromPoint` on the "Abandoned Carts" and "Homepage" module links
+   returned the banner's own paragraph — two of twelve modules unclickable until a *storefront* consent bar
+   was dismissed. Its `Accept` button measured **1.67:1** and all three buttons were 31 px. **Fix:** the
+   banner now asks `shouldShowCookieBanner(pathname)` (new, pure, in `src/lib/cookie-consent.ts`, 4 test
+   cases) and returns `null` for `/admin` and everything under it — the panel can no longer be covered,
+   because the bar is not rendered there. The colour and touch sizing are shared with §8.2 and fixed in the
+   same change (`variant="contained" color="primary"` + `bannerActionSx`), so the 1.67:1 label and the 31 px
+   targets are gone with it.
+3. **"Skip to main content" has no target on any panel page.** ✅ **DONE (2026-09-30, Batch 2).** The root
+   layout's `SkipToMain` points at `#main-content` (`SkipToMain.tsx:10`), which existed on every storefront
+   page and on **none** of the 23 panel pages. The shell's content column is now
+   `component="main" id="main-content"`, so the first focusable element on every panel page finally goes
+   somewhere (WCAG 2.4.1) *and* the missing landmark is supplied in the same attribute — which is why this
+   shipped with §9.6. (`/admin/login` and `/admin/not-authorized` already had `main#main-content` via their
+   own views, so the whole `/admin` tree is now covered.) Guard:
+   `src/components/admin/admin-shell.contract.test.ts`.
 4. **Four routes scroll the whole document sideways.** ❌ **NOT DONE.** `scrollWidth − clientWidth`:
    `/admin/homepage` **140 px desktop, 443 px tablet, 308 px mobile**; product detail **123 px** and builder
    **129 px** at 390 px; `/admin/abandoned-carts` **104 px** at 390 px; the other 19 routes are 0. Cause
@@ -707,38 +991,71 @@ Critical:
    routes — `/admin/homepage` (all three viewports), product detail, builder and `/admin/abandoned-carts` —
    which is what `summary.txt`'s overflow tally, `UI_AUDIT_FINDINGS.md` App. C and this item's own "other 19
    routes" arithmetic all give.
+   ✅ **DONE (2026-10-01, Batch 8) — and the cause was not the one this item predicted.** The 2026-09-24
+   counts above were real, but `minWidth: 0` / `overflowWrap: 'anywhere'` were the wrong levers *here*:
+   `min-width: 0` on the grid **items** changed the overflow by **0 px**. The cause was the section-card
+   grid's `repeat(2, 1fr)` — a `1fr` track is `minmax(auto, 1fr)`, so it cannot shrink below its items'
+   min-content, and each card's `whiteSpace: 'nowrap'` description is ~590 px of text. Two tracks therefore
+   resolved to **1191 px** inside a 1060 px column and the panel painted **1241.34 px** wide. Fix:
+   `repeat(2, minmax(0, 1fr))` (`homepage/page.tsx`) — the same shape `finance/page.tsx` and `AdminShell`'s
+   content column already use.
+   **Measured before → after (same harness, same data, `%TEMP%\rrs-admin2\`, `audit-before.json` kept):**
+   `/admin/homepage` **140 → 0 px** at 1440, and **0** at 834/390; every other captured route 0 throughout.
+   One wrong attempt is worth recording: pinning the *page-root* grid measured **worse** (158 px), because
+   the inner card grid still painted 1241 px while only an ancestor's box shrank. The admin half of the
+   harness needed the Batch 8 dev-only sign-in helper — OCT-28, now resolved.
 
 High:
 
 5. **The panel's whole muted-text tier fails contrast, plus the status chips and destructive buttons.**
-   ❌ **NOT DONE.** Module descriptions at **11.2px** / `alpha(parchment, 0.52)` = **4.06:1** (pixel-verified
-   against the sampled card backdrop `(27,21,15)`; the sweep's 5.7:1 was the gradient artifact);
-   `parchmentMuted` stat labels (`/admin/catalog`) **3.46:1**; `Pending` chips **1.84:1**; `Delete` **2.5:1**
-   (white on `#CF4040`) and **3.41:1** (red on card); banner labels 4.15–4.28:1. Same systemic pattern as
-   §8.3 — one theme/token change covers both surfaces. Raise the description tier to ≥12px too.
-6. **No `main`, no `nav`, no announced current page.** ❌ **NOT DONE.** Landmarks measure
-   `header 1 / aside 1 / section 1 / main 0 / nav 0 / footer 0` on all 69 captures; the 12 module links are
-   plain anchors in an unnamed `aside` with **no `aria-current`**; the active state is colour-only
-   (`borderColor rgba(196,146,26,0.45)`, `backgroundColor rgba(196,146,26,0.12)`) and it **vanishes** on the
-   nested catalog routes because the check is `pathname === mod.href` (`AdminShell.tsx:338`). Fix:
-   `component="nav" aria-label="Admin modules"`, `aria-current="page"`, and
-   `pathname === href || pathname.startsWith(href + '/')`.
-7. **Nameless controls everywhere.** ❌ **NOT DONE.** **17** `MuiSwitch-input` toggles on `/admin/homepage` with
-   no `aria-label`, no `aria-labelledby` and no wrapping label (their only name is adjacent, unassociated
-   text); every MUI filter `Select` (orders, catalog, inventory, finance, catalog-pricing) has
-   `aria-labelledby: null` on its visible `role="combobox"`; the header search input is placeholder-only on
-   all 23 routes; four 26×26 reorder icon buttons have no name at all. Fix: `FormControlLabel` per switch,
-   `InputLabel`/`labelId` per select, `aria-label` on the search field and the icon buttons. Count corrected
-   (2026-09-24): this read **15**. The visibility grid renders one **bare** `<Switch>` per `SECTION_ORDER` key,
-   and that array holds **17** keys (`src/app/admin/(panel)/homepage/page.tsx:30-48` → `:456-515`, the
-   `<Switch>` at `:507`), so the count is structural, not data-dependent; `a11y-homepage.json` agrees —
-   **17** nameless controls, all `MuiSwitch-input`, all `72x24` — while `summary.txt`'s per-route sweep says
-   **15** and so missed two. The two `FormControlLabel`-wrapped switches on the same page (`:553` Hero Collage,
-   `:742` tile editor) *are* named; copy that pattern.
-8. **No regression test for the §9.1 key contract.** ❌ **NOT DONE.** Sign a payload the way `session.ts`
-   does and assert the Edge verifier accepts it — Node can reproduce the Edge derivation with
-   `crypto.subtle.deriveBits(…, 256)`, which is exactly the cross-check that found the bug. Without it the
-   next refactor of either side silently locks the owner out of the panel again.
+   ✅ **DONE (2026-09-30, Batch 4).** Every sub-finding had one of two code-level causes, and both are fixed
+   in the theme:
+   - **The muted tier** (`alpha(parchment, 0.52)` module descriptions at 4.06:1, `parchmentMuted` stat labels
+     at 3.46:1): covered by §8.3's single floor — the sweep raised all 151 sub-floor text colours to
+     `alpha(parchment, 0.62)`, so `AdminShell`'s module descriptions (measured against the sampled card
+     backdrop `(27,21,15)`) now sit well above 4.5:1, and the guard test keeps them there. The same change
+     covers the panel exactly as the item predicted ("one theme/token change covers both surfaces").
+   - **The chips and destructive buttons** (`Pending` **1.84:1**, `Delete` **2.5:1**): MUI was deriving
+     `contrastText` for `warning`/`error`/`success`/`info` with a 3:1 threshold, which is why a filled
+     `Chip color="warning"` painted **white** on `#C97B22` (3.31:1 — the two `Pending` chips in
+     `/admin/abandoned-carts` and `Locked` in `/admin/schedule`). The palette now pins `contrastText`
+     explicitly for all four semantics (`warning` → `#0C0A07` at 5.97:1, the rest white at ≥4.7:1) and adds a
+     **text-safe `light` tone** per semantic for outlined/text use (`error.main` is only 3.48:1 as text on a
+     card), with `textError`/`outlinedError` button overrides routed through it — so the destructive *text*
+     buttons in the catalog pages are readable without touching each site.
+   **Also in this item's spirit:** `Delete`'s white-on-`#CF4040` is 4.71:1 and passes; the sub-4.5 number in
+   the audit came from the *outlined/text* rendering, which is what the `light` tones now fix.
+   **Residual:** the item's "banner labels 4.15–4.28:1" sub-finding is not attributed to a specific element in
+   the findings doc, and this environment has no browser (see `OCT_IMPLEMENTATION_PLAN.md` → OCT-19), so it
+   needs a re-measure rather than a guess. Filed there rather than claimed here.
+6. **No `main`, no `nav`, no announced current page.** ✅ **DONE (2026-09-30, Batch 2).** Landmarks used to
+   measure `header 1 / aside 1 / section 1 / main 0 / nav 0 / footer 0` on all 69 captures, the 12 module
+   links sat in an unnamed `aside` with **no `aria-current`**, and the active state — colour-only
+   (`borderColor rgba(196,146,26,0.45)`, `backgroundColor rgba(196,146,26,0.12)`) — **vanished** on nested
+   catalog routes because the check was `pathname === mod.href`. **Fix:** the rail is
+   `component="nav" aria-label="Admin modules"`, each link carries
+   `aria-current={active ? 'page' : undefined}`, and the active module is resolved by a new pure helper,
+   `resolveActiveAdminHref()` in `src/lib/admin/module-nav.ts` (`src/lib/admin/module-nav.test.ts`, 9 cases).
+   **Deviation from the item's suggested fix, deliberate:** the plan proposed
+   `pathname === href || pathname.startsWith(href + '/')`, but `/admin` is itself a module, so that rule lights
+   up Dashboard *and* the real module on every panel route. The shipped rule is **longest match** — the active
+   module is the longest href the path equals or is nested under — which keeps `/admin/catalog/products/<id>`
+   on Catalog and `/admin/orders` on Orders. The `main` half of this item is §9.3's one-attribute fix. Guard:
+   `src/components/admin/admin-shell.contract.test.ts` (asserts the landmarks, `aria-current`, the helper
+   import, and that the old `pathname === mod.href` comparison cannot come back).
+7. **Nameless controls everywhere.** 🟡 **PARTIAL (2026-09-30, Batch 5).** Fixed in this batch:
+   - **the 17 `MuiSwitch-input` toggles** on `/admin/homepage` — one `inputProps={{ 'aria-label': `${meta.title} — show on homepage` }}` on the single switch rendered per `SECTION_ORDER` key *is* the 17 controls. `inputProps` is deliberate: a bare `aria-label` lands on MUI's root span, while the audit's finding was about the `<input>` itself.
+   - **the four 26×26 reorder/hide/remove icon buttons** in the tile editor, now `Move tile N up` / `down` / `Hide|Show tile N` / `Remove tile N` (`Tooltip` is a description, not a name).
+   - **the header search input** (one fix covering all 23 routes) — `aria-label="Search orders, products and custom requests"`.
+   - **14 filter selects** — the item's named scope: orders ×4, catalog products ×2, inventory ×3, finance ×2, catalog pricing ×2, product detail ×1 (the last reached anyway while adding its `h1`).
+   **Remaining — 16 of the panel's 30 `<Select>` elements** still have no accessible name, enumerated exactly so the next pass is mechanical: `catalog/products/new/page.tsx:174`; `catalog/products/[id]/page.tsx:699,744`; `catalog/products/[id]/builder/page.tsx:1056,1422,1492,1720,1786,1967,2049`; `catalog/products/[id]/pricing/page.tsx:323,372`; `custom-requests/page.tsx:437`; `schedule/page.tsx:406,604`; `shipping/debug/page.tsx:145`. Tracked as `OCT_IMPLEMENTATION_PLAN.md` → OCT-20 (they are outside this item's named files, and a guard test for selects would fail until all 16 land).
+   The item's count note stands: **17** is structural (one bare `<Switch>` per `SECTION_ORDER` key), not 15.
+8. **No regression test for the §9.1 key contract.** ✅ **OBSOLETE — CLOSED (2026-10-01, Batch 8).**
+   The test this asked for would sign a payload the way `session.ts` did and assert the Edge verifier accepts
+   it. §10.5/§10.10 deleted that signing implementation *entirely* — there is no longer a second signing
+   implementation to keep in step, which retires the §9.1 bug class outright (a Supabase JWT has one
+   implementation). Writing a test for deleted code would be worse than no test, so the item is marked
+   OBSOLETE rather than DONE. Decision recorded in `OCT_IMPLEMENTATION_PLAN.md` → OCT-10 (resolved).
 
 Medium:
 
@@ -746,22 +1063,44 @@ Medium:
    `header` is 118 px and the module rail is 788 px, so the content `section` starts at **y = 943** — all 12
    modules stack above the page below `md` (`AdminShell.tsx:326`). Fix: collapse the rail into a disclosure
    or Drawer below `md` and show the current module in the trigger.
-10. **One `<title>` for 23 routes, and a hard-coded header label.** ❌ **NOT DONE.** Every capture reports
-    `title = "Ruby's Relics Studio"` (the root-layout default; the storefront pass had a unique title per
-    route), so tabs/history/bookmarks are indistinguishable, and the sticky bar always reads "Admin
-    Dashboard" (`AdminShell.tsx:176`) even on `/admin/homepage`. Fix: per-route metadata plus the active
-    module label in the header (`pathname` is already available in the shell).
-11. **Heading structure is absent or inconsistent on 23/23 routes.** ❌ **NOT DONE.** No `h1` on
-    `/admin/schedule`, `/admin/abandoned-carts`, product detail, product pricing or `/admin/shipping/debug`;
-    `/admin/homepage` goes `h1` → `h6` for its five section titles; product detail starts at `h6`; the `h1`
-    renders at 30 / 24 / 20 px across routes. Root cause of the `h6`s is §8's item 8
-    (`Typography variant="subtitle1|2"` without `component` — the file list already includes
-    `admin/…/catalog/products/[id]/builder/page.tsx` ×4), so the admin editor pages need the same pass.
-12. **Disabled actions still look like the live gold action.** ❌ **NOT DONE.** `Apply to 0 selected`
-    (`/admin/inventory`, 1039×45) keeps the gold `background-image` with `color: rgba(255,255,255,0.3)` and
-    `opacity: 1` (≈2:1); `Add Media` / `Upload file` are 30 %-white on card. Same fix as §8.1's
-    `&.Mui-disabled` token (extend it to `MuiIconButton`), plus a label that states the precondition
-    ("0 selected — select rows to apply").
+10. **One `<title>` for 23 routes, and a hard-coded header label.** ✅ **DONE (2026-09-30, Batch 5).**
+    **Header label:** the sticky bar now renders `{activeModuleLabel ?? 'Admin Dashboard'}`, resolved by
+    `activeAdminModuleLabel()` (`src/lib/admin/module-nav.ts`, 3 new test cases) — the *same* helper that marks
+    the active rail entry, so the bar and the rail cannot disagree.
+    **Title:** the shell sets `document.title = "<Module> | Ruby's Relics Studio"` on every route change, so
+    tabs/history/bookmarks are now distinguishable — which is the concrete symptom the item filed.
+    **Limitation, recorded rather than hidden:** that is a *client-side* title, because the panel's pages are a
+    mix of server and client components (13 client pages cannot export `metadata`) and there is no per-route
+    `layout.tsx` yet. The SSR title remains the root default until hydration; the admin tree is
+    `noindex, nofollow`, so nothing crawler-facing depends on it. The SSR-authentic alternative (a
+    `layout.tsx` per route exporting `metadata`) is filed as OCT-20.
+    Guard: `src/components/admin/admin-a11y.contract.test.ts` asserts the header is derived (and that a literal
+    "Admin Dashboard" cannot return) and that exactly one resolver call exists.
+11. **Heading structure is absent or inconsistent on 23/23 routes.** 🟡 **PARTIAL (2026-09-30, Batch 5).**
+    **Fixed:** the five routes with no `h1` now declare one on their own title text —
+    `/admin/schedule` and `/admin/abandoned-carts` (`variant="h5" component="h1"`),
+    `/admin/shipping/debug` (`component="h2"` → `"h1"`), product detail and product pricing (a new `h1` above
+    the editor). And every level skip is closed: the **10** `variant="h6"` sections in
+    `/admin/homepage` (×4), product detail (×2), product pricing (×2) and `/admin/shipping/debug` (×2) now set
+    `component="h2"`, so nothing jumps `h1` → `h6` any more. Root cause of those `h6`s was §8.7 — ✅ fixed
+    above, and `product detail starts at h6` is therefore resolved as well.
+    **Not done — the sizing half:** the `h1` still renders at 30 / 24 / 20 px across routes (each page
+    overrides `fontSize` inline, so a theme edit cannot unify it). That is a consistency nit rather than a
+    WCAG failure and it is a *visual* claim I cannot verify here, so it is filed as
+    `OCT_IMPLEMENTATION_PLAN.md` → OCT-21 instead of half-fixed. Guard for the levels:
+    `src/components/admin/admin-a11y.contract.test.ts` (asserts the five `h1`s and that no bare `h6` returns).
+12. **Disabled actions still look like the live gold action.** ✅ **DONE (2026-09-30, Batch 4).** Both halves of
+    the item:
+    **(a) the token** — `Apply to 0 selected` (`/admin/inventory`) kept the gold `background-image` with a
+    30 %-white label at `opacity: 1`, and `Add Media` / `Upload file` were 30 %-white on a card. §8.1's
+    `&.Mui-disabled` token now covers both surfaces: `MuiButton` (all variants, incl. the
+    `containedPrimary` gradient stop and the 5.6:1 muted label) and the new
+    `MuiIconButton.styleOverrides.root['&.Mui-disabled']` for the icon-only actions. One theme edit, no
+    call-site changes, and the ratios are asserted in `src/theme/theme.test.ts`.
+    **(b) the label** — the audit's own recommendation ("say *why* a control is disabled rather than only
+    restyling it") is now implemented on `/admin/inventory`: the button reads
+    `Apply to 0 selected — select rows first` at zero selection, instead of a near-invisible
+    "Apply to 0 selected".
 
 Low:
 

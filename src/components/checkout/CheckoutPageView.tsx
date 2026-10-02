@@ -226,19 +226,19 @@ export function CheckoutPageView() {
                   <IconButton
                     size="small"
                     onClick={() => removeItem(item.key)}
-                    sx={{ color: alpha(brandTokens.parchment, 0.42), p: 0.3 }}
+                    sx={{ color: alpha(brandTokens.parchment, 0.62), p: 0.3 }}
                     title="Remove item"
                   >
                     ×
                   </IconButton>
                 </Box>
                 {item.variantLabel && (
-                  <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.6), mb: 0.2 }}>
+                  <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), mb: 0.2 }}>
                     {item.variantLabel}
                   </Typography>
                 )}
                 {item.options.length > 0 && (
-                  <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.55), mb: 0.65 }}>
+                  <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.62), mb: 0.65 }}>
                     {item.options.map((o) => `${o.label}: ${o.valueLabel ?? o.value}`).join(' • ')}
                   </Typography>
                 )}
@@ -258,7 +258,7 @@ export function CheckoutPageView() {
                     >
                       −
                     </IconButton>
-                    <Typography sx={{ color: alpha(brandTokens.parchment, 0.58), fontSize: '0.78rem', mx: 0.5 }}>
+                    <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.78rem', mx: 0.5 }}>
                       Qty {item.quantity}
                     </Typography>
                     <IconButton

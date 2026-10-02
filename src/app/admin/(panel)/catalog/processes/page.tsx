@@ -262,9 +262,9 @@ export default function ProcessesAdminPage() {
         }}
       >
         {loading ? (
-          <Typography sx={{ color: alpha(brandTokens.parchment, 0.6) }}>Loading process types...</Typography>
+          <Typography sx={{ color: alpha(brandTokens.parchment, 0.62) }}>Loading process types...</Typography>
         ) : processTypes.length === 0 ? (
-          <Typography sx={{ color: alpha(brandTokens.parchment, 0.6) }}>No process types found.</Typography>
+          <Typography sx={{ color: alpha(brandTokens.parchment, 0.62) }}>No process types found.</Typography>
         ) : (
           <Box sx={{ display: 'grid', gap: 0.8 }}>
             {processTypes.map((proc) => (

@@ -294,6 +294,7 @@ export default function AdminOrdersPage() {
         />
         <Select
           size="small"
+          aria-label="Filter orders by status"
           value={status}
           onChange={(event) => setStatus(event.target.value as 'all' | OrderStatus)}
           sx={{ minWidth: 190 }}
@@ -304,6 +305,7 @@ export default function AdminOrdersPage() {
         </Select>
         <Select
           size="small"
+          aria-label="Filter orders by payment status"
           value={payment}
           onChange={(event) => setPayment(event.target.value as 'all' | PaymentStatus)}
           sx={{ minWidth: 170 }}
@@ -348,7 +350,7 @@ export default function AdminOrdersPage() {
                     <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.66) }}>
                       {order.order_path} · {order.status} · payment {order.payment_status} · {asMoney(order.order_total)}
                     </Typography>
-                    <Typography sx={{ fontSize: '0.74rem', color: alpha(brandTokens.parchment, 0.56) }}>
+                    <Typography sx={{ fontSize: '0.74rem', color: alpha(brandTokens.parchment, 0.62) }}>
                       Created {new Date(order.created_at).toLocaleString()} · Updated {new Date(order.updated_at).toLocaleString()}
                     </Typography>
                   </Box>
@@ -388,6 +390,7 @@ export default function AdminOrdersPage() {
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
             <Select
               size="small"
+              aria-label="Set order status"
               value={nextStatus}
               onChange={(event) => setNextStatus(event.target.value as OrderStatus | '')}
               displayEmpty
@@ -462,7 +465,7 @@ export default function AdminOrdersPage() {
             {detailLoading ? (
               <CircularProgress size={20} />
             ) : (detail?.notes.length ?? 0) === 0 ? (
-              <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.58) }}>
+              <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.62) }}>
                 No internal notes yet.
               </Typography>
             ) : (
@@ -470,7 +473,7 @@ export default function AdminOrdersPage() {
                 {detail?.notes.map((note) => (
                   <Box key={note.id} sx={{ borderRadius: 1, border: `1px solid ${alpha(brandTokens.parchment, 0.1)}`, p: 0.8 }}>
                     <Typography sx={{ fontSize: '0.8rem' }}>{note.note}</Typography>
-                    <Typography sx={{ fontSize: '0.7rem', color: alpha(brandTokens.parchment, 0.55) }}>
+                    <Typography sx={{ fontSize: '0.7rem', color: alpha(brandTokens.parchment, 0.62) }}>
                       {new Date(note.created_at).toLocaleString()} · {note.created_by ?? 'admin'}
                     </Typography>
                   </Box>
@@ -484,6 +487,7 @@ export default function AdminOrdersPage() {
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
               <Select
                 size="small"
+                aria-label="Production hook stage"
                 value={hookStage}
                 onChange={(event) => setHookStage(event.target.value as OrderHookRow['stage'])}
                 sx={{ minWidth: 160 }}
@@ -549,7 +553,7 @@ export default function AdminOrdersPage() {
             </Stack>
 
             {(detail?.hooks.length ?? 0) === 0 ? (
-              <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.58) }}>
+              <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.62) }}>
                 No production hooks yet.
               </Typography>
             ) : (
@@ -566,7 +570,7 @@ export default function AdminOrdersPage() {
                       <Typography sx={{ fontSize: '0.8rem', fontWeight: 600 }}>
                         {hook.stage} · {hook.is_completed ? 'completed' : 'open'}
                       </Typography>
-                      <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.58) }}>
+                      <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.62) }}>
                         {hook.scheduled_for ? new Date(hook.scheduled_for).toLocaleString() : 'No schedule'} · {hook.assignee ?? 'Unassigned'} · est {hook.estimated_hours ?? 0}h
                       </Typography>
                     </Box>
@@ -587,7 +591,7 @@ export default function AdminOrdersPage() {
           <Box sx={{ borderTop: `1px solid ${alpha(brandTokens.parchment, 0.12)}`, pt: 1, display: 'grid', gap: 1 }}>
             <Typography sx={{ fontWeight: 600 }}>Order Items</Typography>
             {(detail?.items.length ?? 0) === 0 ? (
-              <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.58) }}>
+              <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.62) }}>
                 No order items found.
               </Typography>
             ) : (
@@ -602,7 +606,7 @@ export default function AdminOrdersPage() {
                         Variant: {item.variant_label}
                       </Typography>
                     )}
-                    <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.58) }}>
+                    <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.62) }}>
                       Unit {asMoney(item.unit_price)} · Subtotal {asMoney(item.line_subtotal)} · Discount {asMoney(item.line_discount)} · Total {asMoney(item.line_total)}
                     </Typography>
                     {Object.entries(item.option_snapshot ?? {}).length > 0 && (
@@ -624,7 +628,7 @@ export default function AdminOrdersPage() {
           <Box sx={{ borderTop: `1px solid ${alpha(brandTokens.parchment, 0.12)}`, pt: 1, display: 'grid', gap: 1 }}>
             <Typography sx={{ fontWeight: 600 }}>Action Trail</Typography>
             {(detail?.events.length ?? 0) === 0 ? (
-              <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.58) }}>
+              <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.62) }}>
                 No action events recorded yet.
               </Typography>
             ) : (
@@ -634,7 +638,7 @@ export default function AdminOrdersPage() {
                     <Typography sx={{ fontSize: '0.78rem', fontWeight: 600 }}>
                       {event.action_type} · {new Date(event.created_at).toLocaleString()}
                     </Typography>
-                    <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.58) }}>
+                    <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.62) }}>
                       {event.previous_status ?? 'n/a'} {' -> '} {event.next_status ?? 'n/a'} · payment {event.previous_payment_status ?? 'n/a'} {' -> '} {event.next_payment_status ?? 'n/a'}
                     </Typography>
                     {event.note && (

@@ -308,10 +308,10 @@ export default function AdminSchedulePage() {
       {/* Header */}
       <Stack direction="row" alignItems="flex-start" justifyContent="space-between" mb={3} flexWrap="wrap" gap={2}>
         <Box>
-          <Typography variant="h5" fontWeight={700} sx={{ color: brandTokens.forgeGold }}>
+          <Typography variant="h5" component="h1" fontWeight={700} sx={{ color: brandTokens.forgeGold }}>
             Production Queue
           </Typography>
-          <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.6) }} mt={0.5}>
+          <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62) }} mt={0.5}>
             Machine scheduling blocks linked to orders and custom requests.
           </Typography>
         </Box>
@@ -437,7 +437,7 @@ export default function AdminSchedulePage() {
             size="small"
             variant="text"
             onClick={() => { setFromFilter(''); setToFilter(''); setStageFilter('all') }}
-            sx={{ color: alpha(brandTokens.parchment, 0.55) }}
+            sx={{ color: alpha(brandTokens.parchment, 0.62) }}
           >
             Clear
           </Button>
@@ -504,7 +504,7 @@ export default function AdminSchedulePage() {
                     <TableCell>
                       <Typography variant="body2" sx={{ fontSize: 13 }}>{linkedLabel}</Typography>
                       {linkedEmail && (
-                        <Typography variant="caption" sx={{ color: alpha(brandTokens.parchment, 0.5) }}>
+                        <Typography variant="caption" sx={{ color: alpha(brandTokens.parchment, 0.62) }}>
                           {linkedEmail}
                         </Typography>
                       )}

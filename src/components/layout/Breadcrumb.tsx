@@ -53,7 +53,7 @@ export function Breadcrumb({ items }: BreadcrumbProps) {
                 {index > 0 && (
                   <NavigateNextIcon
                     aria-hidden="true"
-                    sx={{ color: alpha(brandTokens.parchment, 0.3), fontSize: '0.9rem', mx: 0.25 }}
+                    sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.9rem', mx: 0.25 }}
                   />
                 )}
                 {isLast || !item.href ? (

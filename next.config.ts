@@ -13,8 +13,9 @@ const nextConfig: NextConfig = {
             key: 'Permissions-Policy',
             value: 'camera=(), microphone=(), geolocation=(), payment=(self "https://js.stripe.com")',
           },
-          // SEC-047: Content-Security-Policy is now set dynamically in middleware
-          // with a per-request nonce. The static placeholder here has been removed.
+          // SEC-047: Content-Security-Policy is now set dynamically in proxy.ts
+          // (the Next 16 name for middleware) with a per-request nonce. The
+          // static placeholder here has been removed.
           {
             key: 'Strict-Transport-Security',
             value: 'max-age=63072000; includeSubDomains; preload',

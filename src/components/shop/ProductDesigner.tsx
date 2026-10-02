@@ -234,7 +234,7 @@ export function ProductDesigner({ open, onClose, mockupUrl, options, initialElem
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
           {/* Designer Toolbar */}
           <Box sx={{ width: { xs: '100%', md: 220 }, flexShrink: 0 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>Add Elements</Typography>
+            <Typography variant="subtitle2" component="span" sx={{ mb: 1 }}>Add Elements</Typography>
             <Stack spacing={1}>
               <Button
                 variant="outlined"
@@ -254,14 +254,14 @@ export function ProductDesigner({ open, onClose, mockupUrl, options, initialElem
               </Button>
 
               {uploadError && (
-                <Typography variant="caption" sx={{ color: '#CF4040', mt: 0.5 }}>
+                <Typography variant="caption" sx={{ color: brandTokens.rubyRedText, mt: 0.5 }}>
                   {uploadError}
                 </Typography>
               )}
 
               {selectedElement && (
                 <Box sx={{ mt: 2 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>Selected Element</Typography>
+                  <Typography variant="subtitle2" component="span" sx={{ mb: 1 }}>Selected Element</Typography>
                   
                   {selectedElement.type === 'text' && (
                     <Stack spacing={1}>

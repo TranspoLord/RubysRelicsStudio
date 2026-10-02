@@ -164,7 +164,7 @@ export function SignIn({ next = '/', eyebrow, title }: SignInProps) {
             {isRedirecting ? 'Redirecting to Google…' : 'Continue with Google'}
           </Button>
 
-          <Typography sx={{ color: alpha(brandTokens.parchment, 0.5), fontSize: '0.78rem', mt: 1.6 }}>
+          <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.78rem', mt: 1.6 }}>
             By continuing you agree to our terms of service and privacy policy.
           </Typography>
         </>

@@ -103,7 +103,7 @@ export default async function CustomOrdersPage() {
                 </Box>
 
                 <Box sx={{ mt: 2, pt: 1.5, borderTop: `1px solid ${alpha(brandTokens.parchment, 0.1)}` }}>
-                  <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.55), lineHeight: 1.6 }}>
+                  <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), lineHeight: 1.6 }}>
                     Tip: Include dimensions, target use case, and any must-have constraints to speed up review.
                   </Typography>
                 </Box>

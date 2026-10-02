@@ -403,6 +403,7 @@ export default function AdminInventoryPage() {
               />
               <Select
                 size="small"
+                aria-label="Availability override"
                 value={editor.availabilityOverride}
                 onChange={(event) =>
                   updateEditor('availabilityOverride', event.target.value as InventoryEditorState['availabilityOverride'])
@@ -453,6 +454,7 @@ export default function AdminInventoryPage() {
                 />
                 <Select
                   size="small"
+                  aria-label="Adjustment reason"
                   value={adjustReason}
                   onChange={(event) => setAdjustReason(event.target.value as ReasonCode)}
                   sx={{ minWidth: 220 }}
@@ -503,6 +505,7 @@ export default function AdminInventoryPage() {
           />
           <Select
             size="small"
+            aria-label="Bulk adjustment reason"
             value={bulkReason}
             onChange={(event) => setBulkReason(event.target.value as ReasonCode)}
             sx={{ minWidth: 220 }}
@@ -520,8 +523,18 @@ export default function AdminInventoryPage() {
           />
         </Stack>
 
-        <Button variant="contained" disabled={bulkAdjusting || selectedProductIds.length === 0} onClick={() => void bulkAdjust()}>
-          {bulkAdjusting ? 'Applying...' : `Apply to ${selectedProductIds.length} selected`}
+        <Button
+          variant="contained"
+          disabled={bulkAdjusting || selectedProductIds.length === 0}
+          onClick={() => void bulkAdjust()}
+        >
+          {/* §9.12: say *why* it is disabled (the audit's "say why, don't only
+              restyle it") instead of leaving a gold-looking button at 0 selected. */}
+          {bulkAdjusting
+            ? 'Applying...'
+            : selectedProductIds.length === 0
+              ? 'Apply to 0 selected — select rows first'
+              : `Apply to ${selectedProductIds.length} selected`}
         </Button>
       </Box>
 
@@ -556,7 +569,7 @@ export default function AdminInventoryPage() {
                     <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.66) }}>
                       /{row.slug} · {row.category_display_name} · Status {statusLabel(row.stock_status)}
                     </Typography>
-                    <Typography sx={{ fontSize: '0.74rem', color: alpha(brandTokens.parchment, 0.6) }}>
+                    <Typography sx={{ fontSize: '0.74rem', color: alpha(brandTokens.parchment, 0.62) }}>
                       Qty {row.available_qty} · Threshold {row.low_stock_threshold} · Track {row.is_track_inventory ? 'On' : 'Off'} · Override {row.availability_override}
                     </Typography>
                   </Box>

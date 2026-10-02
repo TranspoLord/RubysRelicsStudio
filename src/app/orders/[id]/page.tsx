@@ -135,10 +135,10 @@ export default async function OrderTrackingPage({
                   Order Tracking
                 </Typography>
 
-                <Typography sx={{ fontSize: '0.84rem', color: alpha(brandTokens.parchment, 0.6) }}>
+                <Typography sx={{ fontSize: '0.84rem', color: alpha(brandTokens.parchment, 0.62) }}>
                   Order: {result.order.id}
                 </Typography>
-                <Typography sx={{ fontSize: '0.84rem', color: alpha(brandTokens.parchment, 0.6) }}>
+                <Typography sx={{ fontSize: '0.84rem', color: alpha(brandTokens.parchment, 0.62) }}>
                   Created: {formatTimestamp(result.order.created_at)}
                 </Typography>
 
@@ -180,11 +180,11 @@ export default async function OrderTrackingPage({
                         </Typography>
                       </Box>
                       {item.variant_label && (
-                        <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.55), mt: 0.2 }}>
+                        <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.2 }}>
                           {item.variant_label}
                         </Typography>
                       )}
-                      <Typography sx={{ fontSize: '0.74rem', color: alpha(brandTokens.parchment, 0.5), mt: 0.35 }}>
+                      <Typography sx={{ fontSize: '0.74rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.35 }}>
                         Qty {item.quantity}
                       </Typography>
                     </Box>

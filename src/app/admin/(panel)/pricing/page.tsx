@@ -23,7 +23,7 @@ export default function AdminPricingPage() {
         </Link>
       </Box>
 
-      <Typography sx={{ color: alpha(brandTokens.parchment, 0.58), fontSize: '0.88rem' }}>
+      <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.88rem' }}>
         This page is intentionally lightweight until/unless pricing is split into a dedicated
         standalone module.
       </Typography>

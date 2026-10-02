@@ -15,6 +15,7 @@ import type { DbProduct } from '@/lib/supabase/queries/products'
 import type { TaxonomyEntry } from '@/types'
 import { brandTokens } from '@/theme/theme'
 import { filterProductsForShopAll } from '@/lib/catalog/filters'
+import { Analytics } from '@/lib/analytics/events'
 
 interface HomepageProductGridProps {
   products: DbProduct[]
@@ -68,6 +69,15 @@ export function HomepageProductGrid({ products, categories, content, sectionKey 
     return filtered.slice(0, productCount)
   }, [category, priceMax, priceMin, productCount, products, search, showCustomizable, showReadyMade])
 
+  // §7.9: the live catalogue has no ready-made products, so "Show ready-made" was
+  // a no-op switch, and turning "Show customizable" off emptied the grid with no
+  // explanation. Render each toggle only when its bucket has products.
+  const hasReadyMade = useMemo(() => products.some((product) => product.is_ready_made), [products])
+  const hasCustomizable = useMemo(
+    () => products.some((product) => product.is_customizable),
+    [products]
+  )
+
   const buildViewAllUrl = () => {
     const params = new URLSearchParams()
     if (category !== 'all') params.set('category', category)
@@ -100,8 +110,8 @@ export function HomepageProductGrid({ products, categories, content, sectionKey 
             )}
           </Box>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-            <Chip component={Link} href={buildViewAllUrl()} label="View All" clickable sx={{ borderRadius: '999px', px: 1.5, py: 0.7, backgroundColor: alpha(brandTokens.forgeGold, 0.16), color: brandTokens.forgeGold }} />
-            <Chip component={Link} href="/future-products" label="Future Products" clickable sx={{ borderRadius: '999px', px: 1.5, py: 0.7, backgroundColor: alpha(brandTokens.bgSurface, 0.7), color: brandTokens.parchment }} />
+            <Chip component={Link} href={buildViewAllUrl()} label="View All" clickable onClick={() => Analytics.homepageProductViewAllClicked()} sx={{ borderRadius: '999px', px: 1.5, py: 0.7, backgroundColor: alpha(brandTokens.forgeGold, 0.16), color: brandTokens.forgeGold }} />
+            <Chip component={Link} href="/future-products" label="Future Products" clickable onClick={() => Analytics.homepageFutureProductsLinkClicked()} sx={{ borderRadius: '999px', px: 1.5, py: 0.7, backgroundColor: alpha(brandTokens.bgSurface, 0.7), color: brandTokens.parchment }} />
           </Stack>
         </Box>
 
@@ -150,8 +160,12 @@ export function HomepageProductGrid({ products, categories, content, sectionKey 
                 />
               </Stack>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                <FormControlLabel control={<Switch checked={showReadyMade} onChange={() => setShowReadyMade((value) => !value)} />} label="Show ready-made" />
-                <FormControlLabel control={<Switch checked={showCustomizable} onChange={() => setShowCustomizable((value) => !value)} />} label="Show customizable" />
+                {hasReadyMade && (
+                  <FormControlLabel control={<Switch checked={showReadyMade} onChange={() => setShowReadyMade((value) => { const next = !value; Analytics.homepageProductFilterApplied('ready_made', String(next)); return next })} />} label="Show ready-made" />
+                )}
+                {hasCustomizable && (
+                  <FormControlLabel control={<Switch checked={showCustomizable} onChange={() => setShowCustomizable((value) => { const next = !value; Analytics.homepageProductFilterApplied('customizable', String(next)); return next })} />} label="Show customizable" />
+                )}
               </Stack>
             </Stack>
           </Box>
@@ -184,11 +198,11 @@ export function HomepageProductGrid({ products, categories, content, sectionKey 
                     {product.title}
                   </Typography>
                   {product.short_description && (
-                    <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.6), mb: 1.5, flex: 1 }}>
+                    <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62), mb: 1.5, flex: 1 }}>
                       {product.short_description}
                     </Typography>
                   )}
-                  <Typography variant="subtitle1" sx={{ color: brandTokens.forgeGold, fontWeight: 700 }}>
+                  <Typography variant="subtitle1" component="span" sx={{ color: brandTokens.forgeGold, fontWeight: 700 }}>
                     ${product.base_price.toFixed(2)}
                   </Typography>
                 </Box>
@@ -196,6 +210,33 @@ export function HomepageProductGrid({ products, categories, content, sectionKey 
             )
           })}
         </Box>
+
+        {/* §7.9: filtering to nothing used to leave a silently empty grid. */}
+        {filteredProducts.length === 0 && (
+          <Box
+            sx={{
+              textAlign: 'center',
+              py: 6,
+              borderRadius: 2,
+              border: `1px dashed ${alpha(brandTokens.parchment, 0.18)}`,
+            }}
+          >
+            <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), mb: 0.5 }}>
+              No products match these filters.
+            </Typography>
+            <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.875rem' }}>
+              Try widening the price range, or{' '}
+              <Box
+                component={Link}
+                href="/shop/all"
+                sx={{ color: brandTokens.forgeGold, textDecoration: 'underline' }}
+              >
+                browse everything
+              </Box>
+              .
+            </Typography>
+          </Box>
+        )}
       </Container>
     </Box>
   )

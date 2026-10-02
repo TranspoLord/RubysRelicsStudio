@@ -25,7 +25,10 @@ export function HeroSection({ collageConfig }: HeroSectionProps) {
       aria-label="Hero"
       sx={{
         position: 'relative',
-        minHeight: { xs: '88vh', md: '90vh' },
+        // §7.13: xs was 88vh = 743px at 390x844, plus 137px of banner+header
+        // chrome, so the first real content sat more than a screen down. Let the
+        // hero size to its content on phones and keep the tall stage on desktop.
+        minHeight: { xs: 'auto', sm: '72vh', md: '90vh' },
         display: 'flex',
         alignItems: 'center',
         overflow: 'hidden',
@@ -74,7 +77,7 @@ export function HeroSection({ collageConfig }: HeroSectionProps) {
         }}
       />
 
-      <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1, py: { xs: 10, md: 14 } }}>
+      <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1, py: { xs: 6, sm: 8, md: 14 } }}>
         <Box sx={{ maxWidth: 720 }}>
           {/* Main headline */}
           <Typography
@@ -124,17 +127,26 @@ export function HeroSection({ collageConfig }: HeroSectionProps) {
             craft your treasures — then send the griffins to your lair.
           </Typography>
 
-          {/* NSFW content notice */}
+          {/* NSFW content notice — §7 informational: deliberately brand
+              positioning, but it was styled as fine print (gold at 65 %, italic,
+              3.53:1). It now reads as confidence: full-strength gold, no italic,
+              and it links to the FAQ entry that explains it. */}
           <Typography
             variant="body2"
             sx={{
-              color: alpha(brandTokens.forgeGold, 0.65),
+              color: brandTokens.forgeGoldLight,
               fontSize: { xs: '0.82rem', md: '0.9rem' },
-              fontStyle: 'italic',
               mb: 5,
             }}
           >
-            NSFW content is welcome. As long as it's legal.
+            NSFW content is welcome. As long as it&apos;s legal.{' '}
+            <Box
+              component={Link}
+              href="/resources/faq"
+              sx={{ color: brandTokens.forgeGoldLight, textDecoration: 'underline', textUnderlineOffset: 2 }}
+            >
+              How that works
+            </Box>
           </Typography>
 
           {/* CTA row */}
@@ -148,27 +160,28 @@ export function HeroSection({ collageConfig }: HeroSectionProps) {
           >
             <Button
               component={Link}
-              href="/shop"
+              href="/custom-orders"
               variant="contained"
               color="primary"
               size="large"
               endIcon={<ArrowForwardIcon />}
-              onClick={() => Analytics.categoryClicked('all', 'shop')}
+              onClick={() => Analytics.heroCtaClicked('custom_order')}
               sx={{ px: 4, py: 1.75, fontSize: '1rem' }}
             >
-              Shop the Hoard
+              Start a Custom Order
             </Button>
 
             <Button
               component={Link}
-              href="/shop"
+              href="/shop/ready-made"
               variant="outlined"
               color="primary"
               size="large"
               startIcon={<InfoOutlinedIcon />}
+              onClick={() => Analytics.heroCtaClicked('ready_made')}
               sx={{ px: 3, py: 1.75, fontSize: '1rem' }}
             >
-              Browse Shop
+              Shop Ready-Made
             </Button>
           </Box>
 
@@ -194,10 +207,10 @@ export function HeroSection({ collageConfig }: HeroSectionProps) {
                 <Typography
                   variant="caption"
                   sx={{
-                    color: alpha(brandTokens.parchment, 0.6),
+                    color: alpha(brandTokens.parchment, 0.62),
                     letterSpacing: '0.06em',
                     textTransform: 'uppercase',
-                    fontSize: '0.72rem',
+                    fontSize: '0.75rem',
                   }}
                 >
                   {label}
@@ -223,7 +236,7 @@ export function HeroSection({ collageConfig }: HeroSectionProps) {
           flexDirection: 'column',
           alignItems: 'center',
           gap: 0.5,
-          opacity: 0.4,
+          opacity: 0.62,
           animation: 'none',
           '@media (prefers-reduced-motion: no-preference)': {
             animation: 'bounce 2s ease-in-out infinite',

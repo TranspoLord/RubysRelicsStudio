@@ -424,7 +424,7 @@ export default function AdminHomepagePage() {
         <Typography variant="h4" component="h1" sx={{ mb: 0.5 }}>
           Homepage
         </Typography>
-        <Typography sx={{ color: alpha(brandTokens.parchment, 0.6) }}>
+        <Typography sx={{ color: alpha(brandTokens.parchment, 0.62) }}>
           Control which sections appear on the storefront homepage, and configure the shortcut tile editors below.
         </Typography>
       </Box>
@@ -438,17 +438,26 @@ export default function AdminHomepagePage() {
           background: alpha(brandTokens.bgSurface, 0.5),
         }}
       >
-        <Typography variant="h6" sx={{ mb: 0.4 }}>
+        <Typography variant="h6" component="h2" sx={{ mb: 0.4 }}>
           Section Visibility
         </Typography>
-        <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.55), mb: 3 }}>
+        <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62), mb: 3 }}>
           Toggle which sections appear on the homepage. Sections driven by their own data (gallery, collections, testimonials) must also have published content to show anything.
         </Typography>
 
         <Box
           sx={{
             display: 'grid',
-            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
+            // §9.4 (Batch 8): was `repeat(2, 1fr)`. A `1fr` track is
+            // `minmax(auto, 1fr)`, so it cannot shrink below the min-content of
+            // its items — and each card's `whiteSpace: 'nowrap'` description is
+            // ~590px of text, so the two tracks resolved to 1191px inside a
+            // 1060px column. That pushed the panel to 1241.34px and the whole
+            // page scrolled sideways by 140px at 1440 (measured, three runs).
+            // `minmax(0, 1fr)` lets the track shrink; the description then does
+            // what its `textOverflow: 'ellipsis'` always intended. Same shape as
+            // `finance/page.tsx`'s grids and `AdminShell`'s content column.
+            gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
             gap: 1.2,
             mb: 3,
           }}
@@ -485,7 +494,14 @@ export default function AdminHomepagePage() {
                     {isTile && (
                       <Typography
                         component="span"
-                        sx={{ ml: 0.8, fontSize: '0.68rem', color: alpha(brandTokens.forgeGold, 0.8), fontWeight: 400 }}
+                        sx={{
+                          ml: 0.8,
+                          // §8.5 (Batch 8): was 0.68rem = 10.88px — the smallest
+                          // text in the panel, below the 12px floor.
+                          fontSize: '0.75rem',
+                          color: alpha(brandTokens.forgeGold, 0.8),
+                          fontWeight: 400,
+                        }}
                       >
                         tile editor ↓
                       </Typography>
@@ -493,7 +509,8 @@ export default function AdminHomepagePage() {
                   </Typography>
                   <Typography
                     sx={{
-                      fontSize: '0.72rem',
+                      // §8.5 (Batch 8): was 0.72rem = 11.52px, below the 12px floor.
+                      fontSize: '0.75rem',
                       color: alpha(brandTokens.parchment, on ? 0.48 : 0.3),
                       mt: 0.1,
                       overflow: 'hidden',
@@ -508,6 +525,11 @@ export default function AdminHomepagePage() {
                   size="small"
                   checked={on}
                   onChange={(e) => setVisibility((prev) => ({ ...prev, [key]: e.target.checked }))}
+                  // §9.7: this switch was one of 17 bare `MuiSwitch-input`s with
+                  // no accessible name — its only name was the adjacent text,
+                  // which was not associated with the input. `inputProps`
+                  // targets the <input> itself, which is what was unnamed.
+                  inputProps={{ 'aria-label': `${meta.title} — show on homepage` }}
                   sx={{ flexShrink: 0 }}
                 />
               </Box>
@@ -542,11 +564,11 @@ export default function AdminHomepagePage() {
       >
         <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3, gap: 2, flexWrap: 'wrap' }}>
           <Box>
-            <Typography variant="h6" sx={{ mb: 0.25, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="h6" component="h2" sx={{ mb: 0.25, display: 'flex', alignItems: 'center', gap: 1 }}>
               <AutoFixHighIcon sx={{ fontSize: '1.2rem', color: 'primary.main' }} />
               Hero Collage
             </Typography>
-            <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.55) }}>
+            <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62) }}>
               Floating product image cards on the right side of the hero section. Configure images, toggle visibility, and set how many to display.
             </Typography>
           </Box>
@@ -601,7 +623,7 @@ export default function AdminHomepagePage() {
                 background: alpha(brandTokens.bgVoid, 0.4),
               }}
             >
-              <Typography variant="body2" sx={{ fontWeight: 600, color: alpha(brandTokens.parchment, 0.6), mb: 1.5 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, color: alpha(brandTokens.parchment, 0.62), mb: 1.5 }}>
                 Image {index + 1}
               </Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
@@ -660,12 +682,204 @@ export default function AdminHomepagePage() {
         </Button>
       </Box>
 
+      {/* ── Shop All Preview Editor (§3.4) ────────────────────────────────── */}
+      <Box
+        sx={{
+          border: `1px solid ${alpha(brandTokens.parchment, 0.1)}`,
+          borderRadius: 2,
+          p: { xs: 2.5, md: 3 },
+          background: alpha(brandTokens.bgSurface, 0.5),
+        }}
+      >
+        <Box sx={{ mb: 2.5 }}>
+          <Typography variant="h6" component="h2" sx={{ mb: 0.25, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <ImageIcon sx={{ fontSize: '1.2rem', color: 'primary.main' }} />
+            Shop All Preview
+          </Typography>
+          <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62) }}>
+            The product grid below the order paths. Saving creates the CMS row if it does not exist yet, so the
+            values here are never discarded.
+          </Typography>
+        </Box>
+
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mb: 1.5 }}>
+          <TextField
+            size="small"
+            label="Section heading"
+            value={shopAllPreview.heading}
+            onChange={(e) => setShopAllPreview((prev) => ({ ...prev, heading: e.target.value }))}
+            inputProps={{ maxLength: 120, 'aria-label': 'Shop All Preview heading' }}
+            sx={{ minWidth: 260 }}
+          />
+          <TextField
+            size="small"
+            label="Subheading (optional)"
+            value={shopAllPreview.subheading}
+            onChange={(e) => setShopAllPreview((prev) => ({ ...prev, subheading: e.target.value }))}
+            inputProps={{ maxLength: 200, 'aria-label': 'Shop All Preview subheading' }}
+            sx={{ minWidth: 300 }}
+          />
+        </Stack>
+
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}>
+          <TextField
+            size="small"
+            type="number"
+            label="Products shown"
+            value={shopAllPreview.product_count}
+            onChange={(e) =>
+              setShopAllPreview((prev) => ({ ...prev, product_count: Number(e.target.value) }))
+            }
+            inputProps={{ min: 1, max: 50, 'aria-label': 'Shop All Preview product count' }}
+            sx={{ width: 170 }}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                checked={shopAllPreview.show_filters}
+                onChange={(e) =>
+                  setShopAllPreview((prev) => ({ ...prev, show_filters: e.target.checked }))
+                }
+              />
+            }
+            label={
+              <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62) }}>
+                Show filters
+              </Typography>
+            }
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                checked={shopAllPreview.is_visible}
+                onChange={(e) =>
+                  setShopAllPreview((prev) => ({ ...prev, is_visible: e.target.checked }))
+                }
+              />
+            }
+            label={
+              <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62) }}>
+                {shopAllPreview.is_visible ? 'Visible' : 'Hidden'}
+              </Typography>
+            }
+          />
+        </Stack>
+
+        <Divider sx={{ my: 2.5, borderColor: alpha(brandTokens.parchment, 0.08) }} />
+
+        {shopAllPreviewMessage && (
+          <Alert severity={shopAllPreviewMessage.type} sx={{ mb: 2 }}>
+            {shopAllPreviewMessage.text}
+          </Alert>
+        )}
+
+        <Button
+          variant="contained"
+          startIcon={
+            savingShopAllPreview ? <CircularProgress size={16} color="inherit" /> : <SaveOutlinedIcon />
+          }
+          onClick={() => void handleSaveShopAllPreview()}
+          disabled={savingShopAllPreview}
+        >
+          Save Shop All Preview
+        </Button>
+      </Box>
+
+      {/* ── Future Products Notify Editor (§3.4) ──────────────────────────── */}
+      <Box
+        sx={{
+          border: `1px solid ${alpha(brandTokens.parchment, 0.1)}`,
+          borderRadius: 2,
+          p: { xs: 2.5, md: 3 },
+          background: alpha(brandTokens.bgSurface, 0.5),
+        }}
+      >
+        <Box sx={{ mb: 2.5 }}>
+          <Typography variant="h6" component="h2" sx={{ mb: 0.25 }}>
+            Future Products Notify
+          </Typography>
+          <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62) }}>
+            The early-access email capture card. The form can also be disabled storefront-wide from Settings,
+            which hides it without changing this section.
+          </Typography>
+        </Box>
+
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mb: 1.5 }} alignItems={{ md: 'center' }}>
+          <TextField
+            size="small"
+            label="Heading"
+            value={futureProductsNotify.heading}
+            onChange={(e) => setFutureProductsNotify((prev) => ({ ...prev, heading: e.target.value }))}
+            inputProps={{ maxLength: 120, 'aria-label': 'Future products notify heading' }}
+            sx={{ minWidth: 240 }}
+          />
+          <TextField
+            size="small"
+            label="CTA label"
+            value={futureProductsNotify.cta_label}
+            onChange={(e) => setFutureProductsNotify((prev) => ({ ...prev, cta_label: e.target.value }))}
+            inputProps={{ maxLength: 40, 'aria-label': 'Future products notify CTA label' }}
+            sx={{ width: 190 }}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                checked={futureProductsNotify.is_visible}
+                onChange={(e) =>
+                  setFutureProductsNotify((prev) => ({ ...prev, is_visible: e.target.checked }))
+                }
+              />
+            }
+            label={
+              <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62) }}>
+                {futureProductsNotify.is_visible ? 'Visible' : 'Hidden'}
+              </Typography>
+            }
+          />
+        </Stack>
+
+        <TextField
+          size="small"
+          fullWidth
+          label="Subheading"
+          value={futureProductsNotify.subheading}
+          onChange={(e) => setFutureProductsNotify((prev) => ({ ...prev, subheading: e.target.value }))}
+          inputProps={{ maxLength: 240, 'aria-label': 'Future products notify subheading' }}
+        />
+
+        <Divider sx={{ my: 2.5, borderColor: alpha(brandTokens.parchment, 0.08) }} />
+
+        {futureProductsNotifyMessage && (
+          <Alert severity={futureProductsNotifyMessage.type} sx={{ mb: 2 }}>
+            {futureProductsNotifyMessage.text}
+          </Alert>
+        )}
+
+        <Button
+          variant="contained"
+          startIcon={
+            savingFutureProductsNotify ? (
+              <CircularProgress size={16} color="inherit" />
+            ) : (
+              <SaveOutlinedIcon />
+            )
+          }
+          onClick={() => void handleSaveFutureProductsNotify()}
+          disabled={savingFutureProductsNotify}
+        >
+          Save Notify Card
+        </Button>
+      </Box>
+
       {/* ── Tile Section Editors ──────────────────────────────────────────── */}
       <Box>
-        <Typography variant="h6" sx={{ mb: 0.4 }}>
+        <Typography variant="h6" component="h2" sx={{ mb: 0.4 }}>
           Shortcut Tile Editors
         </Typography>
-        <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.55), mb: 0 }}>
+        <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62), mb: 0 }}>
           Configure the heading, subheading, and individual tiles for the two shortcut sections. Saving here also syncs the visibility toggle above.
         </Typography>
       </Box>
@@ -736,8 +950,8 @@ function TileSectionEditor({ section, meta, saving, message, onChange, onSave }:
     >
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3, gap: 2, flexWrap: 'wrap' }}>
         <Box>
-          <Typography variant="h6" sx={{ mb: 0.25 }}>{meta.title}</Typography>
-          <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.55) }}>{meta.description}</Typography>
+          <Typography variant="h6" component="h2" sx={{ mb: 0.25 }}>{meta.title}</Typography>
+          <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62) }}>{meta.description}</Typography>
         </Box>
         <FormControlLabel
           control={
@@ -752,7 +966,7 @@ function TileSectionEditor({ section, meta, saving, message, onChange, onSave }:
               {section.is_visible ? (
                 <VisibilityOutlinedIcon sx={{ fontSize: '1rem', color: 'primary.main' }} />
               ) : (
-                <VisibilityOffOutlinedIcon sx={{ fontSize: '1rem', color: alpha(brandTokens.parchment, 0.4) }} />
+                <VisibilityOffOutlinedIcon sx={{ fontSize: '1rem', color: alpha(brandTokens.parchment, 0.62) }} />
               )}
               <Typography variant="body2" sx={{ color: section.is_visible ? 'primary.main' : alpha(brandTokens.parchment, 0.4) }}>
                 {section.is_visible ? 'Visible' : 'Hidden'}
@@ -844,35 +1058,56 @@ function TileEditor({ item, index, total, onChange, onRemove, onMove }: TileEdit
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
-        <Typography variant="body2" sx={{ fontWeight: 600, color: alpha(brandTokens.parchment, 0.6) }}>
+        <Typography variant="body2" sx={{ fontWeight: 600, color: alpha(brandTokens.parchment, 0.62) }}>
           Tile {index + 1}
         </Typography>
         <Box sx={{ display: 'flex', gap: 0.5 }}>
+          {/* §9.7: these four icon buttons had no accessible name at all (a
+              `Tooltip` is a description, not a name). */}
           <Tooltip title="Move up">
             <span>
-              <IconButton size="small" disabled={index === 0} onClick={() => onMove('up')}>
+              <IconButton
+                size="small"
+                aria-label={`Move tile ${index + 1} up`}
+                disabled={index === 0}
+                onClick={() => onMove('up')}
+              >
                 <ArrowUpwardIcon sx={{ fontSize: '1rem' }} />
               </IconButton>
             </span>
           </Tooltip>
           <Tooltip title="Move down">
             <span>
-              <IconButton size="small" disabled={index === total - 1} onClick={() => onMove('down')}>
+              <IconButton
+                size="small"
+                aria-label={`Move tile ${index + 1} down`}
+                disabled={index === total - 1}
+                onClick={() => onMove('down')}
+              >
                 <ArrowDownwardIcon sx={{ fontSize: '1rem' }} />
               </IconButton>
             </span>
           </Tooltip>
           <Tooltip title={item.is_visible ? 'Hide tile' : 'Show tile'}>
-            <IconButton size="small" onClick={() => onChange('is_visible', !item.is_visible)}>
+            <IconButton
+              size="small"
+              aria-label={item.is_visible ? `Hide tile ${index + 1}` : `Show tile ${index + 1}`}
+              onClick={() => onChange('is_visible', !item.is_visible)}
+            >
               {item.is_visible ? (
                 <VisibilityOutlinedIcon sx={{ fontSize: '1rem', color: 'primary.main' }} />
               ) : (
-                <VisibilityOffOutlinedIcon sx={{ fontSize: '1rem', color: alpha(brandTokens.parchment, 0.4) }} />
+                <VisibilityOffOutlinedIcon sx={{ fontSize: '1rem', color: alpha(brandTokens.parchment, 0.62) }} />
               )}
             </IconButton>
           </Tooltip>
           <Tooltip title="Remove tile">
-            <IconButton size="small" color="error" onClick={onRemove}>
+            <IconButton
+              size="small"
+              color="error"
+              aria-label={`Remove tile ${index + 1}`}
+              onClick={onRemove}
+            >
               <DeleteOutlineIcon sx={{ fontSize: '1rem' }} />
             </IconButton>
           </Tooltip>

@@ -1086,7 +1086,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
         </Stack>
 
         {categoryLabel && (
-          <Typography sx={{ color: alpha(brandTokens.parchment, 0.55), fontSize: '0.75rem' }}>
+          <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.75rem' }}>
             Category selected: {categoryLabel}
           </Typography>
         )}
@@ -1195,7 +1195,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
 
         <Divider />
 
-        <Typography variant="subtitle2" sx={{ fontSize: '0.85rem', mt: 0.5 }}>
+        <Typography variant="subtitle2" component="span" sx={{ fontSize: '0.85rem', mt: 0.5 }}>
           Add New Media
         </Typography>
 
@@ -1564,7 +1564,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ md: 'center' }}>
           <Box>
             <Typography variant="h6">Process Types & Pricing</Typography>
-            <Typography sx={{ color: alpha(brandTokens.parchment, 0.58), fontSize: '0.78rem' }}>
+            <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.78rem' }}>
               Tag this product with the processes used to make it. Set a price delta for each process.
             </Typography>
           </Box>
@@ -1579,7 +1579,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
         </Stack>
 
         {processTypes.length === 0 ? (
-          <Typography sx={{ color: alpha(brandTokens.parchment, 0.5), fontSize: '0.8rem' }}>
+          <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.8rem' }}>
             No process types found. Run migration 030 to seed them.
           </Typography>
         ) : (
@@ -1634,7 +1634,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
                   </Box>
 
                   {isAssigned && (
-                    <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.5), fontStyle: 'italic' }}>
+                    <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), fontStyle: 'italic' }}>
                       Auto-generates "{getProcessAutoOption(pt.key)?.label}" option in Options section
                     </Typography>
                   )}
@@ -1661,15 +1661,15 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
 
         {/* ── Combo Discounts ──────────────────────────────────────────── */}
         <Box sx={{ display: 'grid', gap: 0.8, mt: 0.5 }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: '0.85rem' }}>
+          <Typography variant="subtitle2" component="span" sx={{ fontWeight: 700, fontSize: '0.85rem' }}>
             Combo Discounts
           </Typography>
-          <Typography sx={{ color: alpha(brandTokens.parchment, 0.55), fontSize: '0.75rem' }}>
+          <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.75rem' }}>
             When a customer selects multiple processes, apply a discount.
           </Typography>
 
           {comboDiscounts.length === 0 ? (
-            <Typography sx={{ color: alpha(brandTokens.parchment, 0.5), fontSize: '0.78rem' }}>
+            <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.78rem' }}>
               No combo discounts yet. Add one below.
             </Typography>
           ) : (
@@ -1694,7 +1694,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
                       {cd.discount_type === 'percent' ? `${cd.discount_value}% off` : cd.discount_type === 'fixed_amount' ? `$${cd.discount_value?.toFixed(2)} off` : 'Cheapest free'}
                     </Typography>
                     {cd.label && (
-                      <Typography sx={{ fontSize: '0.78rem', color: alpha(brandTokens.parchment, 0.55), flex: 1 }}>
+                      <Typography sx={{ fontSize: '0.78rem', color: alpha(brandTokens.parchment, 0.62), flex: 1 }}>
                         "{cd.label}"
                       </Typography>
                     )}
@@ -1778,7 +1778,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
           }}
         />
 
-        <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: '0.85rem', mt: 0.5 }}>
+        <Typography variant="subtitle2" component="span" sx={{ fontWeight: 700, fontSize: '0.85rem', mt: 0.5 }}>
           Bulk Discount Tiers
         </Typography>
 
@@ -1886,7 +1886,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
                       Qty {tier.min_qty}{tier.max_qty ? ` - ${tier.max_qty}` : '+'} | {tier.discount_type} {tier.discount_value}{tier.step_qty ? ` /${tier.step_qty}pcs` : ''} | {tier.label || 'No label'} | {tier.is_enabled ? 'Enabled' : 'Disabled'}
                     </Typography>
                     {tier.description && (
-                      <Typography sx={{ color: alpha(brandTokens.parchment, 0.5), fontSize: '0.72rem', mt: 0.3 }}>
+                      <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.72rem', mt: 0.3 }}>
                         {tier.description}
                       </Typography>
                     )}
@@ -1939,13 +1939,13 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
         {optionError && <Alert severity="error">{optionError}</Alert>}
         {optionSuccess && <Alert severity="success">{optionSuccess}</Alert>}
 
-        <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.55), fontSize: '0.75rem' }}>
+        <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.75rem' }}>
           Product customization options. Process types may auto-generate options when enabled.
         </Typography>
 
         <Divider />
 
-        <Typography variant="subtitle2" sx={{ fontSize: '0.85rem', mt: 0.5 }}>
+        <Typography variant="subtitle2" component="span" sx={{ fontSize: '0.85rem', mt: 0.5 }}>
           Add New Option
         </Typography>
 
@@ -2138,12 +2138,12 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
                   </Stack>
                 )}
 
-                <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.6), mt: 0.5 }}>
+                <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.5 }}>
                   Option values:
                 </Typography>
 
                 {option.values.length === 0 && (
-                  <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.5), fontStyle: 'italic' }}>
+                  <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), fontStyle: 'italic' }}>
                     No values yet.
                   </Typography>
                 )}
@@ -2214,7 +2214,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
                           </Box>
                         ) : (
                           <Stack direction="row" spacing={1} alignItems="center">
-                            <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.6), flex: 1 }}>
+                            <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), flex: 1 }}>
                               • {value.label} ({value.value}) | delta ${value.price_delta.toFixed(2)} | {value.is_enabled ? 'Enabled' : 'Disabled'}
                             </Typography>
                             <Button

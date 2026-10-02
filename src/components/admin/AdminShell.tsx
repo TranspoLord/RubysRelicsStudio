@@ -17,6 +17,7 @@ import { usePathname } from 'next/navigation'
 
 import { brandTokens } from '@/theme/theme'
 import { useAuth } from '@/components/auth/AuthProvider'
+import { activeAdminModuleLabel, resolveActiveAdminHref } from '@/lib/admin/module-nav'
 
 export interface AdminModuleLink {
   label: string
@@ -62,6 +63,36 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
   const [notificationsLoading, setNotificationsLoading] = useState(false)
   const [notifications, setNotifications] = useState<AdminNotificationRow[]>([])
   const [unreadCount, setUnreadCount] = useState(notificationCount)
+
+  /**
+   * §9.6: the active module is the longest href this path is equal to or nested
+   * under, so `/admin/catalog/products/<id>/builder` keeps Catalog marked instead
+   * of showing no active module at all (the pre-fix behaviour was a strict
+   * `pathname === href`). Logic lives in `src/lib/admin/module-nav.ts`, where it
+   * is unit-tested.
+   */
+  const activeModuleHref = useMemo(
+    () => resolveActiveAdminHref(pathname, moduleLinks.map((mod) => mod.href)),
+    [pathname, moduleLinks]
+  )
+
+  /**
+   * §9.10: the sticky bar said "Admin Dashboard" on every route, and every route
+   * shared one document title, so tabs/bookmarks/history were indistinguishable.
+   * Both now follow the active module. The title is set client-side because the
+   * panel's pages are a mix of server and client components and a client
+   * component cannot export `metadata`; the SSR title stays the layout default
+   * until hydration (see OCT_IMPLEMENTATION_PLAN.md → OCT-20 for the
+   * per-route-metadata alternative).
+   */
+  const activeModuleLabel = useMemo(
+    () => activeAdminModuleLabel(pathname, moduleLinks),
+    [pathname, moduleLinks]
+  )
+
+  useEffect(() => {
+    document.title = `${activeModuleLabel ?? 'Admin'} | Ruby's Relics Studio`
+  }, [activeModuleLabel])
 
   const moduleMatches = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -177,7 +208,7 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
         <Box sx={{ maxWidth: 1520, mx: 'auto', px: { xs: 2, md: 3 }, py: 1.4, display: 'grid', gap: 1.2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.2, flexWrap: 'wrap' }}>
             <Typography sx={{ fontFamily: 'var(--font-cinzel, serif)', fontWeight: 700, color: brandTokens.forgeGold, fontSize: '1.02rem' }}>
-              Admin Dashboard
+              {activeModuleLabel ?? 'Admin Dashboard'}
             </Typography>
 
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
@@ -226,7 +257,7 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
                   <CircularProgress size={18} />
                 </Box>
               ) : notifications.length === 0 ? (
-                <Typography sx={{ px: 1.2, py: 1, color: alpha(brandTokens.parchment, 0.55), fontSize: '0.78rem' }}>
+                <Typography sx={{ px: 1.2, py: 1, color: alpha(brandTokens.parchment, 0.62), fontSize: '0.78rem' }}>
                   No notifications right now.
                 </Typography>
               ) : (
@@ -246,7 +277,15 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
                           {note.title}
                         </Typography>
                         {note.body && (
-                          <Typography sx={{ color: alpha(brandTokens.parchment, 0.6), fontSize: '0.74rem' }}>
+                          <Typography
+                            sx={{
+                              color: alpha(brandTokens.parchment, 0.62),
+                              // §8.5 (Batch 8): was 0.74rem = 11.84px. Latent —
+                              // only renders for a notification that has a body,
+                              // so the capture (no such notification) never saw it.
+                              fontSize: '0.75rem',
+                            }}
+                          >
                             {note.body}
                           </Typography>
                         )}
@@ -259,7 +298,13 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
                       <Box
                         component="a"
                         href={note.href}
-                        sx={{ color: brandTokens.forgeGold, fontSize: '0.72rem', textDecoration: 'none' }}
+                        sx={{
+                          color: brandTokens.forgeGold,
+                          // §8.5 (Batch 8): was 0.72rem = 11.52px (latent — a
+                          // notification link, absent in the captured state).
+                          fontSize: '0.75rem',
+                          textDecoration: 'none',
+                        }}
                       >
                         Open
                       </Box>
@@ -277,8 +322,11 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
               placeholder="Global quick search (orders, products, custom requests)..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              // §9.7: the field was placeholder-only, so the input had no
+              // accessible name on all 23 routes.
+              inputProps={{ 'aria-label': 'Search orders, products and custom requests' }}
               InputProps={{
-                startAdornment: <SearchIcon sx={{ fontSize: '1rem', mr: 0.7, color: alpha(brandTokens.parchment, 0.45) }} />,
+                startAdornment: <SearchIcon sx={{ fontSize: '1rem', mr: 0.7, color: alpha(brandTokens.parchment, 0.62) }} />,
               }}
             />
 
@@ -293,7 +341,7 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
                 }}
               >
                 {mergedResults.length === 0 ? (
-                  <Typography sx={{ px: 1.2, py: 1, color: alpha(brandTokens.parchment, 0.55), fontSize: '0.78rem' }}>
+                  <Typography sx={{ px: 1.2, py: 1, color: alpha(brandTokens.parchment, 0.62), fontSize: '0.78rem' }}>
                     {searching ? 'Searching...' : 'No results matched your search.'}
                   </Typography>
                 ) : (
@@ -315,7 +363,14 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
                       <Typography sx={{ color: brandTokens.parchment, fontSize: '0.83rem', fontWeight: 600 }}>
                         {result.title}
                       </Typography>
-                      <Typography sx={{ color: alpha(brandTokens.parchment, 0.56), fontSize: '0.74rem' }}>
+                      <Typography
+                        sx={{
+                          color: alpha(brandTokens.parchment, 0.62),
+                          // §8.5 (Batch 8): was 0.74rem = 11.84px (latent — the
+                          // global search results modal, which no capture opens).
+                          fontSize: '0.75rem',
+                        }}
+                      >
                         [{result.type}] {result.subtitle}
                       </Typography>
                     </Box>
@@ -329,7 +384,8 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
 
       <Box sx={{ maxWidth: 1520, mx: 'auto', px: { xs: 2, md: 3 }, py: { xs: 2.4, md: 3 }, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '280px minmax(0, 1fr)' }, gap: 2.2, overflow: 'visible' }}>
         <Box
-          component="aside"
+          component="nav"
+          aria-label="Admin modules"
           sx={{
             border: `1px solid ${alpha(brandTokens.rubyRed, 0.14)}`,
             borderRadius: 1.8,
@@ -339,12 +395,13 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
           }}
         >
           {moduleLinks.map((mod) => {
-            const active = pathname === mod.href
+            const active = mod.href === activeModuleHref
             return (
               <Box
                 key={mod.href}
                 component="a"
                 href={mod.href}
+                aria-current={active ? 'page' : undefined}
                 sx={{
                   display: 'block',
                   textDecoration: 'none',
@@ -360,7 +417,18 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
                 <Typography sx={{ color: active ? brandTokens.forgeGold : alpha(brandTokens.parchment, 0.84), fontSize: '0.81rem', fontWeight: 700 }}>
                   {mod.label}
                 </Typography>
-                <Typography sx={{ color: alpha(brandTokens.parchment, 0.52), fontSize: '0.7rem', mt: 0.15 }}>
+                <Typography
+                  sx={{
+                    color: alpha(brandTokens.parchment, 0.62),
+                    // §8.5 (Batch 8): was 0.7rem = 11.2px. Batch 4 fixed these
+                    // descriptions' *colour* (§9.5) but not their size, so the 12
+                    // of them on every admin page stayed the smallest text in the
+                    // panel — below the 12px floor the audit measures. Same fix as
+                    // §7.12's `overline` (0.7rem → 0.75rem).
+                    fontSize: '0.75rem',
+                    mt: 0.15,
+                  }}
+                >
                   {mod.description}
                 </Typography>
               </Box>
@@ -369,7 +437,8 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
         </Box>
 
         <Box
-          component="section"
+          component="main"
+          id="main-content"
           sx={{
             border: `1px solid ${alpha(brandTokens.forgeGold, 0.12)}`,
             borderRadius: 1.8,

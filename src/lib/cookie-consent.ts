@@ -11,6 +11,25 @@ export interface CookieConsentState {
   }
 }
 
+/**
+ * Whether the storefront consent banner may appear on this path.
+ *
+ * The banner is mounted in the **root** layout (`src/app/layout.tsx`), so it
+ * used to render inside the admin panel too: `position: fixed; bottom: 0` over
+ * the module rail, where its 87 px bar made "Abandoned Carts" and "Homepage"
+ * unclickable until a *storefront* consent bar was dismissed
+ * (SEPT_IMPLEMENTATION_PLAN §9.2 — the same defect as §8.2 with a second blast
+ * radius).
+ *
+ * Consent is a storefront concern, so the rule is "storefront only": the panel
+ * never asks, and never gets a bar between the operator and the rail. Pure and
+ * exported so the decision is testable instead of buried in the component.
+ */
+export function shouldShowCookieBanner(pathname: string | null | undefined): boolean {
+  if (!pathname) return true
+  return !(pathname === '/admin' || pathname.startsWith('/admin/'))
+}
+
 export const COOKIE_CONSENT_STORAGE_KEY = 'rr_cookie_consent_state'
 export const COOKIE_CONSENT_VERSION = '2'
 

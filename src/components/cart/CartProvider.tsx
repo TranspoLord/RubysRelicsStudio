@@ -381,12 +381,12 @@ const clearCart = useCallback(() => {
                       {item.title}
                     </Typography>
                     {item.variantLabel && (
-                      <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.58), mt: 0.15 }}>
+                      <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.15 }}>
                         {item.variantLabel}
                       </Typography>
                     )}
                     {item.options.length > 0 && (
-                      <Typography sx={{ fontSize: '0.68rem', color: alpha(brandTokens.parchment, 0.48), mt: 0.1 }}>
+                      <Typography sx={{ fontSize: '0.68rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.1 }}>
                         {item.options.map((o) => o.valueLabel ?? o.value).join(' · ')}
                       </Typography>
                     )}
@@ -400,7 +400,7 @@ const clearCart = useCallback(() => {
                     aria-label={`Remove ${item.title}`}
                     size="small"
                     onClick={() => removeItem(item.key)}
-                    sx={{ color: alpha(brandTokens.parchment, 0.42), alignSelf: 'flex-start', p: 0.3 }}
+                    sx={{ color: alpha(brandTokens.parchment, 0.62), alignSelf: 'flex-start', p: 0.3 }}
                   >
                     <DeleteOutlineIcon sx={{ fontSize: '1rem' }} />
                   </IconButton>

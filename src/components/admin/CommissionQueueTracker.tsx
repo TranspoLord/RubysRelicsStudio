@@ -111,7 +111,7 @@ export function CommissionQueueTracker() {
             border: `1px solid ${alpha(brandTokens.parchment, 0.1)}`,
           }}
         >
-          <Typography sx={{ color: alpha(brandTokens.parchment, 0.6) }}>
+          <Typography sx={{ color: alpha(brandTokens.parchment, 0.62) }}>
             No active commissions in the queue.
           </Typography>
         </Paper>
@@ -131,14 +131,14 @@ export function CommissionQueueTracker() {
                   <Typography variant="h6" sx={{ color: brandTokens.parchment }}>
                     {item.display_name}
                   </Typography>
-                  <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.6), mt: 0.5 }}>
+                  <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62), mt: 0.5 }}>
                     {item.product_title}
                     {item.variant_label && ` · ${item.variant_label}`}
                   </Typography>
                   {item.nfc_target_data && (
                     <Typography
                       variant="caption"
-                      sx={{ color: alpha(brandTokens.parchment, 0.5), display: 'block', mt: 1 }}
+                      sx={{ color: alpha(brandTokens.parchment, 0.62), display: 'block', mt: 1 }}
                     >
                       NFC: {item.nfc_target_data}
                       {item.leave_unlocked && ' (unlocked)'}

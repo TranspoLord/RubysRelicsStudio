@@ -142,7 +142,7 @@ export function FaqPreview({ faqs }: FaqPreviewProps = {}) {
                 }}
               >
                 <Typography
-                  variant="subtitle1"
+                  variant="subtitle1" component="span"
                   sx={{
                     fontWeight: 500,
                     color: expanded === item.id ? 'primary.light' : 'text.primary',

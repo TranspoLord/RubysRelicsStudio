@@ -355,9 +355,9 @@ export default function CategoriesAdminPage() {
         </Stack>
 
         {loading ? (
-          <Typography sx={{ color: alpha(brandTokens.parchment, 0.6) }}>Loading categories...</Typography>
+          <Typography sx={{ color: alpha(brandTokens.parchment, 0.62) }}>Loading categories...</Typography>
         ) : categories.length === 0 ? (
-          <Typography sx={{ color: alpha(brandTokens.parchment, 0.6) }}>No categories found.</Typography>
+          <Typography sx={{ color: alpha(brandTokens.parchment, 0.62) }}>No categories found.</Typography>
         ) : (
           <Box sx={{ display: 'grid', gap: 0.8 }}>
             {categories.map((row) => (
@@ -381,7 +381,7 @@ export default function CategoriesAdminPage() {
                       key: {row.key} | slug: {row.slug} | {row.visible ? 'Visible' : 'Hidden'} | sort: {row.sort_order}
                     </Typography>
                     {row.tagline && (
-                      <Typography sx={{ fontSize: '0.78rem', color: alpha(brandTokens.parchment, 0.55) }}>
+                      <Typography sx={{ fontSize: '0.78rem', color: alpha(brandTokens.parchment, 0.62) }}>
                         {row.tagline}
                       </Typography>
                     )}

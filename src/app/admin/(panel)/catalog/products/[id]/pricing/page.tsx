@@ -285,6 +285,11 @@ export default function ProductPricingEditorPage({ params }: { params: Promise<{
 
   return (
     <Box sx={{ display: 'grid', gap: 1.2 }}>
+      {/* §9.11: no h1 on this page — it started at h6. */}
+      <Typography variant="h4" component="h1" sx={{ mb: 0.2 }}>
+        Pricing{product ? ` — ${product.title}` : ''}
+      </Typography>
+
       {error && <Alert severity="error">{error}</Alert>}
       {success && <Alert severity="success">{success}</Alert>}
 
@@ -307,7 +312,7 @@ export default function ProductPricingEditorPage({ params }: { params: Promise<{
       </Stack>
 
       <Box sx={{ borderTop: `1px solid ${alpha(brandTokens.parchment, 0.16)}`, pt: 1.2, display: 'grid', gap: 1 }}>
-        <Typography variant="h6">Variants</Typography>
+        <Typography variant="h6" component="h2">Variants</Typography>
 
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
           <TextField size="small" label="Label" value={variantLabel} onChange={(event) => setVariantLabel(event.target.value)} sx={{ minWidth: 220 }} />
@@ -359,7 +364,7 @@ export default function ProductPricingEditorPage({ params }: { params: Promise<{
       </Box>
 
       <Box sx={{ borderTop: `1px solid ${alpha(brandTokens.parchment, 0.16)}`, pt: 1.2, display: 'grid', gap: 1 }}>
-        <Typography variant="h6">Bulk Discount Tiers</Typography>
+        <Typography variant="h6" component="h2">Bulk Discount Tiers</Typography>
 
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
           <TextField size="small" type="number" label="Min qty" value={minQty} onChange={(event) => setMinQty(event.target.value)} sx={{ width: 130 }} />

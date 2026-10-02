@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 import { requireAdminApiSession } from '@/lib/admin/auth'
 import { writeAdminAuditLog } from '@/lib/admin/audit'
-import { getSupabaseAdmin } from '@/lib/supabase/client'
+import { saveHomepageSection } from '@/lib/homepage/section-write'
+import { isHomepageSectionKey } from '@/lib/homepage/sections'
+import { brandTokens } from '@/theme/theme'
 
 // Sections that have tile content editors — require full validation
 const TILE_SECTION_KEYS = new Set(['quick_picks', 'process_picks'])
@@ -9,26 +11,50 @@ const TILE_SECTION_KEYS = new Set(['quick_picks', 'process_picks'])
 // Sections that have content editors beyond simple visibility
 const CONTENT_SECTION_KEYS = new Set(['quick_picks', 'process_picks', 'hero_collage', 'shop_all_preview', 'future_products_notify'])
 
-// All sections that may be PATCH-ed through this route
-const ALL_SECTION_KEYS = new Set([
-  'hero',
-  'hero_collage',
-  'quick_picks',
-  'process_picks',
-  'order_paths',
-  'category_grid',
-  'featured_collections',
-  'shop_all_preview',
-  'future_products_notify',
-  'fresh_from_forge',
-  'materials_teaser',
-  'process_strip',
-  'custom_order_pitch',
-  'testimonials',
-  'faq_preview',
-  'newsletter',
-  'resources_teaser',
-])
+/**
+ * §7.7: tile accents were free-form hex, so `glow_color`/`gradient` had drifted to
+ * violet `#C084FC`, green `#6B9E6B`, indigo `#6A7AC4`, cyan `#2ABCD4` and purple
+ * `#8B4FBE` — a purple "Shop now →" link beside a gold button.
+ *
+ * Rather than reject the request (which would break saving a section whose stored
+ * values are still off-brand, before the data migration runs), a non-brand colour
+ * is **normalised to the brand accent** and reported back in `normalised`. The
+ * result is the same guarantee — the stored data can never contain an off-brand
+ * colour again — without a hard failure. `brandTokens` is the allow-list.
+ */
+const BRAND_HEXES = new Set(
+  [
+    brandTokens.forgeGold,
+    brandTokens.forgeGoldLight,
+    brandTokens.forgeGoldDark,
+    brandTokens.rubyRed,
+    brandTokens.copper,
+    brandTokens.parchment,
+    brandTokens.parchmentMuted,
+  ].map((hex) => hex.toLowerCase())
+)
+
+function hexesIn(value: string): string[] {
+  return (value.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []).map((hex) => hex.toLowerCase())
+}
+
+/** Returns the brand accent when `value` is missing or off-brand. */
+function normaliseBrandHex(value: string | undefined, field: string, normalised: string[]): string | undefined {
+  if (!value) return value
+  const trimmed = value.trim()
+  if (BRAND_HEXES.has(trimmed.toLowerCase())) return trimmed
+  normalised.push(`${field}: ${trimmed} → ${brandTokens.forgeGold}`)
+  return brandTokens.forgeGold
+}
+
+/** Drops a gradient built from off-brand colours, so the component's brand default applies. */
+function normaliseBrandGradient(value: string | undefined, field: string, normalised: string[]): string | undefined {
+  if (!value) return value
+  const offBrand = hexesIn(value).filter((hex) => !BRAND_HEXES.has(hex))
+  if (offBrand.length === 0) return value
+  normalised.push(`${field}: dropped (off-brand ${offBrand.join(', ')})`)
+  return undefined
+}
 
 interface ShortcutItem {
   key?: unknown
@@ -175,7 +201,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 
   const { key: sectionKey } = await params
 
-  if (!ALL_SECTION_KEYS.has(sectionKey)) {
+  if (!isHomepageSectionKey(sectionKey)) {
     return NextResponse.json({ error: 'Unknown section key.' }, { status: 404 })
   }
 
@@ -198,14 +224,23 @@ export async function PATCH(request: Request, { params }: RouteParams) {
         ? (body as Record<string, unknown>).is_visible !== false
         : true
 
-    const supabase = getSupabaseAdmin()
-    const { error } = await supabase
-      .from('exp_homepage_sections')
-      .update({ content, is_visible, updated_at: new Date().toISOString() })
-      .eq('section_key', sectionKey)
+    const saved = await saveHomepageSection({
+      sectionKey,
+      isVisible: is_visible,
+      content,
+    })
 
-    if (error) {
-      console.error(`[admin:homepage:sections:patch:${sectionKey}]`, error.message)
+    if (!saved.ok) {
+      console.error(`[admin:homepage:sections:patch:${sectionKey}]`, saved.error)
+      await writeAdminAuditLog({
+        action: 'homepage_section_update',
+        entityType: 'homepage_section',
+        entityId: sectionKey,
+        route: `/api/admin/homepage/sections/${sectionKey}`,
+        request,
+        status: 'failure',
+        details: { error: saved.error },
+      })
       return NextResponse.json({ error: 'Could not save hero collage settings.' }, { status: 500 })
     }
 
@@ -216,10 +251,10 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       route: `/api/admin/homepage/sections/${sectionKey}`,
       request,
       status: 'success',
-      details: { sectionKey, is_visible },
+      details: { sectionKey, is_visible, created: saved.created },
     })
 
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true, created: saved.created })
   }
 
   if (sectionKey === 'shop_all_preview') {
@@ -235,14 +270,23 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       subheading: validation.subheading,
     }
 
-    const supabase = getSupabaseAdmin()
-    const { error } = await supabase
-      .from('exp_homepage_sections')
-      .update({ content, is_visible: validation.is_visible, updated_at: new Date().toISOString() })
-      .eq('section_key', sectionKey)
+    const saved = await saveHomepageSection({
+      sectionKey,
+      isVisible: validation.is_visible,
+      content,
+    })
 
-    if (error) {
-      console.error(`[admin:homepage:sections:patch:${sectionKey}]`, error.message)
+    if (!saved.ok) {
+      console.error(`[admin:homepage:sections:patch:${sectionKey}]`, saved.error)
+      await writeAdminAuditLog({
+        action: 'homepage_section_update',
+        entityType: 'homepage_section',
+        entityId: sectionKey,
+        route: `/api/admin/homepage/sections/${sectionKey}`,
+        request,
+        status: 'failure',
+        details: { error: saved.error },
+      })
       return NextResponse.json({ error: 'Could not save section.' }, { status: 500 })
     }
 
@@ -253,10 +297,10 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       route: `/api/admin/homepage/sections/${sectionKey}`,
       request,
       status: 'success',
-      details: { sectionKey, product_count: validation.product_count, show_filters: validation.show_filters },
+      details: { sectionKey, product_count: validation.product_count, show_filters: validation.show_filters, created: saved.created },
     })
 
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true, created: saved.created })
   }
 
   if (sectionKey === 'future_products_notify') {
@@ -271,14 +315,23 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       cta_label: validation.cta_label,
     }
 
-    const supabase = getSupabaseAdmin()
-    const { error } = await supabase
-      .from('exp_homepage_sections')
-      .update({ content, is_visible: validation.is_visible, updated_at: new Date().toISOString() })
-      .eq('section_key', sectionKey)
+    const saved = await saveHomepageSection({
+      sectionKey,
+      isVisible: validation.is_visible,
+      content,
+    })
 
-    if (error) {
-      console.error(`[admin:homepage:sections:patch:${sectionKey}]`, error.message)
+    if (!saved.ok) {
+      console.error(`[admin:homepage:sections:patch:${sectionKey}]`, saved.error)
+      await writeAdminAuditLog({
+        action: 'homepage_section_update',
+        entityType: 'homepage_section',
+        entityId: sectionKey,
+        route: `/api/admin/homepage/sections/${sectionKey}`,
+        request,
+        status: 'failure',
+        details: { error: saved.error },
+      })
       return NextResponse.json({ error: 'Could not save section.' }, { status: 500 })
     }
 
@@ -289,10 +342,10 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       route: `/api/admin/homepage/sections/${sectionKey}`,
       request,
       status: 'success',
-      details: { sectionKey, cta_label: validation.cta_label },
+      details: { sectionKey, cta_label: validation.cta_label, created: saved.created },
     })
 
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true, created: saved.created })
   }
 
   // ── Simple sections — only is_visible accepted ─────────────────────────────
@@ -302,14 +355,19 @@ export async function PATCH(request: Request, { params }: RouteParams) {
         ? (body as Record<string, unknown>).is_visible !== false
         : true
 
-    const supabase = getSupabaseAdmin()
-    const { error } = await supabase
-      .from('exp_homepage_sections')
-      .update({ is_visible, updated_at: new Date().toISOString() })
-      .eq('section_key', sectionKey)
+    const saved = await saveHomepageSection({ sectionKey, isVisible: is_visible })
 
-    if (error) {
-      console.error(`[admin:homepage:sections:patch:${sectionKey}]`, error.message)
+    if (!saved.ok) {
+      console.error(`[admin:homepage:sections:patch:${sectionKey}]`, saved.error)
+      await writeAdminAuditLog({
+        action: 'homepage_section_update',
+        entityType: 'homepage_section',
+        entityId: sectionKey,
+        route: `/api/admin/homepage/sections/${sectionKey}`,
+        request,
+        status: 'failure',
+        details: { error: saved.error },
+      })
       return NextResponse.json({ error: 'Could not save section.' }, { status: 500 })
     }
 
@@ -320,10 +378,10 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       route: `/api/admin/homepage/sections/${sectionKey}`,
       request,
       status: 'success',
-      details: { sectionKey, is_visible },
+      details: { sectionKey, is_visible, created: saved.created },
     })
 
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true, created: saved.created })
   }
 
   // ── Tile sections — full content validation ────────────────────────────────
@@ -335,28 +393,34 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   const { heading, subheading, is_visible, items } = validation
 
   // Sanitise items — strip any fields beyond the allowed set
+  // §7.7: brand colours only; anything off-brand is normalised and reported.
+  const normalised: string[] = []
   const sanitisedItems = items.map((item, i) => ({
     key: typeof item.key === 'string' ? item.key : String(i),
     label: (item.label as string).trim(),
     emoji: typeof item.emoji === 'string' ? item.emoji.trim() : '',
     image_url: typeof item.image_url === 'string' ? item.image_url : undefined,
     href: (item.href as string).trim(),
-    gradient: typeof item.gradient === 'string' ? item.gradient : undefined,
-    glow_color: typeof item.glow_color === 'string' ? item.glow_color : undefined,
+    gradient: normaliseBrandGradient(
+      typeof item.gradient === 'string' ? item.gradient : undefined,
+      `items[${i}].gradient`,
+      normalised
+    ),
+    glow_color: normaliseBrandHex(
+      typeof item.glow_color === 'string' ? item.glow_color : undefined,
+      `items[${i}].glow_color`,
+      normalised
+    ),
     is_visible: item.is_visible !== false,
     sort_order: typeof item.sort_order === 'number' ? item.sort_order : i,
   }))
 
   const content = { heading, subheading, items: sanitisedItems }
 
-  const supabase = getSupabaseAdmin()
-  const { error } = await supabase
-    .from('exp_homepage_sections')
-    .update({ content, is_visible, updated_at: new Date().toISOString() })
-    .eq('section_key', sectionKey)
+  const saved = await saveHomepageSection({ sectionKey, isVisible: is_visible, content })
 
-  if (error) {
-    console.error(`[admin:homepage:sections:patch:${sectionKey}]`, error.message)
+  if (!saved.ok) {
+    console.error(`[admin:homepage:sections:patch:${sectionKey}]`, saved.error)
     await writeAdminAuditLog({
       action: 'homepage_section_update',
       entityType: 'homepage_section',
@@ -364,7 +428,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       route: `/api/admin/homepage/sections/${sectionKey}`,
       request,
       status: 'failure',
-      details: { error: error.message },
+      details: { error: saved.error },
     })
     return NextResponse.json({ error: 'Could not save section.' }, { status: 500 })
   }
@@ -376,8 +440,8 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     route: `/api/admin/homepage/sections/${sectionKey}`,
     request,
     status: 'success',
-    details: { sectionKey, itemCount: sanitisedItems.length },
+    details: { sectionKey, itemCount: sanitisedItems.length, created: saved.created, normalised },
   })
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, created: saved.created, normalised })
 }

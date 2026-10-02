@@ -180,6 +180,7 @@ export default function AdminProductsPage() {
         />
         <Select
           size="small"
+          aria-label="Filter products by status"
           value={status}
           onChange={(event) => setStatus(event.target.value as StatusFilter)}
           sx={{ minWidth: 180 }}
@@ -191,6 +192,7 @@ export default function AdminProductsPage() {
         </Select>
         <Select
           size="small"
+          aria-label="Filter products by category"
           value={categoryFilter}
           onChange={(event) => setCategoryFilter(event.target.value)}
           sx={{ minWidth: 220 }}

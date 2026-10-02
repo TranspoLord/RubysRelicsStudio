@@ -102,7 +102,7 @@ export default function AdminAbandonedCartsPage() {
     <Box sx={{ p: 3, maxWidth: 1100 }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" mb={3} flexWrap="wrap" gap={2}>
         <Box>
-          <Typography variant="h5" fontWeight={700} color={brandTokens.forgeGold}>
+          <Typography variant="h5" component="h1" fontWeight={700} color={brandTokens.forgeGold}>
             Abandoned Cart Recovery
           </Typography>
           <Typography variant="body2" color="text.secondary" mt={0.5}>

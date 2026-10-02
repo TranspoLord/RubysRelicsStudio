@@ -1,32 +1,15 @@
 import { NextResponse } from 'next/server'
 import { requireAdminApiSession } from '@/lib/admin/auth'
 import { writeAdminAuditLog } from '@/lib/admin/audit'
+import { saveHomepageSection } from '@/lib/homepage/section-write'
+import { isHomepageSectionKey, HOMEPAGE_SECTION_KEYS, type HomepageSectionKey } from '@/lib/homepage/sections'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 
-// All section keys tracked in exp_homepage_sections (announcement excluded —
-// its visibility is controlled by exp_announcement.is_active, not this table)
-const ALL_SECTION_KEYS = [
-  'hero',
-  'hero_collage',
-  'quick_picks',
-  'process_picks',
-  'order_paths',
-  'category_grid',
-  'featured_collections',
-  'shop_all_preview',
-  'future_products_notify',
-  'fresh_from_forge',
-  'materials_teaser',
-  'process_strip',
-  'custom_order_pitch',
-  'testimonials',
-  'faq_preview',
-  'newsletter',
-  'resources_teaser',
-] as const
-
-type SectionKey = (typeof ALL_SECTION_KEYS)[number]
-const SECTION_KEY_SET = new Set<string>(ALL_SECTION_KEYS)
+// §7.3: the key list lives in src/lib/homepage/sections.ts so this route, the
+// [key] route and the write helper can no longer disagree about what a valid
+// section is. (announcement is still excluded — its visibility is controlled by
+// exp_announcement.is_active, not this table.)
+type SectionKey = HomepageSectionKey
 
 /**
  * GET /api/admin/homepage/sections
@@ -40,7 +23,7 @@ export async function GET(request: Request) {
   const { data, error } = await supabase
     .from('exp_homepage_sections')
     .select('section_key, is_visible, sort_order, content')
-    .in('section_key', [...ALL_SECTION_KEYS])
+    .in('section_key', [...HOMEPAGE_SECTION_KEYS])
     .order('sort_order', { ascending: true })
 
   if (error) {
@@ -86,9 +69,9 @@ export async function PATCH(request: Request) {
 
   const raw = (body as { sections: unknown[] }).sections
 
-  if (raw.length === 0 || raw.length > ALL_SECTION_KEYS.length) {
+  if (raw.length === 0 || raw.length > HOMEPAGE_SECTION_KEYS.length) {
     return NextResponse.json(
-      { error: `sections must have between 1 and ${ALL_SECTION_KEYS.length} entries.` },
+      { error: `sections must have between 1 and ${HOMEPAGE_SECTION_KEYS.length} entries.` },
       { status: 400 }
     )
   }
@@ -96,26 +79,32 @@ export async function PATCH(request: Request) {
   const updates: Array<{ key: SectionKey; is_visible: boolean }> = []
   for (let i = 0; i < raw.length; i++) {
     const entry = raw[i] as VisibilityEntry
-    if (typeof entry?.key !== 'string' || !SECTION_KEY_SET.has(entry.key)) {
+    if (typeof entry?.key !== 'string' || !isHomepageSectionKey(entry.key)) {
       return NextResponse.json(
         { error: `sections[${i}].key is not a recognised section key.` },
         { status: 400 }
       )
     }
-    updates.push({ key: entry.key as SectionKey, is_visible: entry.is_visible !== false })
+    updates.push({ key: entry.key, is_visible: entry.is_visible !== false })
   }
 
-  const supabase = getSupabaseAdmin()
   const errors: string[] = []
+  const created: SectionKey[] = []
 
+  // §7.3: each key goes through saveHomepageSection(), which verifies a row was
+  // actually written and creates the row when the key has none. A 0-row update is
+  // not an error in PostgREST, so the old code reported success for keys such as
+  // shop_all_preview that have no row yet.
   await Promise.all(
     updates.map(async ({ key, is_visible }) => {
-      const { error } = await supabase
-        .from('exp_homepage_sections')
-        .update({ is_visible, updated_at: new Date().toISOString() })
-        .eq('section_key', key)
+      const saved = await saveHomepageSection({ sectionKey: key, isVisible: is_visible })
 
-      if (error) errors.push(key)
+      if (!saved.ok) {
+        errors.push(key)
+        return
+      }
+
+      if (saved.created) created.push(key)
     })
   )
 
@@ -133,8 +122,11 @@ export async function PATCH(request: Request) {
     route: '/api/admin/homepage/sections',
     request,
     status: 'success',
-    details: { updated: updates.map((u) => ({ key: u.key, is_visible: u.is_visible })) },
+    details: {
+      updated: updates.map((u) => ({ key: u.key, is_visible: u.is_visible })),
+      created,
+    },
   })
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, created })
 }

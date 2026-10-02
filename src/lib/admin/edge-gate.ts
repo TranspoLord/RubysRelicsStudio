@@ -1,8 +1,9 @@
 /**
  * Edge gate for the admin panel (SEPT_IMPLEMENTATION_PLAN §10.5).
  *
- * The middleware runs on the Edge runtime, so it can read a verified JWT claim
- * but cannot query Postgres. That makes this gate an *optimisation*: it keeps
+ * The proxy (src/proxy.ts — `middleware` before Next 16) runs before the route
+ * handler, so it can read a verified JWT claim but cannot query Postgres before
+ * the response is committed. That makes this gate an *optimisation*: it keeps
  * non-admins out without a database round trip, while the revocation authority
  * stays in `requireAdminApiSession` / `requireAdminPageSessionOrRedirect`,
  * which re-check `exp_admin_users` on every request (§10.3).
@@ -10,7 +11,7 @@
  * The decision is a pure function on purpose. A second, diverging
  * verification implementation is exactly what locked every admin out of the
  * panel on 2026-09-17 (§9.1), so this matrix is unit-tested rather than inlined
- * into the middleware.
+ * into the proxy file.
  */
 
 import { hasAdminRole, type AuthClaims } from '@/lib/auth/claims'

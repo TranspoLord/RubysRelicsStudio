@@ -25,9 +25,9 @@ third-party OAuth implementation** to remove:
 `/admin` and `/api/admin/*` now use the same Supabase Auth stack as the
 storefront, gated twice:
 
-- **Edge** (`src/middleware.ts` + `src/lib/admin/edge-gate.ts`) — a verified JWT
-  whose `app_metadata.role === 'admin'`. Edge cannot query Postgres, so the claim
-  is an optimisation, not the authority;
+- **Proxy** (`src/proxy.ts` + `src/lib/admin/edge-gate.ts`) — a verified JWT
+  whose `app_metadata.role === 'admin'`. The proxy runs before the route handler
+  and cannot query Postgres, so the claim is an optimisation, not the authority;
 - **Request** (`src/lib/admin/auth.ts`) — the same claim *plus* a live
   `exp_admin_users` row with `is_active = true` and `revoked_at is null`. That
   row is the revocation authority, so removing an account takes effect on the
@@ -69,7 +69,7 @@ those rows; nothing reads them yet (§8 lists the follow-ups).
 | `src/app/sign-in/page.tsx` | Hosts `<SignIn />` at `/sign-in` |
 | `src/types/database.ts` | Generated `Database` type used to strongly type every client |
 | `src/app/layout.tsx` | Wraps the tree in `<AuthProvider>` |
-| `src/middleware.ts` | Calls `updateSupabaseSession()` on storefront routes |
+| `src/proxy.ts` | Calls `updateSupabaseSession()` on storefront routes (Next 16's name for `middleware.ts`) |
 | `supabase/config.toml` | `[auth.external.google]` enabled, redirect URLs registered |
 | `package.json` | `@supabase/ssr@0.12.7` (pinned), `@supabase/supabase-js` ^2.117.1, `npm run db:types` |
 
@@ -92,7 +92,7 @@ those rows; nothing reads them yet (§8 lists the follow-ups).
 Session storage is **cookies** (not `localStorage`) so Server Components can
 render the signed-in state. Both `createServerClient` and `createBrowserClient`
 force `flowType: 'pkce'`, which is why the callback can exchange a `code`.
-Because Server Components cannot write cookies, `src/middleware.ts` calls
+Because Server Components cannot write cookies, `src/proxy.ts` calls
 `updateSupabaseSession()` on every storefront request to rotate expiring tokens.
 
 ---

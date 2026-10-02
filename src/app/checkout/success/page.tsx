@@ -136,19 +136,19 @@ export default async function CheckoutSuccessPage({
                 }}
               >
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
-                  <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.58) }}>
+                  <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.62) }}>
                     Order ID: {order.id}
                   </Typography>
-                  <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.58) }}>
+                  <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.62) }}>
                     Created: {formatTimestamp(order.created_at)}
                   </Typography>
                 </Box>
 
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
-                  <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.58) }}>
+                  <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.62) }}>
                     Payment: {order.payment_status}
                   </Typography>
-                  <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.58) }}>
+                  <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.62) }}>
                     Status: {order.status}
                   </Typography>
                 </Box>
@@ -176,20 +176,20 @@ export default async function CheckoutSuccessPage({
                       </Box>
 
                       {item.variant_label && (
-                        <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.58), mt: 0.2 }}>
+                        <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.2 }}>
                           {item.variant_label}
                         </Typography>
                       )}
 
                       {item.selected_options && Object.keys(item.selected_options).length > 0 && (
-                        <Typography sx={{ fontSize: '0.74rem', color: alpha(brandTokens.parchment, 0.52), mt: 0.25 }}>
+                        <Typography sx={{ fontSize: '0.74rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.25 }}>
                           {Object.entries(item.selected_options)
                             .map(([key, value]) => `${key}: ${String(value)}`)
                             .join(' • ')}
                         </Typography>
                       )}
 
-                      <Typography sx={{ fontSize: '0.74rem', color: alpha(brandTokens.parchment, 0.52), mt: 0.35 }}>
+                      <Typography sx={{ fontSize: '0.74rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.35 }}>
                         Qty {item.quantity}
                       </Typography>
                     </Box>
@@ -204,7 +204,7 @@ export default async function CheckoutSuccessPage({
               </Box>
             ) : (
               sessionId && (
-                <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.52), mb: 2, textAlign: 'center' }}>
+                <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), mb: 2, textAlign: 'center' }}>
                   Session: {sessionId}
                 </Typography>
               )

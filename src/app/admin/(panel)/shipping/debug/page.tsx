@@ -83,7 +83,7 @@ export default function AdminShippingDebugPage() {
   return (
     <Box sx={{ display: 'grid', gap: 2.2 }}>
       <Box>
-        <Typography variant="h5" component="h2">Shipping Debug Tool</Typography>
+        <Typography variant="h5" component="h1">Shipping Debug Tool</Typography>
         <Typography sx={{ color: alpha(brandTokens.parchment, 0.65), mt: 0.5 }}>
           Test Shippo rate calculations and address validation. All requests are logged.
         </Typography>
@@ -96,7 +96,7 @@ export default function AdminShippingDebugPage() {
 
       <Card>
         <CardContent sx={{ display: 'grid', gap: 1.5 }}>
-          <Typography variant="h6" gutterBottom>Shipping Address</Typography>
+          <Typography variant="h6" component="h2" gutterBottom>Shipping Address</Typography>
           
           <TextField
             label="Street Address"
@@ -186,7 +186,7 @@ export default function AdminShippingDebugPage() {
       {responseData && (
         <Card>
           <CardContent>
-            <Typography variant="h6" gutterBottom>Response</Typography>
+            <Typography variant="h6" component="h2" gutterBottom>Response</Typography>
             <Box
               sx={{
                 p: 2,

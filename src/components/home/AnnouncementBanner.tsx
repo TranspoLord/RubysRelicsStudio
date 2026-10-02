@@ -21,31 +21,28 @@ interface AnnouncementBannerProps {
   data?: AnnouncementData | null
 }
 
-// Fallback shown when Supabase is not yet connected
-const STATIC_FALLBACK: AnnouncementData = {
-  message: '✨ New: Laser Engraved Tumblers now available — personalized treasures for your hoard.',
-  cta_label: 'Shop Drinkware',
-  cta_href: '/shop/categories/engraved-drinkware',
-  dismiss_key: 'rr_announcement_v1',
-}
-
 export function AnnouncementBanner({ data }: AnnouncementBannerProps = {}) {
-  const announcement = data ?? STATIC_FALLBACK
-  const STORAGE_KEY = announcement.dismiss_key ?? 'rr_announcement_v1'
+  // §7.4: the banner is CMS-driven. It used to do `data ?? STATIC_FALLBACK`, so
+  // clearing `exp_announcement.is_active` *still* rendered a hard-coded banner —
+  // and that fallback's CTA pointed at `/shop/categories/engraved-drinkware`
+  // (§7.5). No active row now means no banner.
+  const announcement = data ?? null
+  const STORAGE_KEY = announcement?.dismiss_key ?? 'rr_announcement_v1'
 
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
+    if (!announcement) return
     const dismissed = localStorage.getItem(STORAGE_KEY)
     if (!dismissed) setVisible(true)
-  }, [STORAGE_KEY])
+  }, [announcement, STORAGE_KEY])
 
   const dismiss = () => {
     localStorage.setItem(STORAGE_KEY, '1')
     setVisible(false)
   }
 
-  if (!visible) return null
+  if (!announcement?.message || !visible) return null
 
   return (
     <Box

@@ -130,7 +130,7 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
                 </ListItemAvatar>
 
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 0.25 }}>
+                  <Typography variant="subtitle2" component="span" sx={{ mb: 0.25 }}>
                     {result.title}
                   </Typography>
                   <Typography variant="caption" sx={{ color: alpha(brandTokens.parchment, 0.65), display: 'block', mb: 0.5 }}>
@@ -139,14 +139,14 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
                   {result.description && (
                     <Typography
                       variant="caption"
-                      sx={{ color: alpha(brandTokens.parchment, 0.55), display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      sx={{ color: alpha(brandTokens.parchment, 0.62), display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                     >
                       {result.description}
                     </Typography>
                   )}
                 </Box>
 
-                <Typography variant="subtitle2" sx={{ ml: 1, fontWeight: 600 }}>
+                <Typography variant="subtitle2" component="span" sx={{ ml: 1, fontWeight: 600 }}>
                   ${result.price.toFixed(2)}
                 </Typography>
               </ListItemButton>

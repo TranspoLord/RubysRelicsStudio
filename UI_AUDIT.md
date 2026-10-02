@@ -27,7 +27,7 @@ Audited target: the public storefront (`src/app/page.tsx` and the homepage secti
 8. Delete the throwaway scripts, kill Edge and the dev server, and confirm `git status` is clean.
 
 For the **authenticated admin panel** (`/admin`) the harness is unchanged — only the session
-bootstrap differs. See **§15** for the dev-token method.
+bootstrap differs. See **§15** for the dev-only sign-in helper.
 
 ## 2. Environment facts (verified)
 
@@ -409,203 +409,106 @@ Reminders that are easy to forget:
 - Compare **hrefs** when judging CTAs; two different labels pointing at one destination is a
   content bug that screenshots hide.
 - Prefer DB evidence over DOM inference for anything content-shaped (§9).
-- **Admin pass (§15):** mint the dev session token before the run, hand it to the capture script
-  through `$env:TEMP\rrs-admin-session.txt`, and delete that file in teardown — a minted token has no
-  `exp_admin_sessions` row, so it cannot be revoked from the admin UI and simply lives until it expires.
+- **Admin pass (§15):** sign in through the dev-only helper (`GET /api/dev/session`) from inside the
+  captured browser, then assert the session held (§15.6) before trusting any tile — a `200` from the
+  helper is necessary but not sufficient.
 
 ---
 
-## 15. Admin panel (authenticated) audit — dev-token method
+## 15. Admin panel (authenticated) audit — dev sign-in helper
 
 `/admin` was outside the first pass (§12). Nothing about the harness changes: same dev server, same
 `localhost` origin rule (§3), same headless-Edge CDP client (§4), same tiles (§5), same `audit.json`
-(§6), same probes (§7–§8), same teardown (§10). The **only** new problem is getting an authenticated
-`rr_admin_session` cookie into the browser, because `src/middleware.ts` gates every `/admin/*` and
-`/api/admin/*` route and the pages/APIs re-check the session server-side.
+(§6), same probes (§7–§8), same teardown (§10). The **only** new problem is getting a real Supabase
+session — the credential the panel has demanded since the §10 OAuth cutover (`src/proxy.ts` Edge gate +
+`src/lib/admin/auth.ts` DB allow-list) — into a browser the harness controls.
 
-### 15.1 Why the normal login cannot be scripted
+### 15.1 The dev-token method is dead — why
 
-- `POST /api/admin/session` with `{ key }` = `ADMIN_LOGIN_KEY` issues a token with `mfaFlag='0'`.
-- The panel then forces the MFA challenge: `POST /api/admin/send-mfa` emails a 6-digit code via Resend
-  to `ADMIN_MFA_EMAIL`, and stores **only** `h1$` + `HMAC(challengeToken:code)` in `admin_mfa_codes`.
-- `POST /api/admin/verify-mfa` re-issues the token with `mfaFlag='1'`.
+This section used to describe minting an `rr_admin_session` cookie by hand (`§15.10`'s HKDF/`deriveBits`
+signing-key trap is the memorable part). **That credential no longer exists and no rebuild of it can work:**
 
-So the code exists **only in an inbox and as a non-reversible hash in the database** — automated login
-is a dead end. (Send is also capped at 3 / 10 min per session plus a 10 / 10 min global cap outside
-Vercel; verify at 5 attempts / 5 min per challenge token.) Do not try to work around this by editing
-the SEC-047 path or sniffing the DB.
-
-### 15.2 The mechanism — why a locally minted token works
-
-| Fact (source) | Consequence for the harness |
+| Old dev-token method relied on | Today |
 |---|---|
-| Token format is `v2.{exp}.{jti}.{mfaFlag}.{sig}` (`session.ts`, `middleware.ts`) | The whole credential is constructible from a few inputs. |
-| Signing key = `HKDF-SHA256(seed = SESSION_SIGNING_KEY_SEED, salt = "rr-admin-session-signing-v1", info = "rr-admin", 32B)`, and `sig = hex(HMAC-SHA256(key, "v2.{exp}.{jti}.{mfaFlag}"))` | `ADMIN_LOGIN_KEY` is **never** the HMAC key, so the token can be minted without knowing it. |
-| `middleware.ts` (Edge) verifies signature + expiry + `mfaFlag === '1'` only — it cannot query the DB | A `mfaFlag='1'` token clears the Edge gate. |
-| The page/API layer then looks up `exp_admin_sessions.jti` for revocation — the one thing a synthetic token lacks | This is the only obstacle, and it has a supported answer: `allowLegacySessionFallback()`. |
-| `allowLegacySessionFallback()` is `true` only when **not on Vercel**, `NODE_ENV !== 'production'`, and `ALLOW_LEGACY_ADMIN_SESSION_FALLBACK === 'true'` | In local dev with that flag on, a token with **no** session row verifies `true` (`verifyAdminSessionToken` returns `allowLegacySessionFallback()` when the row is missing/errored). |
+| `rr_admin_session` cookie format `v2.{exp}.{jti}.{mfaFlag}.{sig}` | Gone. The cookie is now `sb-<ref>-auth-token` (chunked), written by `@supabase/ssr`. |
+| Edge verifier deriving an HMAC key from `SESSION_SIGNING_KEY_SEED` | Gone. The Edge gate verifies a Supabase JWT's signature against the project's JWKS. |
+| `ALLOW_LEGACY_ADMIN_SESSION_FALLBACK` making a row-less token valid | Gone (§10.4's allow-list is the revocation authority; there is no legacy fallback). |
+| Emailed MFA code as the un-scriptable step | Gone. Google OAuth is the only sign-in path. |
 
-Result: in local dev a minted `mfaFlag='1'` token authenticates the whole panel with **no email, no DB
-write, and no change under `src/`**. This is the dev-only fallback that already exists in this repo —
-it is not a new hole, and it stops working the moment the flag is turned off, which is the correct
-failure mode.
+So the honest summary is: the old method's *premise* (a constructible bearer token) was removed by design,
+and the replacement is not another hand-minted token — it is a genuine session, obtained by a genuine
+sign-in that the harness can trigger.
 
-Consequence to remember: the minted token has no `exp_admin_sessions` row, so it will **not** appear in
-the admin sessions list and **cannot** be revoked from the UI. It lives until it expires (default TTL
-12 h, via `getAdminSessionMaxAgeSeconds()` / storefront settings) or the flag is switched off.
+### 15.2 The mechanism — a dev-only sign-in helper
 
+`GET /api/dev/session` (`src/app/api/dev/session/route.ts`, guards in `src/lib/dev/dev-signin.ts`, both
+unit-tested) mints a **real** session for an **already** allow-listed admin, and leaves it in cookies exactly
+the way a Google sign-in does:
+
+1. `auth.admin.generateLink({ type: 'magiclink' })` — service role, so **no email is sent** — yields a
+   one-time `hashed_token`.
+2. `verifyOtp({ type: 'magiclink', token_hash })` on the cookie-bound server client
+   (`createServerSupabaseClient()`) redeems it, writing `sb-<ref>-auth-token` cookies through the same
+   adapter `src/app/auth/callback/route.ts` uses for `exchangeCodeForSession`.
+3. The route then reads `getClaims()` and asserts `app_metadata.role === 'admin'` before reporting success,
+   so a session that the Edge gate would reject is reported as an error instead of a silent failure.
+
+A token minted this way carries *current* `app_metadata`, which also sidesteps the stale-claim trap §10.2
+records.
+
+**What it deliberately cannot do.** It never creates a user, never grants or edits the `admin` role, and
+never widens access: it can only sign in an account that is already `is_active` and not `revoked_at` in
+`exp_admin_users`. It returns no token, secret or key — only `{ ok, userId, email, role, note }`. Account
+creation stays where it belongs, in `npm run admin:grant`.
 ### 15.3 Preconditions — check these, then fail loudly
 
 | Check | Why it matters |
 |---|---|
-| `ALLOW_LEGACY_ADMIN_SESSION_FALLBACK=true` in `.env` | Without it the revocation lookup fails closed and every admin page redirects to `/admin/login`. |
-| `NEXT_PUBLIC_APP_ENV=development`, not on Vercel, `NODE_ENV !== 'production'` | `allowLegacySessionFallback()` returns `false` otherwise. |
-| `SESSION_SIGNING_KEY_SEED` is a 64-char hex string | The mint script derives the HMAC key from it. |
-| The dev server is reached at `http://localhost:<port>` | The origin trap (§3) still applies; a token cannot rescue an unhydrated page. |
-| **The Edge verifier derives the same key the signer uses** | ⚠️ This was **false** until 2026-09-24 — see §15.10. A token signed by `session.ts` (32-byte HKDF output) was rejected by `middleware.ts` (`deriveKey()` → SHA-256 *block* size = 64 bytes), so every `/admin/*` navigation 307'd to `/admin/login` no matter how valid the session was. |
+| `ADMIN_DEV_SIGNIN_ENABLED=true` in `.env` | The opt-in flag. Absent → the route 404s, so the harness must fail the run rather than capture a login screen. |
+| `NODE_ENV !== 'production'`, **not on Vercel** | Two of the three gates. Preview deployments are publicly reachable, so `VERCEL`/`VERCEL_ENV` must refuse even with the flag set. |
+| Origin is `http://localhost:<port>` | Third gate: off-loopback hosts are refused, so a non-Vercel staging box is refused too. |
+| At least one active, un-revoked `exp_admin_users` row | The helper signs in *that* account. Empty allow-list → `409` telling you to run `npm run admin:grant`. |
+| Service-role key present (`SUPABASE_SERVICE_ROLE_KEY`) | `generateLink` needs it. Missing → `502`. |
 
-**Diagnostic that separates the two gates** (used to find the above):
-
-| Symptom | Which layer refused |
-|---|---|
-| `307 → /admin/login` **without** `?next=` | Edge middleware (`verifyTokenEdge`) |
-| `307 → /admin/login?next=%2Fadmin` | page layer (`requireAdminPageSessionOrRedirect`) |
-| `401 {"error":"Unauthorized"}` on `/api/admin/*` | Edge middleware |
-| `401 {"error":"Unauthorized admin request."}` on `/api/admin/*` | route-level `requireAdminApiSession` |
-| `200 {"authenticated":true,"mfaVerified":true}` on `GET /api/admin/session` | that endpoint is auth-exempt — it proves **nothing** about the Edge gate |
-
-### 15.4 Mint the token — `.tmp-admin-session.mjs`
-
-Throwaway, repo root, `.tmp-` prefix, deleted in teardown (§10). It writes the token to a file
-**outside the repo** and never prints the seed or the token.
-
-```js
-// .tmp-admin-session.mjs — local-dev admin session token. Never prints secrets.
-import { readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { hkdfSync, createHmac, randomUUID } from 'node:crypto'
-
-const env = Object.fromEntries(
-  readFileSync('.env', 'utf8')
-    .split(/\r?\n/)
-    .filter((l) => l && !l.startsWith('#') && l.includes('='))
-    .map((l) => { const i = l.indexOf('='); return [l.slice(0, i), l.slice(i + 1)] })
-)
-
-if (process.env.VERCEL) throw new Error('Refusing to mint a dev admin token on Vercel')
-if (process.env.NODE_ENV === 'production') throw new Error('Refusing to mint a dev admin token in production')
-if (env.ALLOW_LEGACY_ADMIN_SESSION_FALLBACK !== 'true') {
-  throw new Error('ALLOW_LEGACY_ADMIN_SESSION_FALLBACK must be true for the dev-token method')
-}
-const seed = env.SESSION_SIGNING_KEY_SEED
-if (!/^[0-9a-fA-F]{64}$/.test(seed ?? '')) throw new Error('SESSION_SIGNING_KEY_SEED must be 64 hex chars')
-
-// Same derivation as src/lib/admin/session.ts and src/middleware.ts
-const key = Buffer.from(hkdfSync(
-  'sha256',
-  Buffer.from(seed, 'hex'),
-  Buffer.from('rr-admin-session-signing-v1'),
-  Buffer.from('rr-admin'),
-  32
-))
-
-const VERSION = 'v2'                                   // session.ts SESSION_VERSION
-const ttl = Number(process.argv[2] ?? 60 * 60 * 12)    // default 12h, matches DEFAULT_SESSION_TTL_SECONDS
-const exp = Math.floor(Date.now() / 1000) + ttl
-const jti = randomUUID()
-const payload = `${VERSION}.${exp}.${jti}.1`           // mfaFlag = '1' (MFA satisfied)
-const sig = createHmac('sha256', key).update(payload).digest('hex')
-
-const out = join(process.env.TEMP, 'rrs-admin-session.txt')
-writeFileSync(out, `${payload}.${sig}`, 'utf8')        // hand-off file, not stdout
-console.log('admin session token written to', out)
-```
-
-Run it, then confirm it authenticates **before** capturing anything:
+To confirm the gates are live before a run — one command, no browser:
 
 ```powershell
-node .tmp-admin-session.mjs
+curl.exe -s -D - http://localhost:3210/api/dev/session     # 404 = disabled (expected in any hosted env)
 ```
 
-A `GET /api/admin/session` with that cookie must answer `{ "authenticated": true, "mfaVerified": true }`.
-If it does not, stop — the rest of the run is meaningless.
+### 15.4 Use it in the harness — two lines
 
-### 15.5 Inject it and capture
-
-The only change to the §4 client is one `Network.setCookie` before `Page.navigate`. Read the token from
-the hand-off file, not from the command line, so it never lands in shell history or a process list.
+The helper writes cookies into the *browser*, so the harness needs no token marshalling at all: navigate
+the CDP page to the helper, then to the panel.
 
 ```js
-// inside .tmp-capture.mjs, after Log/Network/Runtime are enabled and BEFORE Page.navigate
-const token = readFileSync(join(process.env.TEMP, 'rrs-admin-session.txt'), 'utf8').trim()
-
-await send('Network.enable')
-await send('Network.setCookie', {
-  name: 'rr_admin_session',
-  value: token,
-  domain: 'localhost',
-  path: '/',
-  httpOnly: true,
-  secure: false,        // isProd() is false in dev
-  sameSite: 'Strict',   // matches the cookie the server sets
-})
+await send('Page.navigate', { url: `${ORIGIN}/api/dev/session` })
+await sleep(3500)
+const signin = JSON.parse(await evaluate('document.body.innerText'))
+if (!signin.ok) throw new Error('dev sign-in failed — cannot capture the panel')   // fail loudly
 ```
 
-`sameSite: 'Strict'` is not a problem because the harness navigates the top-level document straight to
-the `localhost` URL. Set the cookie once per browser session — it persists across navigations — but
-re-inject it if the run uses a fresh `--user-data-dir` profile.
+Then capture `/admin/*` exactly as §4–§5 describe. Reuse **one** Edge profile across the run so the cookies
+survive between routes; a fresh profile per route means a fresh sign-in per route.
 
-**⚠️ Verify at the *page* level, not just the API.** `GET /api/admin/session` is an auth-exempt route
-(`middleware.ts` §15.2 table), so `{"authenticated":true}` there does **not** prove the Edge gate accepted
-the token. The check that matters is a real page:
+Verify the session really holds (see §15.6) — a `200` from the helper is necessary, not sufficient.
 
-```powershell
-# must be 200 — NOT 307 to /admin/login
-node -e "const fs=require('fs');const t=fs.readFileSync(process.env.TEMP+'/rrs-admin-session.txt','utf8').trim();fetch('http://localhost:3210/admin',{headers:{cookie:'rr_admin_session='+t},redirect:'manual'}).then(r=>console.log(r.status,r.headers.get('location')))"
-```
+### 15.5 Failure modes, and what each one means
 
-If that comes back `307 → /admin/login` while the API said `authenticated: true`, **stop and read §15.10** —
-the two gates are deriving different signing keys and no token can satisfy both.
-
-### 15.10 The signing-key trap (found 2026-09-24) — why a "correct" token can still be refused
-
-The mint script above signs with `hkdfSync('sha256', seed, salt, info, 32)` — exactly what
-`src/lib/admin/session.ts:27-29` does. The Edge verifier used to derive its key with
-`crypto.subtle.deriveKey(… { name: 'HMAC', hash: 'SHA-256' } …)`, and for **HKDF → HMAC** key derivation
-`deriveKey` defaults to the hash **block** size, not the digest size: **64 bytes for SHA-256, not 32**.
-HKDF-Expand is a stream, so the 64-byte key *starts with* the 32-byte key — but as an HMAC key it is a
-different key, and every signature differs.
-
-Consequence (before the fix): a token minted by §15.4 was accepted by the server-side layer and refused by
-the Edge middleware, so `/admin/*` redirected to `/admin/login` and pages could not be captured at all. The
-same defect made the panel unreachable for a **real** login, because `createAdminSessionToken` signs with the
-32-byte key too.
-
-Fixed in `src/middleware.ts` by deriving 32 bytes (`deriveBits(..., 256)`) and importing them as the HMAC
-key. When touching session code, remember there are **two** implementations of this derivation and they must
-agree byte-for-byte; `audit.json`/`vitest` will not catch a divergence, a cross-check like this will:
-
-```js
-// same seed → both sides must produce the same key bytes
-const bits = Buffer.from(await crypto.subtle.deriveBits({ name:'HKDF', hash:'SHA-256',
-  salt: nonce.encode('rr-admin-session-signing-v1'), info: nonce.encode('rr-admin') }, baseKey, 256))
-bits.equals(Buffer.from(hkdfSync('sha256', seed, Buffer.from('rr-admin-session-signing-v1'), Buffer.from('rr-admin'), 32)))
-```
-
-Prefer `deriveBits(..., 256)` + `importKey('raw', …)` over `deriveKey` for this reason, and keep the
-`length` argument identical to `session.ts` (32 bytes / 256 bits).
-
-```powershell
-node .tmp-admin-session.mjs
-node .tmp-admin-capture.mjs http://localhost:3210/admin   # -> %TEMP%\rrs-admin\
-```
+| Response | Meaning | Fix |
+|---|---|---|
+| `404` | A gate refused (flag off, production, Vercel, or non-loopback). | Set the flag in `.env`; check the origin. Never set it on a hosted env. |
+| `409` + `admin:grant` | No active, un-revoked allow-list row. | `npm run admin:grant -- <google-email>` |
+| `409` + `app_metadata.role` | Session established, but the JWT has no admin claim — the allow-list and the token disagree (§10.2). | Re-run `admin:grant` for that email; the fix is a re-grant, not a retry. |
+| `502` | No token could be minted (`generateLink` failed) — usually a missing service-role key or an email that is not an `auth.users` row. | Check `SUPABASE_SERVICE_ROLE_KEY`; confirm the allow-listed email exists in Auth. |
+| `401` | The one-time token was refused (expired/replayed). | Re-run: each call generates its own token, so a retry is safe. |
 
 ### 15.6 Admin-specific capture rules
 
 - **Wait for the data, not just the document.** The panel is MUI with content fetched client-side from
   `/api/admin/*` on mount, so the fixed ~2 s settle in §4 is not enough. Wait for network idle (or for
   the last XHR to settle) **before** the §5 scroll-through and shot — otherwise every page photographs
-  as a loading skeleton.
+  as a loading skeleton. ~5 s has been sufficient in practice.
 - **Routes** — `ADMIN_MODULES` in `src/app/admin/(panel)/layout.tsx` plus the nested catalog pages:
   `/admin`, `/admin/custom-requests`, `/admin/orders`, `/admin/catalog`, `/admin/catalog/products`,
   `/admin/catalog/products/new`, `/admin/catalog/products/<id>`,
@@ -616,73 +519,91 @@ node .tmp-admin-capture.mjs http://localhost:3210/admin   # -> %TEMP%\rrs-admin\
   `/admin/schedule`, `/admin/abandoned-carts`, `/admin/homepage`.
 - **Viewports** — the same three as §5: desktop 1440×900, tablet 834×1112, mobile 390×844.
 - **Assert the session held** (fail the run rather than silently capturing a login screen):
-  - final `location.pathname` still begins with the requested `/admin/...` — not `/admin/login`, not
-    `/admin/mfa-challenge`;
+  - final `location.pathname` still begins with the requested `/admin/...` — not `/admin/login`;
   - an admin-shell marker is present (the module nav rendered by `AdminShell`);
   - no `401` / `Unauthorized` responses from `/api/admin/*` in the captured network records.
 - **Read-only.** No `POST` / `PUT` / `PATCH` / `DELETE` against `/api/admin/*` during an admin audit.
-  If a probe ever genuinely must, the middleware has already set the CSRF cookie and
-  `AdminCsrfFetchBridge` supplies the header — but the default is: don't.
+  If a probe ever genuinely must, the CSRF cookie is already set and `AdminCsrfFetchBridge` supplies the
+  header — but the default is: don't.
+### 15.7 Lessons worth keeping (from the 2026-09-24 and 2026-10-01 runs)
 
-**Lessons from the 2026-09-24 run (make the next one cheaper):**
-
-- **Merge, don't overwrite, `audit.json`.** 69 captures is ~6.5 min of wall clock and comfortably more than
-  one command's output window, so the run is done in batches. The harness must load the existing
-  `audit.json` and replace records by `route|viewport` — the first version started from `[]` and each batch
-  silently clobbered the previous one (9 of 69 records survived).
+- **Merge, don't overwrite, `audit.json`.** A full pass is ~6.5 min of wall clock and comfortably more than
+  one command's output window, so runs happen in batches. The harness must load the existing `audit.json`
+  and replace records by `route|viewport` — the first version started from `[]` and each batch silently
+  clobbered the previous one (9 of 69 records survived). Save a copy as `audit-before.json` before a
+  fix-and-re-measure pass, or the before/after comparison is impossible.
 - **Tile name prefixes are batch-local.** The index in `NN-<route>-<vp>-tile-NN.png` is the index *within the
   selected routes*, so a `--routes=5-9` batch writes `01-catalog-product-detail-…`. List the folder before
   quoting a tile name.
-- **Run probes sequentially.** Each probe launches its own Edge on `--remote-debugging-port=9223`; two probes
-  started in parallel race for the port and the second one silently attaches to the first browser, so both
-  "results" describe whichever page loaded last. Sequential (`;`), one probe at a time. Check the port is
-  actually free first (`Get-NetTCPConnection -LocalPort 9223 -State Listen`) — other software on this machine
-  exposes a CDP-ish listener on 9223, and attaching to *its* browser would silently measure the wrong page.
-- **Expect two console messages and ignore them.** `/favicon.ico` 404s (no icon asset) and the CSP blocks
-  `https://va.vercel-scripts.com/v1/script.debug.js` (Vercel Analytics' debug script vs. the panel's own
-  `script-src`) on every page. Neither is a finding; `failedRequests: ["Script csp"]` is this, not a bug.
+- **One Edge profile, one process at a time.** The probe and the capture both open
+  `--user-data-dir=%TEMP%\rrs-edge-profile-admin`; they use different CDP ports (9223 vs 9222), but a
+  *shared profile directory* means they must be run sequentially — do not start a probe while a capture is
+  in flight. Check the port is free first (`Get-NetTCPConnection -LocalPort 9222 -State Listen`); other
+  software on this machine exposes a CDP-ish listener on 9223, and attaching to *its* browser would silently
+  measure the wrong page.
+- **Expect two console messages and ignore them.** `/favicon.ico` 404s (the icon route is dynamic) and the
+  CSP blocks `https://va.vercel-scripts.com/v1/script.debug.js` (Vercel Analytics' debug script vs. the
+  panel's own `script-src`). Neither is a finding; `failedRequests: ["Script csp"]` is this, not a bug.
 - **MUI internals are not findings.** `MuiSelect-nativeInput` is `aria-hidden` + `tabindex="-1"`; the
   autosize textarea is `visibility: hidden` at 0 height. Check the *visible* sibling (`role="combobox"`)
-  instead — that is where the real missing-name problem is (§Part 2 A9).
+  instead — that is where the real missing-name problem is.
 - **Gradient cards hide their own contrast.** Cards paint with the `background:` shorthand
-  (`AdminShell.tsx:49-51`), so `background-color` is transparent and any automated contrast walk falls back
-  to the body void. Sample the PNG instead: mean RGB of a text-free strip *inside* the card (a ~10 px wide
-  column just inside the card's left edge works) → the panel's card backdrop measures **(27,21,15)**, which
-  turns the 11.2 px module descriptions into **4.06:1**, not the 5.7:1 the walk reported. Then compute the
-  composite the way a browser does: `text = alpha·fg + (1 − alpha)·backdrop`.
+  (`AdminShell.tsx`), so `background-color` is transparent and any automated contrast walk falls back to the
+  body void. Sample the PNG instead: mean RGB of a text-free strip *inside* the card (a ~10 px wide column
+  just inside the card's left edge works) → the panel's card backdrop measures **(27,21,15)**. Then compute
+  the composite the way a browser does: `text = alpha·fg + (1 − alpha)·backdrop`.
+- **A `1fr` grid track cannot shrink below its items' min-content — that is how sideways scroll starts.**
+  Found 2026-10-01 (§9.4). The reliable diagnostic is: find elements where
+  `scrollWidth > clientWidth + 1`, then read the computed `grid-template-columns` — a *single* resolved
+  track wider than its container (e.g. `1241.34px` inside a `1060px` box) means `minmax(auto, 1fr)` lost.
+  Two traps while diagnosing it: `min-width: 0` on the *items* fixes nothing (only `minmax(0, 1fr)` on the
+  *container*, or `min-width: 0` on the flex items of the thing that inflates), and `width: min-content`
+  measurements on grid items are unreliable because the track governs the box. Fix with
+  `repeat(N, minmax(0, 1fr))` — the convention already used by `finance/page.tsx` and `AdminShell`.
+- **Text size can be the hidden input to a layout bug.** Raising the nowrap card descriptions from 0.72rem
+  to the 0.75rem floor made the §9.4 overflow *worse* (140 → 158 px) until the track was fixed, because
+  bigger nowrap text means bigger min-content. Fix the track first, then the type.
+- **Fix the cause, then re-measure the same way.** The first §9.4 attempt (pinning the *page-root* grid to
+### 15.8 Guardrails
 
-### 15.7 Guardrails
-
-- **Local dev only.** Never mint against production, a Vercel deployment, or a preview URL. The script
-  refuses on `VERCEL` / `NODE_ENV=production`, and that refusal must stay.
-- **Never print the seed or the token.** Hand the token to the harness through
-  `$env:TEMP\rrs-admin-session.txt`, never as a CLI argument, and never paste either value into a doc,
-  a commit, or a log.
+- **Local dev only.** Never enable the helper against production, a Vercel deployment, or a preview URL.
+  The three gates (`NODE_ENV`, `VERCEL`/`VERCEL_ENV`, `ADMIN_DEV_SIGNIN_ENABLED`) plus the loopback check
+  are the *only* thing making this safe, and they must stay — `src/lib/dev/dev-signin.test.ts` and the route
+  suite assert the refusal matrix.
+- **Never print a token, key or secret.** The helper returns a log-safe summary only. Do not add endpoints
+  or flags that return `access_token` / `refresh_token` / `hashed_token`, and do not paste either value into
+  a doc, a commit, or a log.
+- **The helper cannot create or promote accounts, by design.** Access changes go through
+  `npm run admin:grant` / `admin:revoke`, which is also what the `409` messages tell you to run.
 - **Treat artifacts as confidential.** Admin screens render real customer and order data, so every
-  screenshot and `audit.json` goes to `%TEMP%\rrs-admin\` (§10), nothing is committed, and the whole
-  folder is disposable.
-- **Delete the token file in teardown.** Until it expires, that file is a live admin bearer credential;
-  it has no `exp_admin_sessions` row, so it cannot be revoked from the UI.
+  screenshot and `audit.json` goes to `%TEMP%\rrs-admin2\` (§10), nothing is committed, and the whole folder
+  is disposable.
+- **A helper session is a real session.** Unlike the old minted token it *does* have an `exp_admin_users`
+  row, so it can be revoked from the admin UI — but it is still a live admin session in a browser profile
+  on this machine, so tear it down (§15.9) instead of leaving it sitting around.
 
-### 15.8 Cleanup
+### 15.9 Cleanup
 
-Extends §10 — the only additions are the hand-off file and the new evidence folder:
+Extends §10 — the only additions are the evidence folder and the helper flag:
 
 ```powershell
 Get-Process msedge -ErrorAction SilentlyContinue | Stop-Process -Force
 $conn = Get-NetTCPConnection -LocalPort 3210 -State Listen -ErrorAction SilentlyContinue
 if ($conn) { Stop-Process -Id $conn.OwningProcess -Force }
-Remove-Item (Join-Path $env:TEMP 'rrs-admin-session.txt') -Force
+Remove-Item "$env:TEMP\rrs-edge-profile-admin" -Recurse -Force   # holds the session cookies
 Remove-Item d:\RubysRelicsStudio\.tmp-*.mjs -Force
 cd d:\RubysRelicsStudio; git --no-pager status --porcelain   # MUST be empty
 ```
 
-`git status --porcelain` being empty is the proof that no `src/` file, no `.env`, and no token was
-touched by the run.
+`git status --porcelain` being empty is the proof that no `src/` file and no `.env` was touched by the run.
+The helper's flag stays in `.env` (gitignored, local only) so the next pass needs no re-setup.
 
-### 15.9 Where the admin findings go
+### 15.10 Where the admin findings go
 
 The same place as every other finding (§11): a separate `UI_AUDIT_FINDINGS.md`, grouped
 correctness → layout/visual → accessibility/polish → conversion ideas — **not** in this file. Keep this
-file as the method and reference the evidence directory (`%TEMP%\rrs-admin\`) instead of pasting numbers
+file as the method and reference the evidence directory (`%TEMP%\rrs-admin2\`) instead of pasting numbers
 that will go stale.
+  `minmax(0, 1fr)`) measured *worse* than the bug, which is what caught it: the root capped the panel's box
+  while the inner card grid still painted 1241 px. A "fix" that shrinks an ancestor's box without shrinking
+  the content bounding box is a no-op or a regression — the `overflowPx` number says which.

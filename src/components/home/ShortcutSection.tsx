@@ -97,7 +97,7 @@ export function ShortcutSection({
           {subheading && (
             <Typography
               variant="body1"
-              sx={{ color: alpha(brandTokens.parchment, 0.6), maxWidth: 520, mx: 'auto' }}
+              sx={{ color: alpha(brandTokens.parchment, 0.62), maxWidth: 520, mx: 'auto' }}
             >
               {subheading}
             </Typography>

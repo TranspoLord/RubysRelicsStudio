@@ -551,7 +551,7 @@ export function CustomOrderIntakeForm({ categories }: CustomOrderIntakeFormProps
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap' }}>
-          <Typography sx={{ color: alpha(brandTokens.parchment, 0.55), fontSize: '0.78rem' }}>
+          <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.78rem' }}>
             You will review quote details before any payment is requested.
           </Typography>
           <Button type="submit" variant="contained" disabled={!canSubmit || submitState === 'uploading' || submitState === 'submitting'}>

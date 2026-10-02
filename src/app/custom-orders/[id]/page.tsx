@@ -158,13 +158,13 @@ export default async function CustomOrderStatusPage({
                   Custom Request Status
                 </Typography>
 
-                <Typography sx={{ fontSize: '0.84rem', color: alpha(brandTokens.parchment, 0.6) }}>
+                <Typography sx={{ fontSize: '0.84rem', color: alpha(brandTokens.parchment, 0.62) }}>
                   Request: {request.id}
                 </Typography>
-                <Typography sx={{ fontSize: '0.84rem', color: alpha(brandTokens.parchment, 0.6) }}>
+                <Typography sx={{ fontSize: '0.84rem', color: alpha(brandTokens.parchment, 0.62) }}>
                   Created: {formatTimestamp(request.created_at)}
                 </Typography>
-                <Typography sx={{ fontSize: '0.84rem', color: alpha(brandTokens.parchment, 0.6) }}>
+                <Typography sx={{ fontSize: '0.84rem', color: alpha(brandTokens.parchment, 0.62) }}>
                   Updated: {formatTimestamp(request.updated_at)}
                 </Typography>
 
@@ -283,7 +283,7 @@ export default async function CustomOrderStatusPage({
                               Download
                             </Button>
                           ) : artifact.status === 'pending' ? (
-                            <Typography sx={{ color: alpha(brandTokens.parchment, 0.6), fontSize: '0.77rem' }}>
+                            <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.77rem' }}>
                               Export in progress
                             </Typography>
                           ) : (

@@ -254,7 +254,7 @@ export function ShippingForm({ onAddressChange, onRateSelect, items, autoCalcula
       )}
 
       {totalWeight > 0 && (
-        <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.6) }}>
+        <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62) }}>
           Estimated package weight: {totalWeight.toFixed(2)} lbs
         </Typography>
       )}

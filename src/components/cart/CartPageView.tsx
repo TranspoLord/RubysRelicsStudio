@@ -68,7 +68,7 @@ export function CartPageView() {
     return (
       <Box sx={{ display: 'grid', gap: 1, alignItems: 'center', justifyContent: 'center', minHeight: 200 }}>
         <CircularProgress size={24} />
-        <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.6) }}>
+        <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62) }}>
           Loading checkout options...
         </Typography>
       </Box>
@@ -80,16 +80,16 @@ export function CartPageView() {
       {items.map((item) => (
         <Box key={item.key} sx={{ display: 'flex', gap: 1, alignItems: 'center', p: 1, border: `1px solid ${alpha(brandTokens.parchment, 0.1)}`, borderRadius: 1 }}>
           <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-            <Typography variant="subtitle2" noWrap>
+            <Typography variant="subtitle2" component="span" noWrap>
               {item.title}
               {item.variantLabel && ` (${item.variantLabel})`}
             </Typography>
             {item.selectedProcessKeys && item.selectedProcessKeys.length > 0 && (
-              <Typography variant="caption" sx={{ color: alpha(brandTokens.parchment, 0.5) }}>
+              <Typography variant="caption" sx={{ color: alpha(brandTokens.parchment, 0.62) }}>
                 Processes: {item.selectedProcessKeys.join(', ')}
               </Typography>
             )}
-            <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.6) }}>
+            <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62) }}>
               ${item.lineTotal.toFixed(2)}
             </Typography>
           </Box>
@@ -141,7 +141,7 @@ export function CartPageView() {
       </Box>
 
       {items.length === 0 && (
-        <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.5), textAlign: 'center', mt: 2 }}>
+        <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62), textAlign: 'center', mt: 2 }}>
           Your cart is empty. Add items to begin checkout.
         </Typography>
       )}

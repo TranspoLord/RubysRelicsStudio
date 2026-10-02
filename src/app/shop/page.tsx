@@ -160,7 +160,7 @@ export default async function ShopPage() {
               sx={{
                 mt: 1.25,
                 textAlign: 'center',
-                color: alpha(brandTokens.parchment, 0.52),
+                color: alpha(brandTokens.parchment, 0.62),
                 fontSize: '0.8rem',
               }}
             >
@@ -231,7 +231,7 @@ function CategoryCard({ category, productCount }: CategoryCardProps) {
           <Typography
             variant="caption"
             sx={{
-              color: alpha(brandTokens.parchment, 0.45),
+              color: alpha(brandTokens.parchment, 0.62),
               fontSize: '0.65rem',
               letterSpacing: '0.06em',
             }}
@@ -253,7 +253,7 @@ function CategoryCard({ category, productCount }: CategoryCardProps) {
         <Typography
           variant="body2"
           sx={{
-            color: alpha(brandTokens.parchment, 0.55),
+            color: alpha(brandTokens.parchment, 0.62),
             fontSize: '0.75rem',
             lineHeight: 1.5,
             mt: 'auto',
@@ -304,7 +304,7 @@ function TrustStrip() {
               </Typography>
               <Typography
                 variant="caption"
-                sx={{ color: alpha(brandTokens.parchment, 0.5), fontSize: '0.72rem', textTransform: 'none' }}
+                sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.72rem', textTransform: 'none' }}
               >
                 {detail}
               </Typography>

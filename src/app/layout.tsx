@@ -64,12 +64,12 @@ export const viewport: Viewport = {
 
 // ─── Root layout ─────────────────────────────────────────────────────────────
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  // SEC-047: Read the CSP nonce set by middleware so Next.js can add it to
+  // SEC-047: Read the CSP nonce set by proxy.ts so Next.js can add it to
   // its injected inline scripts. Without this, the CSP blocks Next.js's own
   // bootstrap scripts and the page won't function (including controlled inputs).
   //
   // SEC-047-FIX: Fall back to the rrs_csp_nonce cookie if the x-nonce header
-  // is unavailable, for environments where middleware response headers are
+  // is unavailable, for environments where proxy response headers are
   // not propagated through headers().
   const headersList = await headers()
   const cookieNonce = (await cookies()).get('rrs_csp_nonce')?.value ?? ''
