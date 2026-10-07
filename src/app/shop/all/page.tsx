@@ -219,7 +219,7 @@ export default async function ShopAllPage({ searchParams }: ShopAllPageProps) {
                             backgroundColor: alpha(brandTokens.bgVoid, 0.88),
                             color: alpha(brandTokens.parchment, 0.78),
                             border: `1px solid ${alpha(brandTokens.parchment, 0.18)}`,
-                            fontSize: '0.62rem',
+                            fontSize: '0.75rem',
                             height: 20,
                           }}
                         />

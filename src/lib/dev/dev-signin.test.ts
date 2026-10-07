@@ -1,11 +1,13 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   DEV_SIGNIN_FLAG,
   describeDevSigninGate,
+  escalateToAal2,
   findActiveAdmin,
   isDevSigninEnabled,
   isLoopbackHostname,
+  type DevMfaFactor,
 } from '@/lib/dev/dev-signin'
 
 /**
@@ -137,5 +139,67 @@ describe('findActiveAdmin', () => {
     await expect(
       findActiveAdmin(makeAllowListClient(null, { message: 'boom' }).client)
     ).rejects.toThrow(/allow-list read failed/i)
+  })
+})
+
+const RFC_SECRET = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ' // base32 of "12345678901234567890"
+
+describe('escalateToAal2 (§10.16)', () => {
+  function makeMfa(
+    plan: {
+      currentLevel?: string
+      factors?: Array<{ id: string }>
+      enrollError?: { message: string } | null
+      verifyError?: { message: string } | null
+    } = {}
+  ) {
+    const calls: string[] = []
+    const mfa = {
+      getAuthenticatorAssuranceLevel: vi.fn(async () => ({
+        data: { currentLevel: plan.currentLevel ?? 'aal1' },
+      })),
+      listFactors: vi.fn(async () => ({ data: { totp: plan.factors ?? [] } })),
+      enroll: vi.fn(async () => {
+        calls.push('enroll')
+        return { data: { id: 'factor-1', totp: { secret: RFC_SECRET } }, error: plan.enrollError ?? null }
+      }),
+      challenge: vi.fn(async () => {
+        calls.push('challenge')
+        return { data: { id: 'challenge-1' } }
+      }),
+      verify: vi.fn(async () => {
+        calls.push('verify')
+        return { error: plan.verifyError ?? null }
+      }),
+    }
+    return { mfa, calls }
+  }
+
+  it('returns true immediately when already at aal2', async () => {
+    const { mfa, calls } = makeMfa({ currentLevel: 'aal2' })
+    expect(await escalateToAal2(mfa, () => null, () => {})).toBe(true)
+    expect(calls).toEqual([])
+  })
+
+  it('enrols a fresh factor, persists it, and verifies a generated code', async () => {
+    const { mfa, calls } = makeMfa()
+    let persisted: DevMfaFactor | null = null
+
+    expect(await escalateToAal2(mfa, () => null, (factor) => (persisted = factor))).toBe(true)
+    expect(calls).toEqual(['enroll', 'challenge', 'verify'])
+    expect(persisted).toEqual({ factorId: 'factor-1', secret: RFC_SECRET })
+  })
+
+  it('reuses a persisted factor without re-enrolling', async () => {
+    const factor: DevMfaFactor = { factorId: 'factor-1', secret: RFC_SECRET }
+    const { mfa, calls } = makeMfa({ factors: [{ id: 'factor-1' }] })
+
+    expect(await escalateToAal2(mfa, () => factor, () => {})).toBe(true)
+    expect(calls).toEqual(['challenge', 'verify'])
+  })
+
+  it('returns false when verification fails', async () => {
+    const { mfa } = makeMfa({ verifyError: { message: 'bad code' } })
+    expect(await escalateToAal2(mfa, () => null, () => {})).toBe(false)
   })
 })

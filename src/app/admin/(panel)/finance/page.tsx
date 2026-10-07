@@ -338,7 +338,7 @@ export default function AdminFinancePage() {
                   p: 1,
                 }}
               >
-                <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.62), mb: 0.2 }}>
+                <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), mb: 0.2 }}>
                   {card.label}
                 </Typography>
                 <Typography sx={{ fontFamily: 'var(--font-cinzel, serif)', fontWeight: 700 }}>
@@ -411,7 +411,7 @@ export default function AdminFinancePage() {
                     backgroundColor: alpha(brandTokens.bgVoid, 0.35),
                   }}
                 >
-                  <Typography sx={{ fontSize: '0.7rem', color: alpha(brandTokens.parchment, 0.62), textTransform: 'uppercase' }}>
+                  <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), textTransform: 'uppercase' }}>
                     {stage.stage}
                   </Typography>
                   <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.8) }}>
@@ -549,7 +549,7 @@ function RowHeader({ columns }: { columns: string[] }) {
       }}
     >
       {columns.map((col) => (
-        <Typography key={col} sx={{ fontSize: '0.68rem', color: alpha(brandTokens.parchment, 0.62), textTransform: 'uppercase' }}>
+        <Typography key={col} sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), textTransform: 'uppercase' }}>
           {col}
         </Typography>
       ))}

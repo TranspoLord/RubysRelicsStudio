@@ -232,7 +232,7 @@ function CategoryCard({ category, productCount }: CategoryCardProps) {
             variant="caption"
             sx={{
               color: alpha(brandTokens.parchment, 0.62),
-              fontSize: '0.65rem',
+              fontSize: '0.75rem',
               letterSpacing: '0.06em',
             }}
           >
@@ -304,7 +304,7 @@ function TrustStrip() {
               </Typography>
               <Typography
                 variant="caption"
-                sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.72rem', textTransform: 'none' }}
+                sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.75rem', textTransform: 'none' }}
               >
                 {detail}
               </Typography>

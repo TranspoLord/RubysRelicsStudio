@@ -11,6 +11,8 @@ import { Breadcrumb } from '@/components/layout/Breadcrumb'
 import { getResourcePages } from '@/app/resources/content'
 import { getContactSettings } from '@/lib/storefront-settings'
 import { brandTokens } from '@/theme/theme'
+import { JsonLd } from '@/components/seo/JsonLd'
+import { buildBreadcrumbJsonLd } from '@/lib/seo/structured-data'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -55,6 +57,14 @@ export default async function ResourceDocumentPage({ params }: Props) {
         ]}
       />
 
+      <JsonLd
+        data={buildBreadcrumbJsonLd([
+          { name: 'Home', path: '/' },
+          { name: 'Resources', path: '/resources' },
+          { name: page.title, path: `/resources/${routeParams.slug}` },
+        ])}
+      />
+
       <Box component="main" id="main-content">
         <Box
           sx={{
@@ -74,7 +84,7 @@ export default async function ResourceDocumentPage({ params }: Props) {
             <Typography sx={{ color: alpha(brandTokens.parchment, 0.72), maxWidth: 740, mb: 1.25 }}>
               {page.summary}
             </Typography>
-            <Typography sx={{ fontSize: '0.74rem', color: alpha(brandTokens.parchment, 0.62) }}>
+            <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62) }}>
               Last updated: {page.lastUpdated}
             </Typography>
           </Container>

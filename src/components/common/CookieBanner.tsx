@@ -132,7 +132,16 @@ export function CookieBanner() {
         is tracked.{' '}
         <Link
           href="/resources/cookies"
-          sx={{ color: brandTokens.forgeGold, textDecoration: 'underline' }}
+          sx={{
+            color: brandTokens.forgeGold,
+            textDecoration: 'underline',
+            // §8.4: the inline link measured 84×17, under the 24px target size
+            // (SC 2.5.8). Inline-block + vertical padding lifts it to a 24px
+            // target without re-flowing the sentence.
+            display: 'inline-block',
+            py: 0.5,
+            minHeight: 24,
+          }}
         >
           Cookie policy
         </Link>

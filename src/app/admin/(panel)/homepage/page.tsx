@@ -113,6 +113,7 @@ interface ShopAllPreviewState {
   show_filters: boolean
   heading: string
   subheading: string
+  eyebrow: string
 }
 
 interface FutureProductsNotifyState {
@@ -167,6 +168,7 @@ export default function AdminHomepagePage() {
     show_filters: true,
     heading: 'Shop All Products',
     subheading: '',
+    eyebrow: '',
   })
   const [savingShopAllPreview, setSavingShopAllPreview] = useState(false)
   const [shopAllPreviewMessage, setShopAllPreviewMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -220,6 +222,7 @@ export default function AdminHomepagePage() {
             show_filters: content.show_filters !== false,
             heading: typeof content.heading === 'string' ? content.heading : 'Shop All Products',
             subheading: typeof content.subheading === 'string' ? content.subheading : '',
+            eyebrow: typeof content.eyebrow === 'string' ? content.eyebrow : '',
           })
         }
 
@@ -336,6 +339,7 @@ export default function AdminHomepagePage() {
           show_filters: shopAllPreview.show_filters,
           heading: shopAllPreview.heading,
           subheading: shopAllPreview.subheading,
+          eyebrow: shopAllPreview.eyebrow,
         }),
       })
       const data = await res.json() as { error?: string }
@@ -703,6 +707,14 @@ export default function AdminHomepagePage() {
         </Box>
 
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mb: 1.5 }}>
+          <TextField
+            size="small"
+            label="Eyebrow (optional)"
+            value={shopAllPreview.eyebrow}
+            onChange={(e) => setShopAllPreview((prev) => ({ ...prev, eyebrow: e.target.value }))}
+            inputProps={{ maxLength: 80, 'aria-label': 'Shop All Preview eyebrow' }}
+            sx={{ minWidth: 220 }}
+          />
           <TextField
             size="small"
             label="Section heading"

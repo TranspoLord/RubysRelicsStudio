@@ -226,7 +226,7 @@ function FilterGroup({
         p: 1,
       }}
     >
-      <Typography sx={{ fontSize: '0.72rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: alpha(brandTokens.parchment, 0.62), mb: 0.8 }}>
+      <Typography sx={{ fontSize: '0.75rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: alpha(brandTokens.parchment, 0.62), mb: 0.8 }}>
         {title}
       </Typography>
 
@@ -248,7 +248,7 @@ function FilterGroup({
                 borderRadius: 1,
                 px: 0.8,
                 py: 0.45,
-                fontSize: '0.72rem',
+                fontSize: '0.75rem',
                 cursor: 'pointer',
               }}
             >
@@ -270,7 +270,7 @@ function Tag({ children }: { children: React.ReactNode }) {
         borderRadius: 0.8,
         border: `1px solid ${alpha(brandTokens.parchment, 0.16)}`,
         color: alpha(brandTokens.parchment, 0.63),
-        fontSize: '0.66rem',
+        fontSize: '0.75rem',
       }}
     >
       {children}

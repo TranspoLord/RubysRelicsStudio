@@ -45,6 +45,18 @@ const INFO_TEXT = '#6FA6C9'
  */
 export const MIN_MUTED_TEXT_ALPHA = 0.62
 
+/**
+ * §8.5 — the 12px text floor, in rem.
+ *
+ * The audit's sub-12px tier (§8.5 / P3: 10.4px badges, 11.2px overlines) is a
+ * *size* problem, not a colour problem: no readable text below 12px (0.75rem).
+ * §7.12 lifted `overline` to it; Batch 9 swept the remaining ~50 `0.6–0.74rem`
+ * sites across 26 files up to it. `src/theme/font-floor.test.ts` walks `src/` and
+ * fails on any new `fontSize: '0.NNrem'` below this value, so a future component
+ * cannot quietly reintroduce a smaller one.
+ */
+export const MIN_TEXT_SIZE_REM = 0.75
+
 const theme = createTheme({
   palette: {
     mode: 'dark',

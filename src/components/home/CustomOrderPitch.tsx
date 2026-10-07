@@ -156,7 +156,7 @@ export function CustomOrderPitch() {
                         justifyContent: 'center',
                         flexShrink: 0,
                         mt: 0.2,
-                        fontSize: '0.6rem',
+                        fontSize: '0.75rem',
                         color: 'secondary.light',
                       }}
                     >

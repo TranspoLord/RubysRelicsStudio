@@ -16,7 +16,8 @@
     "audit": "npm audit --audit-level=high",
     "db:types": "npx supabase gen types typescript --linked --schema public > src/types/database.ts",
     "admin:grant": "node ./scripts/grant-admin.mjs",
-    "admin:revoke": "node ./scripts/revoke-admin.mjs"
+    "admin:revoke": "node ./scripts/revoke-admin.mjs",
+    "admin:reset-mfa": "node ./scripts/reset-admin-mfa.mjs"
   },
   "dependencies": {
     "@emotion/cache": "^11.14.0",

@@ -30,6 +30,8 @@ export interface AuthContextValue {
   isSignedIn: boolean
   /** Clears the Supabase session cookies and re-renders Server Components. */
   signOut: () => Promise<void>
+  /** §10.17 — revokes every session *except* the current one (Supabase `scope: 'others'`). */
+  signOutOthers: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -72,6 +74,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.refresh()
   }, [supabase, router])
 
+  const signOutOthers = useCallback(async () => {
+    // §10.17: "sign out everywhere except this device". Supabase revokes every
+    // refresh token except the one held by the current session cookies, so the
+    // admin keeps this device and kills the rest — no session-list UI needed.
+    await supabase.auth.signOut({ scope: 'others' })
+    router.refresh()
+  }, [supabase, router])
+
   const value = useMemo<AuthContextValue>(
     () => ({
       session,
@@ -79,8 +89,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isLoading,
       isSignedIn: Boolean(session),
       signOut,
+      signOutOthers,
     }),
-    [session, isLoading, signOut]
+    [session, isLoading, signOut, signOutOthers]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

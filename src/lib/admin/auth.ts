@@ -18,7 +18,7 @@
 import { redirect } from 'next/navigation'
 import { NextResponse } from 'next/server'
 
-import { hasAdminRole, readAuthClaims, type AuthClaims } from '@/lib/auth/claims'
+import { hasAdminRole, hasAal2, readAuthClaims, type AuthClaims } from '@/lib/auth/claims'
 import { sanitizeAdminNextPath } from '@/lib/auth/redirect'
 import { getClientIp, rateLimit, rateLimitResponse } from '@/lib/rate-limit'
 import { requireCsrf } from '@/lib/security/csrf'
@@ -53,6 +53,11 @@ interface AdminAllowListRow {
 
 function unauthorizedResponse(): Response {
   return NextResponse.json({ error: 'Unauthorized admin request.' }, { status: 401 })
+}
+
+/** §10.16 — a signed-in admin who has not completed the MFA challenge. */
+function mfaRequiredResponse(): Response {
+  return NextResponse.json({ error: 'MFA required.', code: 'mfa_required' }, { status: 401 })
 }
 
 /**
@@ -165,6 +170,12 @@ export async function requireAdminApiSession(
       return { ok: false, response: unauthorizedResponse() }
     }
 
+    // §10.16: mandatory second factor. `aal1` = signed in with Google but the
+    // MFA challenge was not completed, so the request is refused at the door.
+    if (!hasAal2(claims)) {
+      return { ok: false, response: mfaRequiredResponse() }
+    }
+
     const clientIp = getClientIp(request)
 
     if (rateLimitOptions) {
@@ -232,7 +243,46 @@ export async function requireAdminPageSessionOrRedirect(nextPath = '/admin') {
     redirect('/admin/not-authorized')
   }
 
+  // §10.16: mandatory second factor — an admin at `aal1` has signed in but not
+  // completed the MFA challenge, so the panel redirects to the challenge page.
+  if (!hasAal2(claims)) {
+    redirect('/admin/mfa')
+  }
+
   stampLastLoginIfNewSignIn(claims, row)
+
+  return {
+    actorUserId: claims.sub,
+    actorEmail: row.email ?? claims.email,
+  }
+}
+
+/**
+ * §10.16 — server-component gate for `/admin/mfa` itself.
+ *
+ * This is `requireAdminPageSessionOrRedirect` *without* the AAL check: the MFA
+ * page is the path *to* `aal2`, so an admin at `aal1` must be able to reach it.
+ * The role and allow-list checks still apply, so a non-admin never sees the
+ * challenge page (and an admin without a session goes to `/admin/login`).
+ */
+export async function requireAdminPageMfaSessionOrRedirect() {
+  const claims = await readVerifiedClaims()
+
+  if (!claims) {
+    redirect('/admin/login')
+  }
+
+  let row: AdminAllowListRow | null = null
+  try {
+    row = await loadAllowListRow(claims.sub)
+  } catch (error) {
+    safeLogError('[admin:auth:mfa] allow-list read failed', error)
+    redirect('/admin/not-authorized')
+  }
+
+  if (!hasAdminRole(claims) || !isActiveAdminRow(row)) {
+    redirect('/admin/not-authorized')
+  }
 
   return {
     actorUserId: claims.sub,

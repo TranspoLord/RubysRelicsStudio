@@ -182,14 +182,14 @@ export default async function CheckoutSuccessPage({
                       )}
 
                       {item.selected_options && Object.keys(item.selected_options).length > 0 && (
-                        <Typography sx={{ fontSize: '0.74rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.25 }}>
+                        <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.25 }}>
                           {Object.entries(item.selected_options)
                             .map(([key, value]) => `${key}: ${String(value)}`)
                             .join(' • ')}
                         </Typography>
                       )}
 
-                      <Typography sx={{ fontSize: '0.74rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.35 }}>
+                      <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.35 }}>
                         Qty {item.quantity}
                       </Typography>
                     </Box>

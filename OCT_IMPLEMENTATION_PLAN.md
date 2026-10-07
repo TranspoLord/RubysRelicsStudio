@@ -308,10 +308,13 @@ recorded in `SEPT_IMPLEMENTATION_PLAN.md` → "Batch execution log".
   remaining hero height is *content*, not CSS, so the lever is a shorter promise / a single CTA row.
 - **The NSFW line** is now legible (full-strength gold, no italic, links to `/resources/faq`) but the wording
   is still the owner's call.
-- **Eyebrow strings** are hard-coded and `ShortcutSection` reuses `ariaLabel` as the visible eyebrow; the
-  shared `SectionHeading` + `content.eyebrow` field (validator + admin editor) is the real fix, and it is also
-  where "Shop preview" gets reworded.
+- **Eyebrow strings** — the "Shop preview" eyebrow is now content-managed (#6, 2026-10-01):
+  `HomepageProductGrid` reads `content.eyebrow` (empty = hidden) and the Shop All Preview editor gained an
+  "Eyebrow (optional)" field, plumbed through the `shop_all_preview` validator. `ShortcutSection`'s separate
+  `ariaLabel`-as-eyebrow remains, but `quick_picks` is now hidden (§7.15), so it is moot unless re-enabled —
+  at which point it wants the same `content.eyebrow` treatment rather than a hard-coded string.
 - **§8.5's badge tier** (8 files at `0.65rem` = 10.4px) is a separate mechanical sweep, not part of §7.12.
+  **RESOLVED (Batch 9)** — swept to the 12px floor across 26 files and enforced by `font-floor.test.ts`.
 
 ### OCT-27 (Low, data) — the collage has no real alt text, and no imagery below `lg`.
 
@@ -358,6 +361,24 @@ recorded in `SEPT_IMPLEMENTATION_PLAN.md` → "Batch execution log".
   dev-only sign-in helper — see OCT-28. Without it this stayed unmeasurable and the item could not honestly
   be closed.
 - **Evidence:** `%TEMP%\rrs-admin2\` (6 routes × 3 viewports + `audit.json`, `audit-before.json` kept).
+### Batch 9 — shipped (2026-10-01; storefront floor + the dependency bump)
+
+### OCT-30 (High, security) — the single `@xmldom/xmldom` advisory became four, including a critical `next`. **RESOLVED (Batch 9).**
+
+- §1.5 was filed with **one** high (`@xmldom/xmldom`). By Batch 9 `npm audit` reported **four** — 3 high +
+  1 **critical**: `next` (RCE in `next/og` `ImageResponse`, range 16.2.0–16.3.5), `axios` (prototype
+  pollution / SSRF gadgets, transitive via `square`), `brace-expansion` (dev-only DoS), and the original
+  `@xmldom/xmldom`.
+- **Why the `next` one mattered here specifically:** Batch 6 shipped `/opengraph-image.tsx` using
+  `ImageResponse`, so the repo genuinely exercised the vulnerable API rather than just depending on it.
+- **Fix:** `npm audit fix` — all four were in-range, non-breaking bumps (`next` 16.3.4→16.3.8,
+  `axios` 1.18.1→1.20.0, `@xmldom/xmldom` 0.9.10→0.9.12, `brace-expansion` 1.1.18/5.0.9→1.1.21/5.0.12).
+  Only `package-lock.json` changed; `package.json` ranges already admitted the fixed versions. Verified:
+  `npm run audit` exits 0, type-check / 378 tests / build green on the new `next`.
+- **Note for the next security pass:** `brace-expansion` is the only dev-only one of the four — the other
+  three ship in the production bundle, so `npm audit --omit=dev` was the check that proved the *prod* surface
+  is clean too.
+
 ### Cross-cutting / not yet batched
 
 - **OCT-10 (decision) — §9.8 is now obsolete, close it. RESOLVED (2026-10-01, Batch 8).** §9.8 is now marked

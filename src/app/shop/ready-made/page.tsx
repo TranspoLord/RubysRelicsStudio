@@ -208,7 +208,7 @@ export default async function ReadyMadePage() {
                             backgroundColor: alpha(brandTokens.bgVoid, 0.9),
                             color: '#5A9A3A',
                             border: `1px solid ${alpha('#5A9A3A', 0.35)}`,
-                            fontSize: '0.62rem',
+                            fontSize: '0.75rem',
                             height: 20,
                           }}
                         />
@@ -248,7 +248,7 @@ export default async function ReadyMadePage() {
                           }}
                         >
                           <Box>
-                            <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.64rem', mb: 0.15 }}>
+                            <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.75rem', mb: 0.15 }}>
                               Price
                             </Typography>
                             <Typography sx={{ fontWeight: 700, color: brandTokens.parchment, fontSize: '1.1rem', fontFamily: 'var(--font-cinzel, serif)' }}>
@@ -258,7 +258,7 @@ export default async function ReadyMadePage() {
 
                           <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.45, color: alpha(brandTokens.parchment, 0.62) }}>
                             <AccessTimeIcon sx={{ fontSize: 13 }} />
-                            <Typography sx={{ fontSize: '0.7rem' }}>
+                            <Typography sx={{ fontSize: '0.75rem' }}>
                               {product.production_estimate_band}
                             </Typography>
                           </Box>

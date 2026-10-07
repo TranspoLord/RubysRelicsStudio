@@ -118,6 +118,9 @@ export function Footer() {
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent',
                   backgroundClip: 'text',
+                  // §8.9: see Header.tsx — the wordmark declares no `color`, so
+                  // forced-colours mode drops the gold fill and renders UA link blue.
+                  color: brandTokens.forgeGold,
                 }}
               >
                 Ruby&apos;s Relics Studio

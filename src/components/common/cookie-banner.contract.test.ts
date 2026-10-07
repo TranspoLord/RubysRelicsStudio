@@ -41,6 +41,11 @@ describe('CookieBanner contract (§8.2 / §9.2)', () => {
     expect(BANNER_CODE.match(/\.\.\.bannerActionSx/g)?.length).toBe(3)
   })
 
+  it('sizes the "Cookie policy" link as a 24px target (§8.4)', () => {
+    expect(BANNER_CODE).toMatch(/href="\/resources\/cookies"[\s\S]{0,240}minHeight: 24/)
+    expect(BANNER_CODE).toContain("display: 'inline-block'")
+  })
+
   it('reserves viewport space so the fixed bar cannot bury a focused field', () => {
     expect(BANNER_CODE).toContain('scrollPaddingBottom')
   })

@@ -140,6 +140,11 @@ export function Header({ cartItemCount = 0, currentPath = '/' }: HeaderProps) {
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent',
                   backgroundClip: 'text',
+                  // §8.9: with the transparent fill above, `color` falls back to the
+                  // UA link blue — flagged 2.10:1 in all 24 captures. In forced-colours
+                  // mode the clip/fill is dropped, so this is what the wordmark renders
+                  // in. Declaring the brand gold keeps it on-brand instead of default blue.
+                  color: brandTokens.forgeGold,
                   letterSpacing: '0.04em',
                   display: 'block',
                   lineHeight: 1.1,
@@ -150,7 +155,7 @@ export function Header({ cartItemCount = 0, currentPath = '/' }: HeaderProps) {
               <Typography
                 component="span"
                 sx={{
-                  fontSize: '0.6rem',
+                  fontSize: '0.75rem',
                   letterSpacing: '0.12em',
                   textTransform: 'uppercase',
                   color: brandTokens.parchmentMuted,
@@ -228,7 +233,7 @@ export function Header({ cartItemCount = 0, currentPath = '/' }: HeaderProps) {
               color="primary"
               sx={{
                 '& .MuiBadge-badge': {
-                  fontSize: '0.65rem',
+                  fontSize: '0.75rem',
                   minWidth: 16,
                   height: 16,
                   padding: '0 4px',

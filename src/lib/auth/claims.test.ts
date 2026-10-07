@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { ADMIN_ROLE, hasAdminRole, readAuthClaims } from '@/lib/auth/claims'
+import { ADMIN_ROLE, hasAdminRole, hasAal2, readAuthClaims } from '@/lib/auth/claims'
 
 /**
  * Claim narrowing is a security boundary: everything downstream trusts its
@@ -9,11 +9,12 @@ import { ADMIN_ROLE, hasAdminRole, readAuthClaims } from '@/lib/auth/claims'
  * (user-writable) — SEPT_IMPLEMENTATION_PLAN §10.0.
  */
 describe('readAuthClaims', () => {
-  it('reads the subject, email and app_metadata', () => {
+  it('reads the subject, email, aal and app_metadata', () => {
     const claims = readAuthClaims({
       sub: 'user-1',
       email: 'admin@example.com',
       iat: 1_800_000_000,
+      aal: 'aal2',
       app_metadata: { role: ADMIN_ROLE, provider: 'google' },
     })
 
@@ -21,6 +22,7 @@ describe('readAuthClaims', () => {
       sub: 'user-1',
       email: 'admin@example.com',
       issuedAt: 1_800_000_000,
+      aal: 'aal2',
       appMetadata: { role: ADMIN_ROLE, provider: 'google' },
     })
   })
@@ -67,8 +69,19 @@ describe('readAuthClaims', () => {
       sub: 'user-1',
       email: null,
       issuedAt: null,
+      aal: null,
       appMetadata: {},
     })
+  })
+})
+
+describe('hasAal2', () => {
+  it('accepts only an explicit aal2 claim', () => {
+    expect(hasAal2(readAuthClaims({ sub: 'u', aal: 'aal2' }))).toBe(true)
+    expect(hasAal2(readAuthClaims({ sub: 'u', aal: 'aal1' }))).toBe(false)
+    expect(hasAal2(readAuthClaims({ sub: 'u' }))).toBe(false)
+    expect(hasAal2(null)).toBe(false)
+    expect(hasAal2(undefined)).toBe(false)
   })
 })
 

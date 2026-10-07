@@ -381,17 +381,17 @@ const clearCart = useCallback(() => {
                       {item.title}
                     </Typography>
                     {item.variantLabel && (
-                      <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.15 }}>
+                      <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.15 }}>
                         {item.variantLabel}
                       </Typography>
                     )}
                     {item.options.length > 0 && (
-                      <Typography sx={{ fontSize: '0.68rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.1 }}>
+                      <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.1 }}>
                         {item.options.map((o) => o.valueLabel ?? o.value).join(' · ')}
                       </Typography>
                     )}
                     {item.selectedProcessKeys && item.selectedProcessKeys.length > 0 && (
-                      <Typography sx={{ fontSize: '0.68rem', color: alpha(brandTokens.forgeGold, 0.7), mt: 0.1 }}>
+                      <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.forgeGold, 0.7), mt: 0.1 }}>
                         {item.selectedProcessKeys.map((k) => k.replace(/_/g, ' ')).join(' + ')}
                       </Typography>
                     )}

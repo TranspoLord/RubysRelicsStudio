@@ -340,7 +340,7 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
       </Box>
 
       {pricing.activeBulkTier?.description && (
-        <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.62), mt: -1, mb: 0.5 }}>
+        <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), mt: -1, mb: 0.5 }}>
           {pricing.activeBulkTier.description}
         </Typography>
       )}
@@ -349,7 +349,7 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
         <Box sx={{ mt: -1, p: 1.25, borderRadius: 1, border: `1px solid ${alpha(brandTokens.forgeGold, 0.32)}`, backgroundColor: alpha(brandTokens.forgeGold, 0.1) }}>
           <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: brandTokens.forgeGold, mb: 0.35 }}>Bulk Tier Applied</Typography>
           <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.72) }}>{formatBulkTierLabel(pricing.activeBulkTier)} — You save ${pricing.discount.toFixed(2)} on this quantity.</Typography>
-          <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.35 }}>Subtotal ${pricing.subtotal.toFixed(2)} → Total ${pricing.total.toFixed(2)}</Typography>
+          <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.35 }}>Subtotal ${pricing.subtotal.toFixed(2)} → Total ${pricing.total.toFixed(2)}</Typography>
         </Box>
       )}
 
@@ -368,10 +368,10 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
 
       {(product.bulk_discounts?.length ?? 0) > 0 && (
         <Box sx={{ mt: -0.5 }}>
-          <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.62), mb: 0.55 }}>Volume pricing</Typography>
+          <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), mb: 0.55 }}>Volume pricing</Typography>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.65 }}>
             {(product.bulk_discounts ?? []).map((tier) => (
-              <Box key={tier.id} sx={{ px: 0.75, py: 0.35, borderRadius: 1, border: `1px solid ${alpha(brandTokens.parchment, 0.15)}`, color: alpha(brandTokens.parchment, 0.62), fontSize: '0.66rem' }}>
+              <Box key={tier.id} sx={{ px: 0.75, py: 0.35, borderRadius: 1, border: `1px solid ${alpha(brandTokens.parchment, 0.15)}`, color: alpha(brandTokens.parchment, 0.62), fontSize: '0.75rem' }}>
                 {formatBulkTierLabel(tier)}
               </Box>
             ))}
@@ -512,7 +512,7 @@ function ProcessPill({ processTypeKey, label, priceDelta, selected, onClick }: P
         cursor: 'pointer', fontWeight: selected ? 600 : 400, fontSize: '0.8rem', transition: 'background 0.15s, border-color 0.15s, color 0.15s',
         '&:hover': { borderColor: alpha(brandTokens.forgeGold, 0.5), background: alpha(brandTokens.forgeGold, 0.08) } }}>
       <Box component="span" aria-hidden="true" sx={{ mr: 0.5 }}>{emoji}</Box>
-      {label}{deltaLabel && <Typography component="span" sx={{ fontSize: '0.7rem', opacity: 0.7, ml: 0.25 }}>{deltaLabel}</Typography>}
+      {label}{deltaLabel && <Typography component="span" sx={{ fontSize: '0.75rem', opacity: 0.7, ml: 0.25 }}>{deltaLabel}</Typography>}
     </Box>
   )
 }
@@ -531,7 +531,7 @@ function VariantPill({ variant, selected, onClick }: VariantPillProps) {
         background: selected ? alpha(brandTokens.forgeGold, 0.12) : 'none', color: selected ? brandTokens.forgeGold : brandTokens.parchment,
         cursor: 'pointer', fontWeight: selected ? 600 : 400, fontSize: '0.875rem', transition: 'background 0.15s, border-color 0.15s, color 0.15s',
         '&:hover': { borderColor: alpha(brandTokens.forgeGold, 0.5), background: alpha(brandTokens.forgeGold, 0.08) } }}>
-      {variant.label}{deltaLabel && <Typography component="span" sx={{ fontSize: '0.7rem', opacity: 0.7, ml: 0.25 }}>{deltaLabel}</Typography>}
+      {variant.label}{deltaLabel && <Typography component="span" sx={{ fontSize: '0.75rem', opacity: 0.7, ml: 0.25 }}>{deltaLabel}</Typography>}
     </Box>
   )
 }

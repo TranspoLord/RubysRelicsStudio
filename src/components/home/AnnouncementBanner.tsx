@@ -80,6 +80,11 @@ export function AnnouncementBanner({ data }: AnnouncementBannerProps = {}) {
               fontWeight: 600,
               textDecoration: 'underline',
               textUnderlineOffset: 2,
+              // §8.4: the CTA measured 107×16 (desktop/tablet), under the 24px
+              // target size. Same inline-block + padding lift as the consent link.
+              display: 'inline-block',
+              py: 0.5,
+              minHeight: 24,
               '&:hover': { color: brandTokens.forgeGold },
             }}
           >

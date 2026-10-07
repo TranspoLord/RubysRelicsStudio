@@ -61,9 +61,13 @@ function makeAdminClient(
   }
 }
 
-/** Fake cookie-bound client: `verifyOtp` then `getClaims`. */
+/** Fake cookie-bound client: `verifyOtp`, `getClaims`, and the §10.16 `mfa` escalator. */
 function makeSessionClient(
-  plan: { otpError?: { message: string } | null; claims?: unknown } = {}
+  plan: {
+    otpError?: { message: string } | null
+    claims?: unknown
+    mfaVerifyError?: { message: string } | null
+  } = {}
 ) {
   return {
     auth: {
@@ -72,6 +76,16 @@ function makeSessionClient(
         error: plan.otpError ?? null,
       })),
       getClaims: vi.fn(async () => ({ data: { claims: plan.claims ?? ADMIN_CLAIMS }, error: null })),
+      mfa: {
+        getAuthenticatorAssuranceLevel: vi.fn(async () => ({ data: { currentLevel: 'aal1' } })),
+        listFactors: vi.fn(async () => ({ data: { totp: [] } })),
+        enroll: vi.fn(async () => ({
+          data: { id: 'factor-1', totp: { secret: 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ' } },
+          error: null,
+        })),
+        challenge: vi.fn(async () => ({ data: { id: 'challenge-1' } })),
+        verify: vi.fn(async () => ({ error: plan.mfaVerifyError ?? null })),
+      },
     },
   }
 }
@@ -170,6 +184,13 @@ describe('GET /api/dev/session — failure paths', () => {
       makeSessionClient({ otpError: { message: 'expired' } })
     )
     expect((await GET(request())).status).toBe(401)
+  })
+
+  it('502s when the MFA escalation cannot reach aal2 (§10.16)', async () => {
+    mocks.createServerSupabaseClient.mockResolvedValue(
+      makeSessionClient({ mfaVerifyError: { message: 'bad code' } })
+    )
+    expect((await GET(request())).status).toBe(502)
   })
 })
 

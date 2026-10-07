@@ -20,6 +20,8 @@ export interface AuthClaims {
   email: string | null
   /** JWT `iat` in seconds, when the issuer provided it. */
   issuedAt: number | null
+  /** JWT `aal` claim — `'aal1'` or `'aal2'` (second factor completed, §10.16). */
+  aal: string | null
   /** Service-role-written metadata. Never `user_metadata`. */
   appMetadata: Record<string, unknown>
 }
@@ -43,6 +45,7 @@ export function readAuthClaims(raw: unknown): AuthClaims | null {
     sub,
     email: typeof raw.email === 'string' ? raw.email : null,
     issuedAt: typeof raw.iat === 'number' ? raw.iat : null,
+    aal: typeof raw.aal === 'string' ? raw.aal : null,
     appMetadata: isRecord(raw.app_metadata) ? raw.app_metadata : {},
   }
 }
@@ -51,4 +54,10 @@ export function readAuthClaims(raw: unknown): AuthClaims | null {
 export function hasAdminRole(claims: AuthClaims | null | undefined): boolean {
   if (!claims) return false
   return claims.appMetadata.role === ADMIN_ROLE
+}
+
+/** §10.16 — `true` when the session completed a second-factor challenge. */
+export function hasAal2(claims: AuthClaims | null | undefined): boolean {
+  if (!claims) return false
+  return claims.aal === 'aal2'
 }

@@ -16,6 +16,8 @@ import { Breadcrumb } from '@/components/layout/Breadcrumb'
 import { getProductsByCategory } from '@/lib/supabase/queries/products'
 import type { DbProduct } from '@/lib/supabase/queries/products'
 import { brandTokens } from '@/theme/theme'
+import { JsonLd } from '@/components/seo/JsonLd'
+import { buildBreadcrumbJsonLd } from '@/lib/seo/structured-data'
 
 export const dynamic = 'force-dynamic'
 
@@ -63,6 +65,14 @@ export default async function CategoryPage({ params }: Props) {
           { label: 'Shop', href: '/shop' },
           { label: category.display_name },
         ]}
+      />
+
+      <JsonLd
+        data={buildBreadcrumbJsonLd([
+          { name: 'Home', path: '/' },
+          { name: 'Shop', path: '/shop' },
+          { name: category.display_name, path: `/shop/categories/${slug}` },
+        ])}
       />
 
       <Box component="main" id="main-content">
@@ -273,7 +283,7 @@ function ProductCard({ product, categorySlug }: ProductCardProps) {
                 backgroundColor: alpha(brandTokens.bgVoid, 0.85),
                 color: brandTokens.forgeGold,
                 border: `1px solid ${alpha(brandTokens.forgeGold, 0.3)}`,
-                fontSize: '0.6rem',
+                fontSize: '0.75rem',
                 height: 20,
                 backdropFilter: 'blur(6px)',
               }}
@@ -287,7 +297,7 @@ function ProductCard({ product, categorySlug }: ProductCardProps) {
                 backgroundColor: alpha(brandTokens.bgVoid, 0.85),
                 color: '#5A9A3A',
                 border: `1px solid ${alpha('#5A9A3A', 0.3)}`,
-                fontSize: '0.6rem',
+                fontSize: '0.75rem',
                 height: 20,
                 backdropFilter: 'blur(6px)',
               }}
@@ -337,7 +347,7 @@ function ProductCard({ product, categorySlug }: ProductCardProps) {
           <Box>
             <Typography
               variant="body2"
-              sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.65rem', mb: 0.15 }}
+              sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.75rem', mb: 0.15 }}
             >
               Starting from
             </Typography>
@@ -355,7 +365,7 @@ function ProductCard({ product, categorySlug }: ProductCardProps) {
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: alpha(brandTokens.parchment, 0.62) }}>
             <AccessTimeIcon sx={{ fontSize: 13 }} />
-            <Typography sx={{ fontSize: '0.7rem' }}>
+            <Typography sx={{ fontSize: '0.75rem' }}>
               {product.production_estimate_band}
             </Typography>
           </Box>

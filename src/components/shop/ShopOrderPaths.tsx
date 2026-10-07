@@ -97,7 +97,7 @@ export function ShopOrderPaths() {
                 color: chipColor,
                 border: `1px solid ${alpha(chipColor, 0.3)}`,
                 fontWeight: 600,
-                fontSize: '0.65rem',
+                fontSize: '0.75rem',
                 letterSpacing: '0.06em',
               }}
             />

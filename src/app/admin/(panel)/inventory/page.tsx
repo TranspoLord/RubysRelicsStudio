@@ -569,7 +569,7 @@ export default function AdminInventoryPage() {
                     <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.66) }}>
                       /{row.slug} · {row.category_display_name} · Status {statusLabel(row.stock_status)}
                     </Typography>
-                    <Typography sx={{ fontSize: '0.74rem', color: alpha(brandTokens.parchment, 0.62) }}>
+                    <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62) }}>
                       Qty {row.available_qty} · Threshold {row.low_stock_threshold} · Track {row.is_track_inventory ? 'On' : 'Off'} · Override {row.availability_override}
                     </Typography>
                   </Box>

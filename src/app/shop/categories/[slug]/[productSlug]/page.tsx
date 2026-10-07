@@ -18,6 +18,8 @@ import { ProductConfigurator } from '@/components/shop/ProductConfigurator'
 import { ProductMediaGallery } from '@/components/shop/ProductMediaGallery'
 import { RecommendationRail } from '@/components/shop/RecommendationRail'
 import { brandTokens } from '@/theme/theme'
+import { JsonLd } from '@/components/seo/JsonLd'
+import { buildBreadcrumbJsonLd, buildProductJsonLd } from '@/lib/seo/structured-data'
 
 export const dynamic = 'force-dynamic'
 
@@ -84,6 +86,16 @@ export default async function ProductDetailPage({ params }: Props) {
           { label: category?.display_name ?? 'Category', href: `/shop/categories/${slug}` },
           { label: product.title },
         ]}
+      />
+
+      <JsonLd data={buildProductJsonLd(product)} />
+      <JsonLd
+        data={buildBreadcrumbJsonLd([
+          { name: 'Home', path: '/' },
+          { name: 'Shop', path: '/shop' },
+          { name: category?.display_name ?? 'Category', path: `/shop/categories/${slug}` },
+          { name: product.title, path: `/shop/categories/${slug}/${productSlug}` },
+        ])}
       />
 
       <Box component="main" id="main-content">

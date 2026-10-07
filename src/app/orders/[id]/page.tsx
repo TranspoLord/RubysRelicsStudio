@@ -184,7 +184,7 @@ export default async function OrderTrackingPage({
                           {item.variant_label}
                         </Typography>
                       )}
-                      <Typography sx={{ fontSize: '0.74rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.35 }}>
+                      <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.35 }}>
                         Qty {item.quantity}
                       </Typography>
                     </Box>

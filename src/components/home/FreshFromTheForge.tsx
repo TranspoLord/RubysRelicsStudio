@@ -119,7 +119,7 @@ export function FreshFromTheForge({ items }: FreshFromTheForgeProps = {}) {
                     border: `1px solid ${alpha(brandTokens.parchment, 0.15)}`,
                   }}
                 >
-                  <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary', letterSpacing: '0.04em' }}>
+                  <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary', letterSpacing: '0.04em' }}>
                     {item.material_used}
                   </Typography>
                 </Box>
@@ -134,12 +134,12 @@ export function FreshFromTheForge({ items }: FreshFromTheForgeProps = {}) {
                       component={Link}
                       href={`/shop/categories/${item.category_slug}`}
                       clickable
-                      sx={{ fontSize: '0.65rem', height: 20 }}
+                      sx={{ fontSize: '0.75rem', height: 20 }}
                       color="primary"
                     />
                   )}
                   {item.turnaround_band && (
-                    <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.68rem' }}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
                       ⏱ {item.turnaround_band}
                     </Typography>
                   )}

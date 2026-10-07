@@ -193,3 +193,12 @@ describe('semantic colours (§9.5)', () => {
     expect(textError?.color).toBe(theme.palette.error.light)
   })
 })
+
+
+describe('text size floor (§8.5)', () => {
+  it('keeps the floor at 0.75rem — it may only move up', async () => {
+    const { MIN_TEXT_SIZE_REM } = await import('@/theme/theme')
+    expect(MIN_TEXT_SIZE_REM).toBeGreaterThanOrEqual(0.75)
+  })
+})
+

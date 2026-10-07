@@ -1,3 +1,9 @@
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import { generateTotpCode } from '@/lib/auth/totp'
+
 /**
  * Dev-only admin sign-in helper (SEPT_IMPLEMENTATION_PLAN §8, Batch 8).
  *
@@ -126,4 +132,89 @@ export async function findActiveAdmin(
   }
 
   return { userId: row.user_id, email: row.email }
+}
+
+// ─── §10.16: mint an `aal2` session so the harness passes mandatory MFA ─────────
+//
+// Mandatory MFA means the gate demands `aal2`, but the magic-link session the
+// helper creates is inherently `aal1`. To keep the harness working, the helper
+// escalates that session: enrol a dedicated TOTP factor once (persisting its
+// secret, which `enrol()` only returns at creation time), then challenge +
+// verify with a freshly generated code. This is dev-only and shares nothing with
+// the owner's real factor.
+
+export interface DevMfaFactor {
+  factorId: string
+  secret: string
+}
+
+/** The shape of `supabase.auth.mfa` the escalator needs (kept structural for tests). */
+export interface DevMfaClient {
+  getAuthenticatorAssuranceLevel: () => Promise<{ data: { currentLevel: string } | null }>
+  listFactors: () => Promise<{ data: { totp?: Array<{ id: string }> } | null }>
+  enroll: (opts: { factorType: string }) => Promise<{
+    data: { id: string; totp: { secret: string } } | null
+    error: unknown
+  }>
+  challenge: (opts: { factorId: string }) => Promise<{ data: { id: string } | null }>
+  verify: (opts: { factorId: string; challengeId: string; code: string }) => Promise<{ error: unknown }>
+}
+
+const MFA_FACTOR_FILE = join(tmpdir(), 'rrs-dev-mfa-factor.json')
+
+function readPersistedFactor(): DevMfaFactor | null {
+  try {
+    if (!existsSync(MFA_FACTOR_FILE)) return null
+    return JSON.parse(readFileSync(MFA_FACTOR_FILE, 'utf8')) as DevMfaFactor
+  } catch {
+    return null
+  }
+}
+
+function writePersistedFactor(factor: DevMfaFactor): void {
+  try {
+    writeFileSync(MFA_FACTOR_FILE, JSON.stringify(factor), 'utf8')
+  } catch {
+    // Non-fatal: a re-enrol on the next run leaves an orphaned factor, which the
+    // recovery script (`npm run admin:reset-mfa`) can clear.
+  }
+}
+
+/**
+ * Returns `true` once the session is at `aal2`, enrolling and completing a TOTP
+ * challenge as needed. Persistence is injected so the unit test does not touch
+ * the real temp file.
+ */
+export async function escalateToAal2(
+  mfa: DevMfaClient,
+  readPersisted: () => DevMfaFactor | null = readPersistedFactor,
+  writePersisted: (factor: DevMfaFactor) => void = writePersistedFactor
+): Promise<boolean> {
+  const { data: aal } = await mfa.getAuthenticatorAssuranceLevel()
+  if (aal?.currentLevel === 'aal2') return true
+
+  const { data: factors } = await mfa.listFactors()
+  const totp = factors?.totp ?? []
+
+  let factorId: string
+  let secret: string
+
+  const persisted = readPersisted()
+  if (persisted && totp.some((factor) => factor.id === persisted.factorId)) {
+    factorId = persisted.factorId
+    secret = persisted.secret
+  } else {
+    const { data: enrolled, error: enrollError } = await mfa.enroll({ factorType: 'totp' })
+    if (enrollError || !enrolled) return false
+    factorId = enrolled.id
+    secret = enrolled.totp.secret
+    writePersisted({ factorId, secret })
+  }
+
+  const { data: challenge } = await mfa.challenge({ factorId })
+  if (!challenge) return false
+
+  const code = generateTotpCode(secret)
+  const { error: verifyError } = await mfa.verify({ factorId, challengeId: challenge.id, code })
+  return !verifyError
 }

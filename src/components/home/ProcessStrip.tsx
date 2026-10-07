@@ -142,7 +142,7 @@ export function ProcessStrip() {
                     justifyContent: 'center',
                   }}
                 >
-                  <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, color: '#0C0A07', lineHeight: 1 }}>
+                  <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: '#0C0A07', lineHeight: 1 }}>
                     {index + 1}
                   </Typography>
                 </Box>

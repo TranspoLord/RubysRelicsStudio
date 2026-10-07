@@ -130,7 +130,7 @@ export function FeaturedCollections({ collections }: FeaturedCollectionsProps = 
                     label={col.tag_label}
                     size="small"
                     color="primary"
-                    sx={{ fontSize: '0.68rem', height: 22 }}
+                    sx={{ fontSize: '0.75rem', height: 22 }}
                   />
                 )}
               </Box>

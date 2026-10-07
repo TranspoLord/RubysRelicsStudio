@@ -1628,7 +1628,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
                   >
                     {pt.emoji && <span aria-hidden="true">{pt.emoji}</span>}
                     {pt.display_name}
-                    <Typography component="span" sx={{ ml: 'auto', fontSize: '0.7rem', opacity: 0.6 }}>
+                    <Typography component="span" sx={{ ml: 'auto', fontSize: '0.75rem', opacity: 0.6 }}>
                       {isAssigned ? 'ON' : 'OFF'}
                     </Typography>
                   </Box>
@@ -1886,7 +1886,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
                       Qty {tier.min_qty}{tier.max_qty ? ` - ${tier.max_qty}` : '+'} | {tier.discount_type} {tier.discount_value}{tier.step_qty ? ` /${tier.step_qty}pcs` : ''} | {tier.label || 'No label'} | {tier.is_enabled ? 'Enabled' : 'Disabled'}
                     </Typography>
                     {tier.description && (
-                      <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.72rem', mt: 0.3 }}>
+                      <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.75rem', mt: 0.3 }}>
                         {tier.description}
                       </Typography>
                     )}
@@ -2220,7 +2220,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
                             <Button
                               size="small"
                               variant="text"
-                              sx={{ fontSize: '0.7rem', minWidth: 'auto', p: 0.3 }}
+                              sx={{ fontSize: '0.75rem', minWidth: 'auto', p: 0.3 }}
                               onClick={() => {
                                 setEditingValueId(value.id)
                                 setEditValueLabel(value.label)
@@ -2236,7 +2236,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
                               size="small"
                               variant="text"
                               color="error"
-                              sx={{ fontSize: '0.7rem', minWidth: 'auto', p: 0.3 }}
+                              sx={{ fontSize: '0.75rem', minWidth: 'auto', p: 0.3 }}
                               onClick={() => void deleteOptionValue(value.id)}
                             >
                               ✕

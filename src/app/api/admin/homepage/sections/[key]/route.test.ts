@@ -199,7 +199,7 @@ describe('PATCH /api/admin/homepage/sections/[key]', () => {
     mocks.getSupabaseAdmin.mockReturnValue(supabase)
 
     const response = await PATCH(
-      makeRequest({ product_count: 6, show_filters: true, heading: 'Shop All Products' }),
+      makeRequest({ product_count: 6, show_filters: true, heading: 'Shop All Products', eyebrow: 'Ready to ship' }),
       makeParams('shop_all_preview')
     )
     const payload = await response.json()
@@ -210,6 +210,8 @@ describe('PATCH /api/admin/homepage/sections/[key]', () => {
     const [values, options] = calls.upsertFn.mock.calls[0]
     expect(options).toEqual({ onConflict: 'section_key' })
     expect(values.section_key).toBe('shop_all_preview')
+    // §OCT-26/#6: the eyebrow is content-managed — empty hides it, a value shows it.
+    expect((values.content as Record<string, unknown>).eyebrow).toBe('Ready to ship')
     // 45 — the documented slot between featured_collections (40) and
     // fresh_from_forge (50), not the column default 0.
     expect(values.sort_order).toBe(45)

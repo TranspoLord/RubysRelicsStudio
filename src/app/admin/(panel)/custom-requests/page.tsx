@@ -505,33 +505,33 @@ export default function AdminCustomRequestsPage() {
               <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.75rem', mt: 0.2 }}>
                 Status: {prettyStatus(row.status)}
                 {isRowCancelled(row) && (
-                  <Typography component="span" sx={{ ml: 1, color: '#F1B4B4', fontSize: '0.7rem' }}>
+                  <Typography component="span" sx={{ ml: 1, color: '#F1B4B4', fontSize: '0.75rem' }}>
                     (Rejected)
                   </Typography>
                 )}
               </Typography>
               {row.design_id && (
-                <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.72rem', mt: 0.15 }}>
+                <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.75rem', mt: 0.15 }}>
                   Design: {row.design_id}
                 </Typography>
               )}
               {row.design_id && exportSummaryByDesignId[row.design_id] && (
-                <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.73rem', mt: 0.15 }}>
+                <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.75rem', mt: 0.15 }}>
                   Exports → ready: {exportSummaryByDesignId[row.design_id].succeeded}, pending: {exportSummaryByDesignId[row.design_id].pending}, failed: {exportSummaryByDesignId[row.design_id].failed}
                 </Typography>
               )}
               {row.quote_expires_at && (
-                <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.73rem' }}>
+                <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.75rem' }}>
                   Quote expires: {new Date(row.quote_expires_at).toLocaleString()} · Resent {row.quote_resend_count}x
                 </Typography>
               )}
               {row.production_handoff_at && (
-                <Typography sx={{ color: alpha(brandTokens.forgeGold, 0.86), fontSize: '0.73rem' }}>
+                <Typography sx={{ color: alpha(brandTokens.forgeGold, 0.86), fontSize: '0.75rem' }}>
                   Handed to production: {new Date(row.production_handoff_at).toLocaleString()}
                 </Typography>
               )}
               {row.recovery_reminder_sent_at && (
-                <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.73rem' }}>
+                <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.75rem' }}>
                   Recovery reminder sent: {new Date(row.recovery_reminder_sent_at).toLocaleString()}
                 </Typography>
               )}

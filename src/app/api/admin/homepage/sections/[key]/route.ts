@@ -71,6 +71,7 @@ interface ShortcutItem {
 interface SectionContentPayload {
   heading?: unknown
   subheading?: unknown
+  eyebrow?: unknown
   is_visible?: unknown
   items?: unknown
   product_count?: unknown
@@ -84,6 +85,7 @@ function validateShopAllPreviewPayload(body: unknown): {
   show_filters: boolean
   heading: string
   subheading: string
+  eyebrow: string
   is_visible: boolean
 } | { valid: false; message: string } {
   if (typeof body !== 'object' || body === null) {
@@ -95,13 +97,14 @@ function validateShopAllPreviewPayload(body: unknown): {
   const showFilters = b.show_filters !== false
   const heading = typeof b.heading === 'string' && b.heading.trim() ? b.heading.trim() : 'Shop All Products'
   const subheading = typeof b.subheading === 'string' ? b.subheading.trim() : ''
+  const eyebrow = typeof b.eyebrow === 'string' ? b.eyebrow.trim() : ''
   const is_visible = b.is_visible !== false
 
   if (!Number.isInteger(productCount) || productCount < 1 || productCount > 50) {
     return { valid: false, message: "'product_count' must be an integer between 1 and 50." }
   }
 
-  return { valid: true, product_count: productCount, show_filters: showFilters, heading, subheading, is_visible }
+  return { valid: true, product_count: productCount, show_filters: showFilters, heading, subheading, eyebrow, is_visible }
 }
 
 function validateFutureProductsNotifyPayload(body: unknown): {
@@ -268,6 +271,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       show_filters: validation.show_filters,
       heading: validation.heading,
       subheading: validation.subheading,
+      eyebrow: validation.eyebrow,
     }
 
     const saved = await saveHomepageSection({

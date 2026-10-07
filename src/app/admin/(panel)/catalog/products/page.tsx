@@ -251,7 +251,7 @@ export default function AdminProductsPage() {
                           label={key.replace(/_/g, ' ')}
                           size="small"
                           sx={{
-                            fontSize: '0.68rem',
+                            fontSize: '0.75rem',
                             height: 18,
                             backgroundColor: alpha(brandTokens.forgeGold, 0.12),
                             color: brandTokens.forgeGold,

@@ -23,7 +23,7 @@ export function getResourcePages(supportEmail: string): Record<string, ResourceP
         heading: 'Age Requirement and Content Policy',
         body: [
           'By placing an order with Ruby\'s Relics Studio, you represent and warrant that you are at least 18 years old.',
-          'Mature or NSFW content may be accepted when lawful. We do not discriminate based on subject matter or artistic expression within legal boundaries.',
+          'Mature and NSFW content are welcome where lawful — we do not discriminate by subject matter or artistic expression within legal boundaries.',
           'We do not print unlawful material or artwork listed on the Public Restriction List. Orders canceled for policy violations are refunded minus non-recoverable processing fees.',
         ],
       },

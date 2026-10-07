@@ -55,7 +55,7 @@ function panelSurface(tint: string, surfaceAlpha = 0.98, tintAlpha = 0.06) {
 export function AdminShell({ children, notificationCount, moduleLinks }: AdminShellProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const { signOut: signOutSupabase } = useAuth()
+  const { signOut: signOutSupabase, signOutOthers } = useAuth()
   const [query, setQuery] = useState('')
   const [searching, setSearching] = useState(false)
   const [remoteResults, setRemoteResults] = useState<AdminSearchResult[]>([])
@@ -63,6 +63,7 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
   const [notificationsLoading, setNotificationsLoading] = useState(false)
   const [notifications, setNotifications] = useState<AdminNotificationRow[]>([])
   const [unreadCount, setUnreadCount] = useState(notificationCount)
+  const [signingOutOthers, setSigningOutOthers] = useState(false)
 
   /**
    * §9.6: the active module is the longest href this path is equal to or nested
@@ -192,6 +193,18 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
     router.refresh()
   }
 
+  async function handleSignOutOthers() {
+    // §10.17: revoke every session except this one. Keeps the current device,
+    // kills the rest; no confirmation needed because it can't lock the admin out.
+    if (signingOutOthers) return
+    setSigningOutOthers(true)
+    try {
+      await signOutOthers()
+    } finally {
+      setSigningOutOthers(false)
+    }
+  }
+
   return (
     <Box sx={{ minHeight: '100vh', backgroundColor: brandTokens.bgVoid }}>
       <Box
@@ -227,6 +240,16 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
                   <NotificationsOutlinedIcon fontSize="small" />
                 </Badge>
               </IconButton>
+
+              <Button
+                variant="text"
+                size="small"
+                onClick={handleSignOutOthers}
+                disabled={signingOutOthers}
+                sx={{ color: alpha(brandTokens.parchment, 0.7) }}
+              >
+                {signingOutOthers ? 'Signing out…' : 'Sign out other sessions'}
+              </Button>
 
               <Button variant="outlined" size="small" startIcon={<LogoutOutlinedIcon />} onClick={handleSignOut}>
                 Sign out

@@ -62,7 +62,7 @@ vi.mock('@/lib/supabase/client', () => ({
   }),
 }))
 
-import { requireAdminApiSession, requireAdminPageSessionOrRedirect } from '@/lib/admin/auth'
+import { requireAdminApiSession, requireAdminPageMfaSessionOrRedirect, requireAdminPageSessionOrRedirect } from '@/lib/admin/auth'
 
 const ADMIN_USER_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
 
@@ -74,11 +74,12 @@ const ACTIVE_ROW = {
   last_login_at: null,
 }
 
-function claimsPayload(appMetadata: Record<string, unknown> = { role: 'admin' }) {
+function claimsPayload(appMetadata: Record<string, unknown> = { role: 'admin' }, aal = 'aal2') {
   return {
     sub: ADMIN_USER_ID,
     email: 'admin@example.com',
     iat: 1_800_000_000,
+    aal,
     app_metadata: appMetadata,
   }
 }
@@ -192,6 +193,17 @@ describe('requireAdminApiSession — fails closed', () => {
     expect(response?.status).toBe(500)
   })
 
+  it('refuses an admin at aal1 with an MFA-required marker (§10.16)', async () => {
+    supabaseAuth.getClaims.mockResolvedValue({
+      data: { claims: claimsPayload({ role: 'admin' }, 'aal1') },
+      error: null,
+    })
+
+    const response = await expectDenied(await requireAdminApiSession(apiRequest()))
+    expect(response?.status).toBe(401)
+    expect(await response?.json()).toEqual({ error: 'MFA required.', code: 'mfa_required' })
+  })
+
   it('keeps the CSRF check in front of everything else', async () => {
     const result = await requireAdminApiSession(
       new Request('https://rubysrelics.test/api/admin/orders', { method: 'POST' })
@@ -257,6 +269,15 @@ describe('requireAdminPageSessionOrRedirect', () => {
     })
   })
 
+  it('sends an admin at aal1 to the MFA challenge page (§10.16)', async () => {
+    supabaseAuth.getClaims.mockResolvedValue({
+      data: { claims: claimsPayload({ role: 'admin' }, 'aal1') },
+      error: null,
+    })
+
+    await expect(requireAdminPageSessionOrRedirect('/admin')).rejects.toThrow('REDIRECT:/admin/mfa')
+  })
+
   it('stamps last_login_at once per fresh token', async () => {
     allowList.maybeSingle.mockResolvedValue({
       data: { ...ACTIVE_ROW, last_login_at: '2026-01-01T00:00:00.000Z' },
@@ -280,5 +301,30 @@ describe('requireAdminPageSessionOrRedirect', () => {
 
     await new Promise((resolve) => setImmediate(resolve))
     expect(allowList.update).not.toHaveBeenCalled()
+  })
+})
+
+describe('requireAdminPageMfaSessionOrRedirect (§10.16)', () => {
+  it('admits an admin at aal1 — the MFA page is the path to aal2', async () => {
+    supabaseAuth.getClaims.mockResolvedValue({
+      data: { claims: claimsPayload({ role: 'admin' }, 'aal1') },
+      error: null,
+    })
+
+    await expect(requireAdminPageMfaSessionOrRedirect()).resolves.toEqual({
+      actorUserId: ADMIN_USER_ID,
+      actorEmail: 'admin@example.com',
+    })
+  })
+
+  it('still rejects a non-admin and a missing session', async () => {
+    supabaseAuth.getClaims.mockResolvedValue({
+      data: { claims: claimsPayload({ role: 'customer' }, 'aal1') },
+      error: null,
+    })
+    await expect(requireAdminPageMfaSessionOrRedirect()).rejects.toThrow('REDIRECT:/admin/not-authorized')
+
+    supabaseAuth.getClaims.mockResolvedValue({ data: null, error: null })
+    await expect(requireAdminPageMfaSessionOrRedirect()).rejects.toThrow('REDIRECT:/admin/login')
   })
 })

@@ -238,7 +238,7 @@ export function CheckoutPageView() {
                   </Typography>
                 )}
                 {item.options.length > 0 && (
-                  <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.62), mb: 0.65 }}>
+                  <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), mb: 0.65 }}>
                     {item.options.map((o) => `${o.label}: ${o.valueLabel ?? o.value}`).join(' • ')}
                   </Typography>
                 )}

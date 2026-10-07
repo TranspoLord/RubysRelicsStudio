@@ -153,7 +153,7 @@ export function MaterialsTeaser({ materials }: MaterialsTeaserProps = {}) {
                       border: `1px solid ${alpha(brandTokens.forgeGold, 0.15)}`,
                     }}
                   >
-                    <Typography sx={{ fontSize: '0.65rem', color: alpha(brandTokens.forgeGoldLight, 0.8), letterSpacing: '0.04em' }}>
+                    <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.forgeGoldLight, 0.8), letterSpacing: '0.04em' }}>
                       {use}
                     </Typography>
                   </Box>

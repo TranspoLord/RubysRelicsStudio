@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 
-import { hasAdminRole, readAuthClaims } from '@/lib/auth/claims'
-import { describeDevSigninGate, findActiveAdmin, isLoopbackHostname, type AllowListClient } from '@/lib/dev/dev-signin'
+import { hasAal2, hasAdminRole, readAuthClaims } from '@/lib/auth/claims'
+import { describeDevSigninGate, escalateToAal2, findActiveAdmin, isLoopbackHostname, type AllowListClient, type DevMfaClient } from '@/lib/dev/dev-signin'
 import { safeLogError } from '@/lib/security/logger'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
@@ -102,6 +102,20 @@ export async function GET(request: NextRequest) {
       },
       409
     )
+  }
+
+  // §10.16: mandatory MFA — `verifyOtp` yields an `aal1` session, but the gate
+  // demands `aal2`. Enrol/complete a dedicated TOTP factor so the harness can
+  // actually reach the panel once the gate is live.
+  if (!hasAal2(claims)) {
+    // `supabase.auth.mfa`'s concrete type is deeper than the structural
+    // `DevMfaClient` the escalator needs (TS2589-style instantiation), so adapt
+    // here; the runtime contract is covered by the escalator's own tests.
+    const escalated = await escalateToAal2(supabase.auth.mfa as unknown as DevMfaClient)
+    if (!escalated) {
+      safeLogError('[dev-signin] aal2 escalation failed', 'escalateToAal2 returned false')
+      return json({ error: 'Could not complete the MFA challenge for the harness.' }, 502)
+    }
   }
 
   return json(

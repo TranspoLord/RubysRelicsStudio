@@ -29,6 +29,7 @@ export function HomepageProductGrid({ products, categories, content, sectionKey 
   const showFilters = content?.show_filters !== false
   const heading = typeof content?.heading === 'string' && content.heading.trim() ? content.heading : 'Shop All Products'
   const subheading = typeof content?.subheading === 'string' ? content.subheading : ''
+  const eyebrow = typeof content?.eyebrow === 'string' ? content.eyebrow.trim() : ''
 
   const [category, setCategory] = useState('all')
   const [priceMin, setPriceMin] = useState(0)
@@ -97,9 +98,11 @@ export function HomepageProductGrid({ products, categories, content, sectionKey 
       <Container maxWidth="lg">
         <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, justifyContent: 'space-between', gap: 3, mb: 4 }}>
           <Box sx={{ maxWidth: 620 }}>
-            <Typography variant="overline" sx={{ color: brandTokens.forgeGold, display: 'block', mb: 1 }}>
-              Shop preview
-            </Typography>
+            {eyebrow && (
+              <Typography variant="overline" sx={{ color: brandTokens.forgeGold, display: 'block', mb: 1 }}>
+                {eyebrow}
+              </Typography>
+            )}
             <Typography id={`${sectionKey}-heading`} variant="h2" component="h2" sx={{ mb: 1 }}>
               {heading}
             </Typography>

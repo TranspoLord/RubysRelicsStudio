@@ -147,10 +147,38 @@ and §9.7).
   - **§8.5 stays open for the storefront:** 49 `fontSize` string sites in `src/` are still below 0.75rem
     (24 in `shop/categories/[slug]`, 4 in `ProductConfigurator`), so the floor sweep needs the same treatment
     on the customer-facing pages.
-- **Batch 9 (next) — the remaining admin + non-UI work.** §8.5's storefront floor sweep, §8.4 (inline-link
-  targets), §8.6 (collage alt data), §8.9 (wordmark forced-colours), §9.8 (obsolete — close), §1.1
-  (migration history), §1.5 (npm audit), §2.10 (sitemap/structured data), OCT-20/21/22/23/24/26/27, and
-  §10.16/§10.17's two open decisions.
+- **Batch 9 — 2026-10-01 (§1.5 + §8.4 + §8.5 storefront + §8.9, ✅ shipped).** The remaining storefront
+  floor + the security dependency bump, all measured or machine-guarded:
+  - **§1.5 npm audit** — the single `@xmldom/xmldom` high had grown to **4 vulns incl. a critical** `next`
+    RCE in `next/og` `ImageResponse` (live here — `/opengraph-image.tsx`). `npm audit fix` resolved all four
+    with in-range bumps (`next` 16.3.4→16.3.8, `axios`→1.20.0, `@xmldom/xmldom`→0.9.12, `brace-expansion`
+    dev-only); only `package-lock.json` changed and `npm run audit` now exits 0.
+  - **§8.5 storefront floor sweep** — every remaining `0.6–0.74rem` `fontSize` in `src/` raised to the
+    12px floor: **26 files, ~50 sites** (badges, counters, eyebrows, helper captions, table cells).
+    Enforced repo-wide by `MIN_TEXT_SIZE_REM = 0.75` + `src/theme/font-floor.test.ts`. **Measured** on
+    `/`, `/shop`, `/shop/all`, `/shop/ready-made` at 1440/834/390: overflow **0**, sub-12px **0**, no
+    height inflation.
+  - **§8.4 inline-link targets** — the `Cookie policy` link (84×17) and the announcement CTA (107×16) now
+    meet the 24px target (`display: 'inline-block'`, `py`, `minHeight: 24`); guarded by contract tests.
+  - **§8.9 wordmark forced-colours** — both wordmarks declare `color: brandTokens.forgeGold` so
+    forced-colours mode renders gold, not UA link blue; guarded by `wordmark.contract.test.ts`.
+  - Tests: **52 files / 378 tests** (was 49/370), type-check/build clean on `next` 16.3.8.
+- **Batch 10 — 2026-10-01 (§2.10, ✅ shipped).** Sitemap, robots.txt and JSON-LD structured data, the
+  first "no evidence in the repo" SEO surface:
+  - **`src/app/sitemap.ts`** (dynamic) — static storefront routes + live categories/products (from
+    `getAllActiveProducts()`, deduped category slugs) + resource docs, all absolute against `getSiteUrl()`.
+  - **`src/app/robots.ts`** — disallows `/admin`, `/api`, `/auth`, `/sign-in`, `/cart`, `/checkout`,
+    `/orders`, `/custom-orders/`; points at `/sitemap.xml`.
+  - **JSON-LD** — `Product` + `BreadcrumbList` on the PDP, `BreadcrumbList` on category + resource pages,
+    via pure builders (`src/lib/seo/structured-data.ts`) and `src/components/seo/JsonLd.tsx`.
+  - **Live-verified:** `/sitemap.xml` (10 static + 2 category + 3 product + 10 resource URLs), `/robots.txt`,
+    and the sippy-cup PDP emitting exactly two `<script type="application/ld+json">` tags (`Product`,
+    `BreadcrumbList`). Tests: **55 files / 389 tests** (was 52/378), type-check/build clean.
+  - **Note:** local URLs resolve to `http://localhost:3000` (the documented `getSiteUrl()` dev fallback);
+    production will use `NEXT_PUBLIC_SITE_URL`.
+- **Batch 11 (next) — the remaining non-UI work.** §1.1 (migration history — still blocks any `db push`),
+  OCT-20/21/22/23/24/26/27, and §10.16/§10.17's two open decisions. (§8.6's code half was already shipped in
+  Batch 7 §7.11; only its data half — collage `alt` text — remains, as OCT-27.)
 - **Batch 5 — §9.4, §9.7, §9.10, §9.11, §8.7.** Overflow, control names, per-route titles, heading levels.
   §9.4 needs a layout measurement tool picked first (see OCT-5).
 - **Batch 6 — §7.2 + §7.4 + §7.5 + §7.10 + §3.4.** Section ordering (`sort_order` made real — it can now use
@@ -250,10 +278,14 @@ in the database. What remains are its two open decisions (§10.16 second factor,
    live `admin_mfa_codes` table uses `challenge_token`. ✅ **DONE — closed by deletion (2026-09-26).** The
    file went with the whole MFA stack (§10.8) and the `ip` column went with the table (§10.12), so there is
    nothing left to repair.
-5. Verify `npm audit --audit-level=high` passes locally (CI workflow exists). ❌ **FAILS.**
-   One **high** severity advisory: `@xmldom/xmldom` 0.9.0-beta.1 – 0.9.11 (13 advisories:
-   XML name/attribute/PI/DOCTYPE injection, ReDoS, quadratic parse/memory). `npm audit fix`
-   offers a fix.
+5. Verify `npm audit --audit-level=high` passes locally (CI workflow exists). ✅ **DONE (2026-10-01, Batch 9).**
+   At the time this was filed there was **one** high advisory (`@xmldom/xmldom`); by Batch 9 the audit had
+   grown to **four** (3 high + 1 critical), and `npm audit fix` resolved all of them with in-range,
+   non-breaking bumps (only `package-lock.json` changed, `package.json` untouched):
+   `next` **16.3.4 → 16.3.8** (critical RCE in `next/og` `ImageResponse` — live here, since
+   `/opengraph-image.tsx` uses it), `axios` 1.18.1 → 1.20.0 (transitive via `square`), `@xmldom/xmldom`
+   0.9.10 → 0.9.12, `brace-expansion` 1.1.18/5.0.9 → 1.1.21/5.0.12 (dev-only). `npm run audit` now exits 0
+   (`found 0 vulnerabilities`), and type-check / 378 tests / build all green on the new `next`.
 6. **Sign out clears the cookie but never revokes the session row, so a copied token survives
    logout.** ✅ **DONE — closed by §10.10 (2026-09-26).**
    `fetch('/api/admin/session', { method: 'DELETE' })`, and that handler
@@ -322,8 +354,15 @@ Compliance & quality:
    `src/app/layout.tsx:88-89`, policy copy in `src/app/resources/content.ts`. **Defect found
    2026-09-24 (§8.2):** the Accept button is white on gold (2.81:1) and the fixed banner covers
    the checkout form below `sm`.
-10. Structured data / SEO completion (Shop, category, PDP, Resources). ❌ **NOT DONE.** No
-    evidence in the repo.
+10. Structured data / SEO completion (Shop, category, PDP, Resources). ✅ **DONE (2026-10-01, Batch 10).**
+    `src/app/sitemap.ts` (dynamic: static routes + live categories + products + resource docs, absolute URLs
+    from `getSiteUrl()`), `src/app/robots.ts` (disallows `/admin`, `/api`, `/auth`, `/sign-in`, `/cart`,
+    `/checkout`, `/orders`, `/custom-orders/`), and JSON-LD structured data — `Product` + `BreadcrumbList`
+    on the PDP, `BreadcrumbList` on category and resource pages — built by pure helpers in
+    `src/lib/seo/{site,structured-data}.ts` and rendered by `src/components/seo/JsonLd.tsx`. Tests:
+    `site.test.ts` + `structured-data.test.ts` + `json-ld.contract.test.ts` (11 cases). **Live-verified:**
+    `/sitemap.xml` enumerates 10 static + 2 category + 3 product + 10 resource URLs; `/robots.txt` correct;
+    the sippy-cup PDP emits `Product` + `BreadcrumbList` (absolute storage image URL, `MadeToOrder` offer).
 11. Mobile responsiveness regression + performance sweep. 🟡 **PARTIAL** (re-classified ❌ → 🟡 on
     2026-09-24). Responsiveness is now measured at 390 / 834 / 1440 across 8 routes with **zero
     horizontal overflow anywhere** and every target/label counted (`UI_AUDIT_FINDINGS.md` App. A),
@@ -338,9 +377,10 @@ Operational:
     (`api/admin/inventory`); broader low-stock / status orchestration not demonstrated.
 14. Tax-calculation strategy hardening + financial reconciliation checks. ❌ **NOT DONE.** No
     evidence in the repo.
-15. Multi-carrier shipping adapter plan + phased implementation. ❓ **UNVERIFIED.** Shippo
-    (already a multi-carrier aggregator) is wired via `src/lib/shippo/client.ts`, so a
-    discrete "adapter layer" may be moot — needs a product decision.
+15. Multi-carrier shipping adapter plan + phased implementation. ✅ **OBSOLETE — CLOSED (2026-10-01, owner
+    decision: "stay Shippo").** Shippo (already a multi-carrier aggregator) is wired via
+    `src/lib/shippo/client.ts`, so a discrete "adapter layer" is redundant — Shippo *is* the adapter.
+    Nothing to build.
 
 ## 3. Future-products / homepage gaps
 
@@ -831,35 +871,35 @@ Critical:
 
 High:
 
-4. **Two inline links sit below the 24px minimum target.** ❌ **NOT DONE.** Measured at 390×844,
-   the only non-footer targets under 24px are the banner's `Cookie policy` link (84×17,
-   `CookieBanner.tsx:97-102`) and — desktop/tablet only — the announcement CTA `Shop Drinkware`
-   (107×16, `AnnouncementBanner.tsx:78-90`). The 23–26 "undersized" flags per route are almost all
-   the footer column (17px rows on a **35px pitch**), which passes SC 2.5.8 through the spacing
-   exception — `py: 0.5` on `Footer.tsx:68` removes that reliance.
-5. **The sub-12px type tier is wider than the eyebrows.** ❌ **NOT DONE.** Extends §7.12: besides
-   the `overline` (0.7rem), 8 files use `0.65rem` (10.4px) for badges and counters
+4. **Two inline links sit below the 24px minimum target.** ✅ **DONE (2026-10-01, Batch 9).** The banner's
+   `Cookie policy` link (84×17) and the announcement CTA `Shop Drinkware` (107×16) now render as
+   `display: 'inline-block'` with vertical padding and `minHeight: 24`, lifting both to the 24px target
+   (SC 2.5.8) without re-flowing the sentence. The footer column (17px rows on a **35px pitch**) already
+   passed through the spacing exception and is untouched. Guarded by `cookie-banner.contract.test.ts` and
+   `announcement-banner.contract.test.ts`.
+5. **The sub-12px type tier is wider than the eyebrows.** ✅ **DONE (2026-10-01, Batches 8 + 9).** Extends
+   §7.12: besides the `overline` (0.7rem), 8 files used `0.65rem` (10.4px) for badges and counters
    (`ShopOrderPaths.tsx:100`, `app/shop/page.tsx:235`, `FreshFromTheForge.tsx:122,137`,
    `MaterialsTeaser.tsx:156`, `ProcessStrip.tsx:145`, `shop/categories/[slug]/page.tsx:340`,
-   `Header.tsx:231`), and the homepage alone renders 16 sub-12px nodes. The same single theme edit
-   fixes both.
-   🟡 **PARTIAL (2026-10-01, Batch 8) — the admin half is done and measured; the storefront half is not.**
-   The sub-12px tier is now **0** on every captured admin route: `AdminShell`'s module descriptions (0.7rem,
-   on all 23 routes), the `/admin` StatCard labels (0.72rem) and the homepage editor's tile-editor captions
-   (0.68/0.72rem) moved to the 12px floor — measured **12 → 0** on every route, **31 → 0** on
-   `/admin/homepage`, plus 3 *latent* shell sites that only render with notification bodies/links or an open
-   search modal. **Still open:** the storefront sites listed above, plus a wider tier the original audit
-   never sampled — **49** `fontSize` string sites in `src/` remain below 0.75rem (24 in
-   `shop/categories/[slug]`, 4 in `ProductConfigurator`, 3 each in `CartProvider` / `FreshFromTheForge` /
-   `GalleryExplorer`, 2 in `Header`). Same single-floor sweep, on the customer-facing pages.
+   `Header.tsx:231`). The sweep turned out to be **larger than the item named**: Batch 8 cleared the
+   admin panel (module descriptions, StatCard labels, tile-editor captions) and Batch 9 swept every
+   remaining `0.6–0.74rem` `fontSize` in `src/` — **26 files, ~50 sites** (badges, counters, eyebrows,
+   helper captions, table cells) — up to the 12px floor.
+   **Enforced, not just applied:** `MIN_TEXT_SIZE_REM = 0.75` lives in `theme.ts`, and
+   `src/theme/font-floor.test.ts` walks `src/` and fails on any new `fontSize: '0.NNrem'` below it
+   (with a planted-offence case). **Measured (same harness):** overflow **0** and sub-12px nodes **0**
+   at all three viewports on `/`, `/shop`, `/shop/all` and `/shop/ready-made`, with no page-height
+   inflation (homepage mobile 8990 → 8998 px).
 
 Medium:
 
-6. **The hero-collage tiles have no accessible name.** ❌ **NOT DONE.** Extends §7.11: both real
-   tiles are `<a>` whose only child is an `<img alt="">` (`HeroCollage.tsx:157-178`), so the link
-   announces as just "link" (WCAG 2.4.4 / 4.1.2). Give each an explicit
-   `aria-label={image.alt || 'View product'}` — and make those `href`s relative, which is the same
-   item.
+6. **The hero-collage tiles have no accessible name.** ✅ **DONE (2026-09-30, Batch 7 §7.11 — recognised
+   late, 2026-10-01).** The item asked for exactly what §7.11 shipped: each real tile is now an `<a>` with
+   `aria-label={image.alt || 'View product'}` (its only child is the `<img>`, so the name no longer reads as
+   "link"), the stored absolute `href`s are reduced to relative paths by `toLocalHref()`, and placeholder
+   slots are `aria-hidden`. Verified by Batch 7's capture: **0 absolute off-origin hrefs** and the tiles
+   announced by name. **Remaining (data, not code):** the live CMS rows still carry `alt: ""`, so the name
+   falls back to "View product" — that is OCT-27's one-row data change, not a code gap.
 
 Low:
 
@@ -883,13 +923,14 @@ Low:
    card above the "browse by craft" grid on `<md`, trimming the 3-up starter row on small screens,
    and a sticky `Add to cart — $13.00` bar on `<md`.
 
-9. **The `Ruby's Relics` wordmark declares no `color`, so forced-colours mode drops the gold fill.** ❌ **NOT
-   DONE.** `Header.tsx:133-149` and `Footer.tsx:112-124` paint the wordmark with `background-clip: text` +
-   `WebkitTextFillColor: 'transparent'`, so its computed `color` falls back to the UA default link blue
+9. **The `Ruby's Relics` wordmark declares no `color`, so forced-colours mode drops the gold fill.** ✅ **DONE
+   (2026-10-01, Batch 9).** `Header.tsx` and `Footer.tsx` paint the wordmark with `background-clip: text` +
+   `WebkitTextFillColor: 'transparent'`, so its computed `color` fell back to the UA default link blue
    (**2.10:1**, flagged in all 24 captures) — harmless in normal mode because it is never painted, but in
-   Windows High Contrast / forced-colours the fill is dropped and the wordmark renders as default blue. Fix:
-   add `color: brandTokens.forgeGold` to both wordmarks. Carried up from Part 1 App. B, which listed it as
-   "still worth fixing" rather than a filed defect.
+   Windows High Contrast / forced-colours the fill is dropped and the wordmark rendered default blue. Both
+   wordmarks now declare `color: brandTokens.forgeGold`. Guarded by
+   `src/components/layout/wordmark.contract.test.ts` (asserts the colour lives on the same element as the
+   transparent fill, in both files).
 
 Severity at a glance (Part 1 `UI_AUDIT_FINDINGS.md` §4, mapped to the items above):
 
@@ -1493,17 +1534,34 @@ green throughout — it is the safety net for §10.3.
 
 ### 10.16–10.17 — Deferred decisions
 
-16. **§10.16 Do we want a second factor at all?** ❓ **UNVERIFIED — decision, not work.** The switch removes
-    the only second factor, so security rests entirely on the admin's Google account (2FA / passkeys there
-    *are* the control). If a true second factor is wanted later, Supabase Auth supports TOTP MFA
-    (`supabase.auth.mfa.enroll / challenge / verify`) which would re-add an AAL check at the gate — but
-    per-account enrollment rather than emailed codes. Decide explicitly; "MFA was removed" must not be read as
-    "MFA is unnecessary".
-17. **§10.17 Is per-session management needed?** ❓ **UNVERIFIED — decision, not work.** The
-    `exp_admin_sessions` UI never actually existed (see §10.10). Supabase's admin API exposes
-    `auth.admin.signOut(jwt, scope)` — so "sign out everywhere" is available — but `supabase-js` has no
-    per-user session *listing*, so "show my other sessions" is dashboard/Management-API territory. If it
-    matters, it is a Supabase task, not a panel task.
+16. **§10.16 Do we want a second factor at all?** ✅ **DONE (2026-10-01, owner decision: mandatory TOTP,
+    manual secret key, no QR).** Built end-to-end:
+    - **Claim layer** — `AuthClaims.aal` + `hasAal2()` (`src/lib/auth/claims.ts`), so the JWT's `aal` claim is
+      the single source of truth.
+    - **Gate** — `requireAdminApiSession` returns `401 { code: 'mfa_required' }` and
+      `requireAdminPageSessionOrRedirect` redirects to `/admin/mfa` for any admin at `aal1`; a new
+      `requireAdminPageMfaSessionOrRedirect` gates the challenge page itself (role + allow-list, no AAL) so it
+      cannot loop. The Edge gate stays role-only — the authoritative AAL check lives in Node only, keeping the
+      §9.1 "two divergent implementations" risk out of it.
+    - **Page** — `/admin/mfa` + `AdminMfaView`: enrol (show the base32 **secret as text**, no QR, confirm a
+      code) or challenge (just the code) via `supabase.auth.mfa.*`.
+    - **Harness** — `escalateToAal2()` + `generateTotpCode()` (RFC 6238-verified) let `/api/dev/session` mint
+      an `aal2` session (enrol once → challenge → verify with a generated code), so the visual-audit harness
+      keeps working under mandatory MFA.
+    - **Recovery** — `scripts/reset-admin-mfa.mjs` (`npm run admin:reset-mfa`) deletes enrolled factors with
+      the service role, so a lost authenticator cannot permanently lock the owner out.
+    - Tests: claims (9), TOTP RFC vectors (5), gate matrix (22, incl. aal1 → 401/redirect and the MFA-page
+      gate), escalate (4) + a 502 escalation-failure route case. **Suite 57 files / 406 tests, type-check /
+      build / eslint clean.**
+    - **Not yet live-verified** (needs the owner to enrol on a real sign-in): the enroll→challenge round trip
+      and the helper's `aal2` minting against Supabase. The gate is code-complete but the first real sign-in
+      after deploy is the true smoke test.
+17. **§10.17 Is per-session management needed?** ✅ **DONE (2026-10-01, owner decision: "sign out everywhere
+    except this device is enough").** Built the smallest form of it: `AuthProvider` now exposes
+    `signOutOthers()` → `supabase.auth.signOut({ scope: 'others' })` (revokes every refresh token except the
+    current one), and `AdminShell`'s header has a "Sign out other sessions" button wired to it — no
+    session-list UI, which the owner explicitly did not want. Guarded by
+    `src/components/auth/auth-provider.contract.test.ts`.
 
 ### Sequencing, rollback & verification
 

@@ -350,7 +350,7 @@ export default function AdminOrdersPage() {
                     <Typography sx={{ fontSize: '0.76rem', color: alpha(brandTokens.parchment, 0.66) }}>
                       {order.order_path} · {order.status} · payment {order.payment_status} · {asMoney(order.order_total)}
                     </Typography>
-                    <Typography sx={{ fontSize: '0.74rem', color: alpha(brandTokens.parchment, 0.62) }}>
+                    <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62) }}>
                       Created {new Date(order.created_at).toLocaleString()} · Updated {new Date(order.updated_at).toLocaleString()}
                     </Typography>
                   </Box>
@@ -473,7 +473,7 @@ export default function AdminOrdersPage() {
                 {detail?.notes.map((note) => (
                   <Box key={note.id} sx={{ borderRadius: 1, border: `1px solid ${alpha(brandTokens.parchment, 0.1)}`, p: 0.8 }}>
                     <Typography sx={{ fontSize: '0.8rem' }}>{note.note}</Typography>
-                    <Typography sx={{ fontSize: '0.7rem', color: alpha(brandTokens.parchment, 0.62) }}>
+                    <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62) }}>
                       {new Date(note.created_at).toLocaleString()} · {note.created_by ?? 'admin'}
                     </Typography>
                   </Box>
@@ -570,7 +570,7 @@ export default function AdminOrdersPage() {
                       <Typography sx={{ fontSize: '0.8rem', fontWeight: 600 }}>
                         {hook.stage} · {hook.is_completed ? 'completed' : 'open'}
                       </Typography>
-                      <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.62) }}>
+                      <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62) }}>
                         {hook.scheduled_for ? new Date(hook.scheduled_for).toLocaleString() : 'No schedule'} · {hook.assignee ?? 'Unassigned'} · est {hook.estimated_hours ?? 0}h
                       </Typography>
                     </Box>
@@ -602,17 +602,17 @@ export default function AdminOrdersPage() {
                       {item.product_title} · Qty {item.quantity}
                     </Typography>
                     {item.variant_label && (
-                      <Typography sx={{ fontSize: '0.74rem', color: alpha(brandTokens.parchment, 0.64) }}>
+                      <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.64) }}>
                         Variant: {item.variant_label}
                       </Typography>
                     )}
-                    <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.62) }}>
+                    <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62) }}>
                       Unit {asMoney(item.unit_price)} · Subtotal {asMoney(item.line_subtotal)} · Discount {asMoney(item.line_discount)} · Total {asMoney(item.line_total)}
                     </Typography>
                     {Object.entries(item.option_snapshot ?? {}).length > 0 && (
                       <Box sx={{ mt: 0.6, display: 'grid', gap: 0.2 }}>
                         {Object.entries(item.option_snapshot ?? {}).map(([key, snapshot]) => (
-                          <Typography key={`${item.id}-${key}`} sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.63) }}>
+                          <Typography key={`${item.id}-${key}`} sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.63) }}>
                             {(snapshot.label ?? key)}: {snapshot.selected_label ?? snapshot.selected_value ?? item.selected_options?.[key] ?? 'n/a'}
                             {' '}({snapshot.option_type ?? 'unknown'})
                           </Typography>
@@ -638,11 +638,11 @@ export default function AdminOrdersPage() {
                     <Typography sx={{ fontSize: '0.78rem', fontWeight: 600 }}>
                       {event.action_type} · {new Date(event.created_at).toLocaleString()}
                     </Typography>
-                    <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.62) }}>
+                    <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62) }}>
                       {event.previous_status ?? 'n/a'} {' -> '} {event.next_status ?? 'n/a'} · payment {event.previous_payment_status ?? 'n/a'} {' -> '} {event.next_payment_status ?? 'n/a'}
                     </Typography>
                     {event.note && (
-                      <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.68) }}>
+                      <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.68) }}>
                         {event.note}
                       </Typography>
                     )}

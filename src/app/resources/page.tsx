@@ -83,7 +83,7 @@ export default function ResourcesHubPage() {
                   <Typography sx={{ color: alpha(brandTokens.parchment, 0.66), fontSize: '0.86rem', lineHeight: 1.65, mb: 1.15 }}>
                     {item.summary}
                   </Typography>
-                  <Typography sx={{ fontSize: '0.72rem', color: alpha(brandTokens.parchment, 0.62) }}>
+                  <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62) }}>
                     Last updated: {item.lastUpdated}
                   </Typography>
                 </Box>

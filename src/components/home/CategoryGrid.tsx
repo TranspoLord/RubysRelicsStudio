@@ -183,7 +183,7 @@ export function CategoryGrid({ categories }: CategoryGridProps = {}) {
                     mt: 'auto',
                   }}
                 >
-                  <Typography sx={{ fontSize: '0.72rem', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                  <Typography sx={{ fontSize: '0.75rem', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                     Explore
                   </Typography>
                   <ArrowForwardIcon sx={{ fontSize: '0.75rem', transition: 'transform 0.2s ease', transform: isHovered ? 'translateX(3px)' : 'none' }} />
