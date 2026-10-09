@@ -23,6 +23,7 @@ import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
 
 import { brandTokens } from '@/theme/theme'
+import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
 
 type Stage = 'design' | 'setup' | 'production' | 'finishing' | 'packing'
 const STAGES: Stage[] = ['design', 'setup', 'production', 'finishing', 'packing']
@@ -308,9 +309,9 @@ export default function AdminSchedulePage() {
       {/* Header */}
       <Stack direction="row" alignItems="flex-start" justifyContent="space-between" mb={3} flexWrap="wrap" gap={2}>
         <Box>
-          <Typography variant="h5" component="h1" fontWeight={700} sx={{ color: brandTokens.forgeGold }}>
+          <AdminPageHeading color={brandTokens.forgeGold}>
             Production Queue
-          </Typography>
+          </AdminPageHeading>
           <Typography variant="body2" sx={{ color: alpha(brandTokens.parchment, 0.62) }} mt={0.5}>
             Machine scheduling blocks linked to orders and custom requests.
           </Typography>
@@ -404,6 +405,7 @@ export default function AdminSchedulePage() {
       {/* Filters */}
       <Stack direction="row" spacing={2} mb={3} flexWrap="wrap" gap={2} alignItems="center">
         <Select
+          aria-label="Filter by stage"
           value={stageFilter}
           onChange={(e) => setStageFilter(e.target.value as Stage | 'all')}
           size="small"
@@ -602,6 +604,7 @@ export default function AdminSchedulePage() {
               fullWidth
             />
             <Select
+              aria-label="Stage"
               value={form.stage}
               onChange={(e) => setForm((f) => ({ ...f, stage: e.target.value as Stage }))}
               size="small"

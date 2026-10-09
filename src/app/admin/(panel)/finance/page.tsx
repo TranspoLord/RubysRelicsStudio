@@ -13,6 +13,7 @@ import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
 
 import { brandTokens } from '@/theme/theme'
+import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
 
 type OrderPath = 'all' | 'shop' | 'ready_made' | 'custom'
 type LaborStage = 'design' | 'setup' | 'production' | 'finishing' | 'packing'
@@ -247,9 +248,9 @@ export default function AdminFinancePage() {
 
   return (
     <Box sx={{ display: 'grid', gap: 2 }}>
-      <Typography variant="h3" component="h1">
+      <AdminPageHeading>
         Finance and Labor Analytics
-      </Typography>
+      </AdminPageHeading>
       <Typography sx={{ color: alpha(brandTokens.parchment, 0.66) }}>
         Review sales, margin, machine capacity, and labor performance from one admin surface.
       </Typography>
@@ -399,7 +400,12 @@ export default function AdminFinancePage() {
             }}
           >
             <Typography sx={{ fontWeight: 700, mb: 1 }}>Labor Stage Breakdown</Typography>
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            {finance.laborByStage.length === 0 ? (
+              <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.75rem' }}>
+                No labor recorded yet.
+              </Typography>
+            ) : (
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               {finance.laborByStage.map((stage) => (
                 <Box
                   key={stage.stage}
@@ -420,6 +426,7 @@ export default function AdminFinancePage() {
                 </Box>
               ))}
             </Stack>
+              )}
           </Box>
         </>
       ) : null}

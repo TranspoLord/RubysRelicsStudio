@@ -11,6 +11,7 @@ import Button from '@mui/material/Button'
 import Alert from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import { brandTokens } from '@/theme/theme'
+import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
 
 interface SettingsFormData {
   guest_order_tracking: {
@@ -130,7 +131,7 @@ export default function AdminSettingsPage() {
   if (!settings) {
     return (
       <Box sx={{ display: 'grid', gap: 1.1 }}>
-        <Typography variant="h4" component="h1">Settings</Typography>
+        <AdminPageHeading>Settings</AdminPageHeading>
         <Alert severity="error">Failed to load settings</Alert>
       </Box>
     )
@@ -141,7 +142,7 @@ export default function AdminSettingsPage() {
   return (
     <Box sx={{ display: 'grid', gap: 2.2 }}>
       <Box>
-        <Typography variant="h4" component="h1">Settings</Typography>
+        <AdminPageHeading>Settings</AdminPageHeading>
         <Typography sx={{ color: alpha(brandTokens.parchment, 0.65), mt: 0.5 }}>
           Manage storefront operational settings and customer experience toggles.
         </Typography>

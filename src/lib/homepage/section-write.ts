@@ -96,3 +96,62 @@ export async function saveHomepageSection(
 
   return { ok: true, created: true }
 }
+
+export type HomepageSectionOrderResult =
+  | { ok: true }
+  | { ok: false; error: string }
+
+/**
+ * Writes a section's `sort_order` (OCT-24). This is the one place the column is
+ * written on purpose — `saveHomepageSection` deliberately leaves it alone on the
+ * update path (§7.2), but a *reorder* is exactly an update to `sort_order`.
+ *
+ * It still shares `saveHomepageSection`'s load-bearing guarantee: a PostgREST
+ * update matching zero rows is not an error, so the create branch makes a
+ * row-less key (e.g. `shop_all_preview`) orderable instead of silently no-oping
+ * — the §7.3 failure mode. The created row is `is_visible: true`, matching the
+ * row-less default in `orderHomepageSections()` (rule (a): only an explicit
+ * `false` hides a section).
+ */
+export async function saveHomepageSectionOrder(
+  sectionKey: HomepageSectionKey,
+  sortOrder: number
+): Promise<HomepageSectionOrderResult> {
+  const supabase = getSupabaseAdmin()
+
+  const fields = { sort_order: sortOrder, updated_at: new Date().toISOString() }
+
+  // ── 1. Update the existing row (the steady-state path) ─────────────────────
+  const updated = await supabase
+    .from(TABLE)
+    .update(fields)
+    .eq('section_key', sectionKey)
+    .select('section_key')
+
+  if (updated.error) {
+    return { ok: false, error: updated.error.message }
+  }
+
+  if ((updated.data ?? []).length > 0) {
+    return { ok: true }
+  }
+
+  // ── 2. No row matched → create it at the requested order ───────────────────
+  const created = await supabase
+    .from(TABLE)
+    .upsert(
+      { section_key: sectionKey, is_visible: true, ...fields },
+      { onConflict: 'section_key' }
+    )
+    .select('section_key')
+
+  if (created.error) {
+    return { ok: false, error: created.error.message }
+  }
+
+  if ((created.data ?? []).length === 0) {
+    return { ok: false, error: `No row was written for section "${sectionKey}".` }
+  }
+
+  return { ok: true }
+}

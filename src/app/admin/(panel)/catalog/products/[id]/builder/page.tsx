@@ -17,6 +17,7 @@ import InputAdornment from '@mui/material/InputAdornment'
 
 import { brandTokens } from '@/theme/theme'
 import { optionTypeLabel, asNumber, hasAutoOption, getProcessAutoOption, makeLocalId } from '@/components/admin/product-builder/utils/helpers'
+import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
 
 interface CategoryOption {
   key: string
@@ -1031,9 +1032,9 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
           background: cardSurface(brandTokens.copper, 0.06),
         }}
       >
-        <Typography variant="h5" component="h1">
+        <AdminPageHeading>
           Product Description
-        </Typography>
+        </AdminPageHeading>
 
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
           <TextField
@@ -1055,7 +1056,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
           <Select
             size="small"
-            label="Category"
+            aria-label="Category"
             value={product.category_key}
             onChange={(event) => updateProduct('category_key', event.target.value)}
             sx={{ minWidth: 260 }}
@@ -1420,6 +1421,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
             onChange={(event) => setVariantSortOrder(event.target.value)}
           />
           <Select
+            aria-label="Variant enabled"
             size="small"
             value={variantEnabled ? 'enabled' : 'disabled'}
             onChange={(event) => setVariantEnabled(event.target.value === 'enabled')}
@@ -1490,6 +1492,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
                         sx={{ width: 100 }}
                       />
                       <Select
+                        aria-label="Variant enabled"
                         size="small"
                         value={editVariantEnabled ? 'enabled' : 'disabled'}
                         onChange={(event) => setEditVariantEnabled(event.target.value === 'enabled')}
@@ -1718,6 +1721,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
               slotProps={{ htmlInput: { min: 2 } }}
             />
             <Select
+              aria-label="Combo discount type"
               size="small"
               value={newComboDiscountType}
               onChange={(event) => setNewComboDiscountType(event.target.value as 'percent' | 'fixed_amount' | 'cheapest_free')}
@@ -1784,6 +1788,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
 
         {/* Type selector — drives which fields show below */}
         <Select
+          aria-label="Bulk discount type"
           size="small"
           value={discountType}
           onChange={(event) => setDiscountType(event.target.value as 'percent' | 'fixed_amount' | 'unit_price' | 'stepped')}
@@ -1965,6 +1970,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
             sx={{ width: 160 }}
           />
           <Select
+            aria-label="Option type"
             size="small"
             value={newOptionType}
             onChange={(event) => setNewOptionType(event.target.value as OptionType)}
@@ -2047,6 +2053,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
                         sx={{ width: 160 }}
                       />
                       <Select
+                        aria-label="Option type"
                         size="small"
                         value={editOptionType}
                         onChange={(event) => setEditOptionType(event.target.value as OptionType)}

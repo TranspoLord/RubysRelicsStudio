@@ -4,6 +4,10 @@ import { alpha } from '@mui/material/styles'
 
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { brandTokens } from '@/theme/theme'
+import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
+import { adminModuleMetadata } from '@/lib/admin/admin-modules'
+
+export const metadata = adminModuleMetadata('/admin')
 
 async function getDashboardStats() {
   const supabase = getSupabaseAdmin()
@@ -93,9 +97,9 @@ export default async function AdminDashboardPage() {
 
   return (
     <Box sx={{ display: 'grid', gap: 2 }}>
-      <Typography variant="h3" component="h1">
+      <AdminPageHeading>
         Admin Dashboard
-      </Typography>
+      </AdminPageHeading>
       <Typography sx={{ color: alpha(brandTokens.parchment, 0.66) }}>
         Protected operations shell with quick access to the expansion storefront modules.
       </Typography>

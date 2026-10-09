@@ -4,11 +4,12 @@ import { alpha } from '@mui/material/styles'
 import Button from '@mui/material/Button'
 import Link from 'next/link'
 import { brandTokens } from '@/theme/theme'
+import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
 
 export default function AdminPricingPage() {
   return (
     <Box sx={{ display: 'grid', gap: 1.3 }}>
-      <Typography variant="h4" component="h1">Pricing</Typography>
+      <AdminPageHeading>Pricing</AdminPageHeading>
       <Typography sx={{ color: alpha(brandTokens.parchment, 0.65) }}>
         Pricing controls are currently managed from Catalog product editing, including
         base prices, variant deltas, option value deltas, bulk tiers, and server-side

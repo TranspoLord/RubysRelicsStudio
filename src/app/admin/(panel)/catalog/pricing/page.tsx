@@ -13,6 +13,7 @@ import { alpha } from '@mui/material/styles'
 import Link from 'next/link'
 
 import { brandTokens } from '@/theme/theme'
+import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
 
 interface PromoCodeRow {
   id: string
@@ -370,9 +371,9 @@ export default function StorePricingPage() {
       </Box>
 
       <Box>
-        <Typography variant="h5" component="h1" sx={{ mb: 0.5 }}>
+        <AdminPageHeading>
           Store Pricing & Promotions
-        </Typography>
+        </AdminPageHeading>
         <Typography sx={{ color: alpha(brandTokens.parchment, 0.65) }}>
           Manage store-wide discount codes, bundle deals, and promotional pricing
         </Typography>

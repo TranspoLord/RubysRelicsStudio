@@ -16,6 +16,7 @@ import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
 
 import { brandTokens } from '@/theme/theme'
+import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
 
 interface CustomRequestRow {
   id: string
@@ -416,9 +417,9 @@ export default function AdminCustomRequestsPage() {
 
   return (
     <Box sx={{ display: 'grid', gap: 1.4 }}>
-      <Typography variant="h4" component="h1">
+      <AdminPageHeading>
         Custom Requests
-      </Typography>
+      </AdminPageHeading>
       <Typography sx={{ color: alpha(brandTokens.parchment, 0.62) }}>
         Review intake requests with search/filters, send and resend quotes, extend expiry, and hand off paid requests to production.
       </Typography>
@@ -435,6 +436,7 @@ export default function AdminCustomRequestsPage() {
           }}
         />
         <Select
+          aria-label="Filter requests by status"
           size="small"
           value={status}
           onChange={(event) => setStatus(event.target.value as StatusFilter)}
@@ -455,6 +457,7 @@ export default function AdminCustomRequestsPage() {
           variant="contained"
           disabled={runningRecoveryBatch}
           onClick={() => void runRecoveryBatch()}
+          sx={{ whiteSpace: 'nowrap' }}
         >
           {runningRecoveryBatch ? 'Sending reminders...' : 'Run Recovery Reminders'}
         </Button>
@@ -497,10 +500,20 @@ export default function AdminCustomRequestsPage() {
               }}
             >
               <Typography sx={{ fontWeight: 700, fontSize: '0.86rem' }}>
-                {row.id}
+                {row.customer_name || row.customer_email || 'Unknown customer'}
               </Typography>
               <Typography sx={{ color: alpha(brandTokens.parchment, 0.65), fontSize: '0.77rem' }}>
-                {row.customer_name} · {row.customer_email} · {row.item_type} · Qty {row.quantity}
+                {row.customer_email} · {row.item_type} · Qty {row.quantity}
+              </Typography>
+              <Typography
+                sx={{
+                  color: alpha(brandTokens.parchment, 0.62),
+                  fontSize: '0.75rem',
+                  fontFamily: 'ui-monospace, monospace',
+                  mt: 0.2,
+                }}
+              >
+                {row.id.slice(0, 8)}…
               </Typography>
               <Typography sx={{ color: alpha(brandTokens.parchment, 0.62), fontSize: '0.75rem', mt: 0.2 }}>
                 Status: {prettyStatus(row.status)}

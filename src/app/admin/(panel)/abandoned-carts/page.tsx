@@ -18,6 +18,7 @@ import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
 
 import { brandTokens } from '@/theme/theme'
+import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
 
 interface CartCaptureRow {
   id: string
@@ -102,9 +103,9 @@ export default function AdminAbandonedCartsPage() {
     <Box sx={{ p: 3, maxWidth: 1100 }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" mb={3} flexWrap="wrap" gap={2}>
         <Box>
-          <Typography variant="h5" component="h1" fontWeight={700} color={brandTokens.forgeGold}>
+          <AdminPageHeading color={brandTokens.forgeGold}>
             Abandoned Cart Recovery
-          </Typography>
+          </AdminPageHeading>
           <Typography variant="body2" color="text.secondary" mt={0.5}>
             Pre-checkout captures and expired Stripe sessions awaiting recovery emails.
           </Typography>

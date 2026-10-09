@@ -15,6 +15,7 @@ import ArrowBack from '@mui/icons-material/ArrowBack'
 import Link from 'next/link'
 
 import { brandTokens } from '@/theme/theme'
+import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
 
 interface FutureProductRow {
   id: string
@@ -120,14 +121,14 @@ export default function FutureProductsAdminPage() {
 
   return (
     <Box sx={{ display: 'grid', gap: 1.4 }}>
-      <IconButton component={Link} href="/admin/catalog" sx={{ p: 0.5, ml: -0.5 }}>
+      <IconButton component={Link} href="/admin/catalog" aria-label="Back to catalog" sx={{ p: 0.5, ml: -0.5, justifySelf: 'start' }}>
         <ArrowBack />
       </IconButton>
 
       <Box>
-        <Typography variant="h5" component="h1" sx={{ mb: 0.5 }}>
+        <AdminPageHeading>
           Future Products Management
-        </Typography>
+        </AdminPageHeading>
         <Typography sx={{ color: alpha(brandTokens.parchment, 0.65) }}>
           Create and manage roadmap entries for the public future-products page.
         </Typography>

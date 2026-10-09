@@ -201,20 +201,33 @@ recorded in `SEPT_IMPLEMENTATION_PLAN.md` → "Batch execution log".
 
 ### OCT-20 (Medium) — 16 panel `<Select>` elements still have no accessible name, and admin titles are client-side only.
 
-- **Selects:** the panel has 30; 14 were named in Batch 5 (that item's named scope). The remaining **16**, exactly
-  as located: `catalog/products/new/page.tsx:174`; `catalog/products/[id]/page.tsx:699,744`;
+- **Selects:** ✅ **DONE (2026-10-01, Batch 11).** Re-derived with the source scan (still exactly **16**), named
+  each with a descriptive `aria-label` (`Category`, `Variant enabled`, `Combo discount type`, `Bulk discount type`,
+  `Option type`, `Option for value`, `Discount type`, `Filter requests by status`, `Filter by stage`, `Stage`,
+  `Country`), and replaced the one orphaned `label="Category"` (a bare `label` with no `FormControl`/`InputLabel`
+  renders no name). Added a repo-wide guard in `admin-a11y.contract.test.ts` — "no panel Select is nameless" —
+  that walks every admin page and fails on any `<Select` whose opening tag lacks `aria-label`/`aria-labelledby`/
+  `labelId`, plus a planted-offence case. 409 tests green.
+
+  The original (now-superseded) list: `catalog/products/new/page.tsx:174`; `catalog/products/[id]/page.tsx:699,744`;
   `catalog/products/[id]/builder/page.tsx:1056,1422,1492,1720,1786,1967,2049`;
   `catalog/products/[id]/pricing/page.tsx:323,372`; `custom-requests/page.tsx:437`; `schedule/page.tsx:406,604`;
-  `shipping/debug/page.tsx:145`. **Note the counts move** — that list is line-based, so re-derive it with the
-  same scan before starting, and add the guard test *after* the last one is fixed (a guard that fails today is
-  a guard someone switches off).
-- **SSR metadata:** `document.title` is set client-side (the panel mixes 13 client pages with server pages, and
-  a client component cannot export `metadata`). User-visible tabs/bookmarks are fixed; the pre-hydration title
-  is still the root default. The SSR-authentic routes are either a `layout.tsx` per admin segment exporting
-  `metadata` (~20 small files) or a `generateMetadata()` in the panel layout fed by a pathname header from the
-  proxy — the second touches the auth-critical proxy (§10.5), which is why it was not done speculatively.
+  `shipping/debug/page.tsx:145`.
+- **SSR metadata:** ✅ **DONE (2026-10-01, Batch 11).** `document.title` was set client-side, so the pre-hydration
+  title was the root default. `ADMIN_MODULES` and the `AdminModuleLink` shape are now the single source of truth
+  in `src/lib/admin/admin-modules.ts`, with `adminModuleMetadata(href)` returning `{ title }` resolved by the same
+  `activeAdminModuleLabel()` the shell uses. Eleven module-segment `layout.tsx` files (one per module; nested
+  routes inherit their parent's title via longest-match) plus the dashboard `page.tsx` export the server title, and
+  the root layout's `title.template` appends ` | Ruby's Relics Studio` — so SSR and post-hydration titles agree.
+  The proxy was **not** touched (the per-`layout.tsx` option was chosen over the proxy-fed `generateMetadata`).
+  Guarded by `admin-modules.test.ts` (map self-consistency + no drift). 423 tests green.
 
 ### OCT-21 (Low, visual) — the admin `h1` renders at 30 / 24 / 20 px depending on the route.
+
+> ✅ **DONE (2026-10-01, Batch 11).** Added `src/components/admin/AdminPageHeading.tsx`
+> (`variant="h4"` = 24 px, standard `mb: 0.5`, optional `color` for the two gold-tinted titles) and
+> replaced every `variant="h3"|"h4"|"h5" component="h1"` across the 23 panel pages. `admin-a11y.contract.test.ts`
+> now asserts the shared component carries the `h1` rather than each page. 407 tests green.
 
 - Each page overrides `fontSize` inline (`variant="h4"` / `"h5"`), so no theme edit can unify them. It is a
   consistency nit, not a WCAG failure, and it is an **admin-route** visual claim — **now measurable**: Batch 8
@@ -269,6 +282,15 @@ recorded in `SEPT_IMPLEMENTATION_PLAN.md` → "Batch execution log".
   cannot appear unnoticed.
 
 ### OCT-24 (Medium) — nothing can *set* `sort_order` yet.
+
+> ✅ **DONE (2026-10-01, Batch 11).** `saveHomepageSectionOrder()` (`section-write.ts`) is the one place the
+> column is written on purpose — it updates `sort_order` and, on a 0-row update, creates the row
+> (`is_visible: true`, matching the row-less default) so ordering `shop_all_preview` can't silently no-op.
+> `PUT /api/admin/homepage/sections` validates a permutation of the 16 renderable keys and writes
+> `sort_order = index` for each, with an audit entry. `/admin/homepage` now renders sections in their live
+> `sort_order` (via `orderHomepageSections()`), shows ↑/↓ controls on every non-hero renderable section
+> (hero pinned first; `hero_collage` is hero content, not a section, so it is not reorderable), and persists on
+> each move. 419 tests green, incl. 3 new `saveHomepageSectionOrder` cases and 4 new `PUT` route cases.
 
 - `orderHomepageSections()` honours the column, but the CMS panel exposes visibility and content only, so
   reordering a section still means editing SQL. The fix is a reorder control (up/down or drag) on
@@ -390,7 +412,7 @@ recorded in `SEPT_IMPLEMENTATION_PLAN.md` → "Batch execution log".
   references (several sections, incl. §7's "re-run the harness" pointer and §8's severity table) or move the
   findings doc back next to `UI_AUDIT.md`. Re-verification instructions pointing at a path that no longer
   exists are worse than no instructions.
-- **OCT-12 (Todo) — §1.5 `npm audit` high:** `@xmldom/xmldom` is a direct dependency (`^0.9.10`) with a
+- **OCT-12 (Todo) — §1.5 `npm audit` high. ✅ RESOLVED (2026-10-01, Batch 9, subsumed by OCT-30).** `npm audit fix` cleared all four advisories (see OCT-30), so there is nothing further here. Originally: `@xmldom/xmldom` was a direct dependency (`^0.9.10`) with a
   high-severity advisory range; confirm what consumes it (it is not obviously reachable from the app
   surface), then bump inside the range or drop it, and re-run `npm run test:security`. Keep this in a batch
   of its own so the lockfile diff stays reviewable.
@@ -403,13 +425,13 @@ recorded in `SEPT_IMPLEMENTATION_PLAN.md` → "Batch execution log".
   `src/proxy.test.ts` mocks the session layer, so it is deterministic either way). If it does load, at least
   one existing test may be reading ambient configuration — that would make the suite environment-dependent,
   which is worth knowing before trusting a red/green result.
-- **OCT-15 (Low) — the theme stores its CTA label colour twice.** `theme.ts` declares
+- **OCT-15 (Low) — the theme stores its CTA label colour twice. Still open (verified 2026-10-01): the literal `#0C0A07` still appears 3× (`theme.ts` contrastText ×2 + `containedPrimary.color`).** `theme.ts` declares
   `palette.primary.contrastText: '#0C0A07'` **and** repeats the literal in
   `MuiButton.styleOverrides.containedPrimary.color`, so a palette change can silently split the two.
   `src/theme/theme.test.ts` now pins them equal, which converts "silently split" into a failing test — but the
   duplicate should become a shared constant when Batch 4 edits the theme anyway (it adds the
   `&.Mui-disabled` branch in the same style-overrides object).
-- **OCT-16 (Low, Batch 7) — `CONTENT_SECTION_KEYS` is declared but never read.**
+- **OCT-16 (Low, Batch 7) — `CONTENT_SECTION_KEYS` is declared but never read. Still open (verified 2026-10-01): the set is still declared at `route.ts:12` with zero reads.**
   `src/app/api/admin/homepage/sections/[key]/route.ts` still declares
   `CONTENT_SECTION_KEYS = {quick_picks, process_picks, hero_collage, shop_all_preview,
   future_products_notify}` and nothing consumes it: the route dispatches with explicit `sectionKey ===` checks.
@@ -417,7 +439,7 @@ recorded in `SEPT_IMPLEMENTATION_PLAN.md` → "Batch execution log".
   read as enforced policy to the next person editing the route. Either delete it (with the §7.3 write path it
   no longer carries information) or enforce it with a test that every key in the set takes the content branch
   and every other key is visibility-only. Noticed while rewiring the five writers in Batch 3.
-- **OCT-17 (Low, hygiene) — `supabase/.temp/cli-latest` is tracked in git.** Running any
+- **OCT-17 (Low, hygiene) — `supabase/.temp/cli-latest` is tracked in git. Partially resolved (verified 2026-10-01): the `.gitignore` rule now exists, but the file is still tracked — a `git rm --cached supabase/.temp/cli-latest` remains.** Running any
   `npx supabase …` command rewrites this CLI version-check cache, so a read-only `db query --linked` (all
   Batch 3 needed) produced a spurious diff (`v2.117.0` → `v2.118.0`). It was reverted, but the next person
   running the CLI will hit it again. §6 of the September plan states "`supabase/.temp` and `.env` are
@@ -456,6 +478,46 @@ recorded in `SEPT_IMPLEMENTATION_PLAN.md` → "Batch execution log".
   **Recommendation:** treat "browser-dependent verification" as a first-class dependency, exactly like the
   migration-history baseline (§1.1). If a preview deploy + a browser is available to you, say so and I will
   write the probe as a script that runs against it; otherwise Batch 5 should not claim visual fixes.
+
+---
+
+### Open items carried from SEPT (added 2026-10-01 cleanup)
+
+These were open in the September plan but not yet tracked here. Grouped by source section; each is a real
+TODO, not a status change — re-batch them as they become priorities. (Already-closed-by-owner items are
+listed at the end so they are not re-opened.)
+
+- **§1.3 (Medium)** — route-level regression tests for the Square checkout promo + required-shipping
+  validation (`src/app/api/square/` has no test files).
+- **§2.2 (Medium)** — gift-ideas route + gift-message capture in checkout (no `gift-ideas`/`gift_message`
+  anywhere in `src/`).
+- **§2.6 (Medium)** — Art Guard restricted-artwork review workflow in admin (no `art-guard`/
+  `restricted_artwork` in `src/`).
+- **§2.7 (Low, decision)** — pricing-module consolidation: `/admin/pricing` and `/admin/catalog/pricing`
+  both still exist (also flagged in `REMEDIATION_PLAN_2026-10-06.md`).
+- **§2.8 (Medium)** — WCAG 2.2 AA remediation completion: `/admin`, the product designer, Square's hosted
+  checkout and real-device rendering are still un-audited (the storefront audit half shipped as §8).
+- **§2.11 (Medium)** — real-device + performance (LCP/CLS) pass; responsiveness is capture-based only.
+- **§2.13 (Medium)** — broader low-stock / capacity / status notification orchestration (only the
+  back-in-stock + capacity processors exist).
+- **§2.14 (Medium)** — tax-calculation strategy hardening + financial reconciliation checks (no evidence).
+- **§3.5 (Medium)** — `[id]` CRUD routes for future products / statuses / responses.
+- **§3.6 (Medium)** — tabbed admin UI (Products | Statuses | Responses) with edit/delete/reorder.
+- **§3.7 (Low)** — dedicated future-products query module (`src/lib/supabase/queries/` lacks it).
+- **§3.8 (Low)** — `FutureProductsNotifyCard` respects `future_products_notify_form.enabled` at the
+  component level (the gate currently lives one level up in `page.tsx`).
+- **§3.10 (Medium, decision)** — rich-text sanitization (Tiptap editor + server-side sanitize).
+- **§3.11 (Low)** — analytics events: add a `FutureProductsNotifyCard` client event + verify in the Vercel
+  dashboard (the grid + hero events already fire).
+- **§4.1 (Medium)** — per-product template governance (bleed / safe-area) enforcement layer.
+- **§4.2 (Medium)** — upload-token rebind/refresh UX for expired tokens (expiry is enforced, no recovery flow).
+- **§4.3 (Low)** — remaining designer integration tests (close/reopen, order snapshots, abuse matrix).
+- **§4.4 (Low, future)** — interactive 3D (boundary contract only; version 2.x schema when needed).
+- **§8.8 (Low)** — mobile funnel length (9,073 px homepage; the copy/structure half is also filed as OCT-26).
+- **§10.13 (Low, ops)** — remove the retired custom-session env vars from Vercel (the repo half is already done).
+
+Not carried — owner decisions already closed in SEPT: §2.15 multi-carrier (stay Shippo), §9.8 (obsolete),
+§10.16 (mandatory TOTP) and §10.17 ("sign out everywhere").
 
 ---
 

@@ -15,6 +15,7 @@ import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
 
 import { brandTokens } from '@/theme/theme'
+import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
 
 type StockStatus = 'forced_in_stock' | 'forced_out_of_stock' | 'in_stock' | 'low_stock' | 'out_of_stock' | 'untracked'
 
@@ -300,7 +301,7 @@ export default function AdminInventoryPage() {
 
   return (
     <Box sx={{ display: 'grid', gap: 1.1 }}>
-      <Typography variant="h4" component="h1">Inventory</Typography>
+      <AdminPageHeading>Inventory</AdminPageHeading>
       <Typography sx={{ color: alpha(brandTokens.parchment, 0.65) }}>
         Control ready-made stock, low-stock thresholds, availability overrides, and bulk adjustments.
       </Typography>
@@ -377,7 +378,7 @@ export default function AdminInventoryPage() {
         <Typography sx={{ fontWeight: 700 }}>Inventory Config</Typography>
 
         {!selectedProduct ? (
-          <Alert severity="info">Pick a product from the list below to edit stock settings.</Alert>
+          <Alert severity="info" role="status">Pick a product from the list below to edit stock settings.</Alert>
         ) : (
           <>
             <Typography sx={{ fontSize: '0.8rem', color: alpha(brandTokens.parchment, 0.68) }}>
@@ -543,7 +544,7 @@ export default function AdminInventoryPage() {
           <CircularProgress />
         </Box>
       ) : products.length === 0 ? (
-        <Alert severity="info">No ready-made products were found for inventory control.</Alert>
+        <Alert severity="info" role="status">No ready-made products were found for inventory control.</Alert>
       ) : (
         <Box sx={{ display: 'grid', gap: 0.8 }}>
           {products.map((row) => (

@@ -18,7 +18,8 @@ vi.mock('@/lib/supabase/client', () => ({
   getSupabaseAdmin: mocks.getSupabaseAdmin,
 }))
 
-import { GET, PATCH } from './route'
+import { GET, PATCH, PUT } from './route'
+import { RENDERABLE_HOMEPAGE_SECTIONS } from '@/lib/homepage/section-order'
 
 const QUICK_PICKS_ROW = {
   section_key: 'quick_picks',
@@ -293,5 +294,84 @@ describe('PATCH /api/admin/homepage/sections', () => {
 
     expect(response.status).toBe(401)
     expect(payload.error).toBe('Unauthorized admin request.')
+  })
+})
+
+describe('PUT /api/admin/homepage/sections (reorder, OCT-24)', () => {
+  const RENDERABLE_KEYS = [...RENDERABLE_HOMEPAGE_SECTIONS] as string[]
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAdminApiSession.mockResolvedValue({ ok: true, context: {} })
+    mocks.writeAdminAuditLog.mockResolvedValue(undefined)
+  })
+
+  it('writes sort_order = index for each renderable key and audits success', async () => {
+    const writeMock = makeWriteSupabase()
+    mocks.getSupabaseAdmin.mockReturnValue(writeMock)
+
+    const request = new Request('http://localhost/api/admin/homepage/sections', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderedKeys: RENDERABLE_KEYS }),
+    })
+    const response = await PUT(request)
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(payload).toEqual({ ok: true })
+    expect(writeMock.calls.updateFn).toHaveBeenCalledTimes(RENDERABLE_KEYS.length)
+    expect(writeMock.calls.updateFn.mock.calls[0][0].sort_order).toBe(0) // hero pinned first
+    expect(writeMock.calls.updateFn.mock.calls[RENDERABLE_KEYS.length - 1][0].sort_order).toBe(RENDERABLE_KEYS.length - 1)
+    expect(mocks.writeAdminAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'homepage.sections.reorder', status: 'success' })
+    )
+  })
+
+  it('returns 400 when orderedKeys is missing a key', async () => {
+    mocks.getSupabaseAdmin.mockReturnValue(makeWriteSupabase())
+
+    const request = new Request('http://localhost/api/admin/homepage/sections', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderedKeys: RENDERABLE_KEYS.slice(0, RENDERABLE_KEYS.length - 1) }),
+    })
+    const response = await PUT(request)
+    const payload = await response.json()
+
+    expect(response.status).toBe(400)
+    expect(payload.error).toMatch(/exactly 16 renderable sections/i)
+  })
+
+  it('returns 400 when a key is duplicated', async () => {
+    mocks.getSupabaseAdmin.mockReturnValue(makeWriteSupabase())
+    const dup = [...RENDERABLE_KEYS]
+    dup[1] = dup[0]
+
+    const request = new Request('http://localhost/api/admin/homepage/sections', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderedKeys: dup }),
+    })
+    const response = await PUT(request)
+    const payload = await response.json()
+
+    expect(response.status).toBe(400)
+    expect(payload.error).toMatch(/permutation/i)
+  })
+
+  it('returns 500 when a key cannot be written at all', async () => {
+    mocks.getSupabaseAdmin.mockReturnValue(makeWriteSupabase({ updatedRows: [], insertedRows: [] }))
+
+    const request = new Request('http://localhost/api/admin/homepage/sections', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderedKeys: RENDERABLE_KEYS }),
+    })
+    const response = await PUT(request)
+    const payload = await response.json()
+
+    expect(response.status).toBe(500)
+    expect(payload.error).toMatch(/failed to reorder/i)
   })
 })

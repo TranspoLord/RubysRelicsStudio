@@ -13,6 +13,7 @@ import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
 
 import { brandTokens } from '@/theme/theme'
+import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
 
 type OrderStatus =
   | 'awaiting_payment'
@@ -276,7 +277,7 @@ export default function AdminOrdersPage() {
 
   return (
     <Box sx={{ display: 'grid', gap: 1.1 }}>
-      <Typography variant="h4" component="h1">Orders</Typography>
+      <AdminPageHeading>Orders</AdminPageHeading>
       <Typography sx={{ color: alpha(brandTokens.parchment, 0.65) }}>
         Guarded status transitions, production hooks, internal notes, and cancellation/refund action trails.
       </Typography>
@@ -326,7 +327,7 @@ export default function AdminOrdersPage() {
             <CircularProgress />
           </Box>
         ) : orders.length === 0 ? (
-          <Alert severity="info">No orders matched the current filters.</Alert>
+          <Alert severity="info" role="status">No orders matched the current filters.</Alert>
         ) : (
           <Box sx={{ display: 'grid', gap: 0.8 }}>
             {orders.map((order) => (

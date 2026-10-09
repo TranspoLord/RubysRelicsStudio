@@ -16,7 +16,7 @@ export default function ProductDetailLayout({
   return (
     <Box sx={{ display: 'grid', gap: 2 }}>
       <Box>
-        <IconButton component={Link} href="/admin/catalog/products" sx={{ p: 0.5, ml: -0.5 }}>
+        <IconButton component={Link} href="/admin/catalog/products" aria-label="Back to products" sx={{ p: 0.5, ml: -0.5, justifySelf: 'start' }}>
           <ArrowBack />
         </IconButton>
       </Box>

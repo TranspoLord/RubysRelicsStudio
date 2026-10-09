@@ -78,15 +78,22 @@ describe('panel pages have a top-level heading (§9.11)', () => {
     it(`${file.split('/').slice(-2)[0]} declares an h1 on its title`, () => {
       const code = stripComments(readSourceFile(file))
       // The h1 must be the element carrying the page's own title text.
-      expect(code).toMatch(new RegExp(`component="h1"[\\s\\S]{0,240}${title}`))
+      expect(code).toMatch(new RegExp(`AdminPageHeading[\\s\\S]{0,240}${title}`))
     })
   }
 
   for (const file of withDynamicTitle) {
     it(`${file.split('/').slice(-2)[0]} declares an h1`, () => {
-      expect(stripComments(readSourceFile(file))).toContain('component="h1"')
+      expect(stripComments(readSourceFile(file))).toContain('<AdminPageHeading')
     })
   }
+
+  it('the shared heading component itself renders the h1', () => {
+    // OCT-21: `component="h1"` now lives in AdminPageHeading, so this is the
+    // single place the "page title is an h1" guarantee has to hold.
+    const source = stripComments(readSourceFile('src/components/admin/AdminPageHeading.tsx'))
+    expect(source).toMatch(/variant="h4"\s+component="h1"/)
+  })
 
   it('no longer jumps from h1 straight to h6', () => {
     const files = [
@@ -131,4 +138,63 @@ describe('no Typography omits the heading component (§8.7)', () => {
     )
   })
 })
+
+describe('no panel Select is nameless (§9.7 / OCT-20)', () => {
+  // OCT-20: the audit found 16 `<Select>` elements in the panel with no
+  // accessible name (no aria-label, no FormControl/InputLabel labelId). This
+  // walks every admin page and fails if any Select's opening tag lacks a
+  // naming attribute.
+  const NAME_ATTR = /aria-label|aria-labelledby|labelId=/
+
+  function unnamedSelectLines(): string[] {
+    const offenders: string[] = []
+
+    for (const file of listSourceFiles()) {
+      const rel = relativeSourcePath(file)
+      if (!rel.startsWith('/src/app/admin/')) continue
+      const lines = readSourceFile(rel.slice(1)).split(/\r?\n/)
+
+      for (let i = 0; i < lines.length; i++) {
+        if (!/<Select\b/.test(lines[i])) continue
+        let opening = ''
+        for (let j = i; j < Math.min(i + 8, lines.length); j++) {
+          opening += lines[j] + '\n'
+          if (j > i && /<\/?Select\b/.test(lines[j])) break
+        }
+        if (!NAME_ATTR.test(opening)) offenders.push(`${rel}:${i + 1}`)
+      }
+    }
+
+    return offenders
+  }
+
+  it('names every Select', () => {
+    expect(unnamedSelectLines()).toEqual([])
+  })
+
+  it('the scan itself works — it finds a planted nameless Select', () => {
+    expect(NAME_ATTR.test('<Select size="small" value={x}>\n  <MenuItem>a</MenuItem>\n</Select>')).toBe(false)
+    expect(NAME_ATTR.test('<Select aria-label="Discount type" value={x}>')).toBe(true)
+    expect(NAME_ATTR.test('<Select labelId="discount-type-label" value={x}>')).toBe(true)
+  })
+})
+
+describe('the module rail collapses into a Drawer on phones (§9.9)', () => {
+  it('hides the stacked 12-module rail below md, so content is not pushed ~906px down', () => {
+    expect(SHELL_CODE).toContain("display: { xs: 'none', md: 'block' }")
+  })
+
+  it('offers the same module list in a mobile Drawer from a single source of truth', () => {
+    expect(SHELL_CODE).toContain('<Drawer')
+    expect(SHELL_CODE.match(/const moduleNavItems =/g)).toHaveLength(1)
+    expect(SHELL_CODE.match(/\{moduleNavItems\}/g)).toHaveLength(2)
+  })
+
+  it('names the mobile trigger with the current module', () => {
+    expect(SHELL_CODE).toMatch(/Open modules menu/)
+    expect(SHELL_CODE).toMatch(/setMobileNavOpen\(true\)/)
+  })
+})
+
+
 import { activeAdminModuleLabel } from '@/lib/admin/module-nav'

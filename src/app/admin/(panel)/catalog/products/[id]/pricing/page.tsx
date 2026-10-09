@@ -12,6 +12,7 @@ import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
 
 import { brandTokens } from '@/theme/theme'
+import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
 
 interface ProductPricing {
   id: string
@@ -286,9 +287,9 @@ export default function ProductPricingEditorPage({ params }: { params: Promise<{
   return (
     <Box sx={{ display: 'grid', gap: 1.2 }}>
       {/* §9.11: no h1 on this page — it started at h6. */}
-      <Typography variant="h4" component="h1" sx={{ mb: 0.2 }}>
+      <AdminPageHeading>
         Pricing{product ? ` — ${product.title}` : ''}
-      </Typography>
+      </AdminPageHeading>
 
       {error && <Alert severity="error">{error}</Alert>}
       {success && <Alert severity="success">{success}</Alert>}
@@ -320,7 +321,7 @@ export default function ProductPricingEditorPage({ params }: { params: Promise<{
           <TextField size="small" type="number" label="Price delta" value={variantPriceDelta} onChange={(event) => setVariantPriceDelta(event.target.value)} sx={{ width: 150 }} />
           <TextField size="small" type="number" label="Weight" value={variantWeight} onChange={(event) => setVariantWeight(event.target.value)} sx={{ width: 120 }} />
           <TextField size="small" type="number" label="Sort" value={variantSortOrder} onChange={(event) => setVariantSortOrder(event.target.value)} sx={{ width: 110 }} />
-          <Select size="small" value={variantEnabled ? 'enabled' : 'disabled'} onChange={(event) => setVariantEnabled(event.target.value === 'enabled')} sx={{ minWidth: 120 }}>
+          <Select size="small" aria-label="Variant enabled" value={variantEnabled ? 'enabled' : 'disabled'} onChange={(event) => setVariantEnabled(event.target.value === 'enabled')} sx={{ minWidth: 120 }}>
             <MenuItem value="enabled">Enabled</MenuItem>
             <MenuItem value="disabled">Disabled</MenuItem>
           </Select>
@@ -369,7 +370,7 @@ export default function ProductPricingEditorPage({ params }: { params: Promise<{
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
           <TextField size="small" type="number" label="Min qty" value={minQty} onChange={(event) => setMinQty(event.target.value)} sx={{ width: 130 }} />
           <TextField size="small" type="number" label="Max qty" value={maxQty} onChange={(event) => setMaxQty(event.target.value)} sx={{ width: 130 }} />
-          <Select size="small" value={discountType} onChange={(event) => setDiscountType(event.target.value as BulkDiscountRow['discount_type'])} sx={{ minWidth: 180 }}>
+          <Select size="small" aria-label="Discount type" value={discountType} onChange={(event) => setDiscountType(event.target.value as BulkDiscountRow['discount_type'])} sx={{ minWidth: 180 }}>
             {DISCOUNT_TYPE_CHOICES.map((kind) => (
               <MenuItem key={kind} value={kind}>{kind}</MenuItem>
             ))}

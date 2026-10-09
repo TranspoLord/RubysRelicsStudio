@@ -8,9 +8,12 @@ import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
+import Drawer from '@mui/material/Drawer'
 import NotificationsOutlinedIcon from '@mui/icons-material/NotificationsOutlined'
 import SearchIcon from '@mui/icons-material/Search'
 import LogoutOutlinedIcon from '@mui/icons-material/LogoutOutlined'
+import CloseIcon from '@mui/icons-material/Close'
+import MenuIcon from '@mui/icons-material/Menu'
 import { alpha } from '@mui/material/styles'
 import { useRouter } from 'next/navigation'
 import { usePathname } from 'next/navigation'
@@ -18,12 +21,7 @@ import { usePathname } from 'next/navigation'
 import { brandTokens } from '@/theme/theme'
 import { useAuth } from '@/components/auth/AuthProvider'
 import { activeAdminModuleLabel, resolveActiveAdminHref } from '@/lib/admin/module-nav'
-
-export interface AdminModuleLink {
-  label: string
-  href: string
-  description: string
-}
+import { type AdminModuleLink } from '@/lib/admin/admin-modules'
 
 interface AdminShellProps {
   children: React.ReactNode
@@ -64,6 +62,7 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
   const [notifications, setNotifications] = useState<AdminNotificationRow[]>([])
   const [unreadCount, setUnreadCount] = useState(notificationCount)
   const [signingOutOthers, setSigningOutOthers] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   /**
    * §9.6: the active module is the longest href this path is equal to or nested
@@ -204,6 +203,50 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
       setSigningOutOthers(false)
     }
   }
+
+  // §9.9: rendered once, shared by the desktop sidebar and the mobile Drawer so
+  // the two cannot drift apart.
+  const moduleNavItems = moduleLinks.map((mod) => {
+    const active = mod.href === activeModuleHref
+    return (
+      <Box
+        key={mod.href}
+        component="a"
+        href={mod.href}
+        aria-current={active ? 'page' : undefined}
+        onClick={() => setMobileNavOpen(false)}
+        sx={{
+          display: 'block',
+          textDecoration: 'none',
+          borderRadius: 1,
+          px: 1,
+          py: 0.9,
+          mb: 0.5,
+          border: `1px solid ${active ? alpha(brandTokens.forgeGold, 0.45) : 'transparent'}`,
+          backgroundColor: active ? alpha(brandTokens.forgeGold, 0.12) : 'transparent',
+          '&:hover': { backgroundColor: alpha(brandTokens.parchment, 0.05) },
+        }}
+      >
+        <Typography sx={{ color: active ? brandTokens.forgeGold : alpha(brandTokens.parchment, 0.84), fontSize: '0.81rem', fontWeight: 700 }}>
+          {mod.label}
+        </Typography>
+        <Typography
+          sx={{
+            color: alpha(brandTokens.parchment, 0.62),
+            // §8.5 (Batch 8): was 0.7rem = 11.2px. Batch 4 fixed these
+            // descriptions' *colour* (§9.5) but not their size, so the 12
+            // of them on every admin page stayed the smallest text in the
+            // panel — below the 12px floor the audit measures. Same fix as
+            // §7.12's `overline` (0.7rem → 0.75rem).
+            fontSize: '0.75rem',
+            mt: 0.15,
+          }}
+        >
+          {mod.description}
+        </Typography>
+      </Box>
+    )
+  })
 
   return (
     <Box sx={{ minHeight: '100vh', backgroundColor: brandTokens.bgVoid }}>
@@ -410,6 +453,7 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
           component="nav"
           aria-label="Admin modules"
           sx={{
+            display: { xs: 'none', md: 'block' },
             border: `1px solid ${alpha(brandTokens.rubyRed, 0.14)}`,
             borderRadius: 1.8,
             background: panelSurface(brandTokens.copper, 0.72, 0.055),
@@ -417,46 +461,7 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
             height: 'fit-content',
           }}
         >
-          {moduleLinks.map((mod) => {
-            const active = mod.href === activeModuleHref
-            return (
-              <Box
-                key={mod.href}
-                component="a"
-                href={mod.href}
-                aria-current={active ? 'page' : undefined}
-                sx={{
-                  display: 'block',
-                  textDecoration: 'none',
-                  borderRadius: 1,
-                  px: 1,
-                  py: 0.9,
-                  mb: 0.5,
-                  border: `1px solid ${active ? alpha(brandTokens.forgeGold, 0.45) : 'transparent'}`,
-                  backgroundColor: active ? alpha(brandTokens.forgeGold, 0.12) : 'transparent',
-                  '&:hover': { backgroundColor: alpha(brandTokens.parchment, 0.05) },
-                }}
-              >
-                <Typography sx={{ color: active ? brandTokens.forgeGold : alpha(brandTokens.parchment, 0.84), fontSize: '0.81rem', fontWeight: 700 }}>
-                  {mod.label}
-                </Typography>
-                <Typography
-                  sx={{
-                    color: alpha(brandTokens.parchment, 0.62),
-                    // §8.5 (Batch 8): was 0.7rem = 11.2px. Batch 4 fixed these
-                    // descriptions' *colour* (§9.5) but not their size, so the 12
-                    // of them on every admin page stayed the smallest text in the
-                    // panel — below the 12px floor the audit measures. Same fix as
-                    // §7.12's `overline` (0.7rem → 0.75rem).
-                    fontSize: '0.75rem',
-                    mt: 0.15,
-                  }}
-                >
-                  {mod.description}
-                </Typography>
-              </Box>
-            )
-          })}
+          {moduleNavItems}
         </Box>
 
         <Box
@@ -470,9 +475,50 @@ export function AdminShell({ children, notificationCount, moduleLinks }: AdminSh
             overflow: 'visible',
           }}
         >
+          <Box sx={{ display: { xs: 'flex', md: 'none' }, mb: 1.4 }}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<MenuIcon />}
+              onClick={() => setMobileNavOpen(true)}
+              aria-haspopup="dialog"
+              aria-label={`Open modules menu — currently ${activeModuleLabel ?? 'Admin Dashboard'}`}
+              sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
+            >
+              {activeModuleLabel ?? 'Admin Dashboard'}
+            </Button>
+          </Box>
           {children}
         </Box>
       </Box>
+
+      <Drawer
+        anchor="left"
+        open={mobileNavOpen}
+        onClose={() => setMobileNavOpen(false)}
+        PaperProps={{
+          sx: {
+            width: 300,
+            maxWidth: '84vw',
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            backgroundColor: brandTokens.bgSurface,
+            backgroundImage: panelSurface(brandTokens.copper, 0.98, 0.055),
+            borderRight: `1px solid ${alpha(brandTokens.rubyRed, 0.14)}`,
+          },
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1.2, py: 1 }}>
+          <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: brandTokens.forgeGold }}>Modules</Typography>
+          <IconButton aria-label="Close modules menu" size="small" onClick={() => setMobileNavOpen(false)} sx={{ color: alpha(brandTokens.parchment, 0.7) }}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Box>
+        <Box component="nav" aria-label="Admin modules" sx={{ flex: 1, overflowY: 'auto', px: 1, pb: 1 }}>
+          {moduleNavItems}
+        </Box>
+      </Drawer>
     </Box>
   )
 }

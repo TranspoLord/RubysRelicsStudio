@@ -14,6 +14,7 @@ import CircularProgress from '@mui/material/CircularProgress'
 import { alpha } from '@mui/material/styles'
 
 import { brandTokens } from '@/theme/theme'
+import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
 
 const COUNTRY_OPTIONS = ['US', 'CA', 'MX']
 
@@ -83,13 +84,13 @@ export default function AdminShippingDebugPage() {
   return (
     <Box sx={{ display: 'grid', gap: 2.2 }}>
       <Box>
-        <Typography variant="h5" component="h1">Shipping Debug Tool</Typography>
+        <AdminPageHeading>Shipping Debug Tool</AdminPageHeading>
         <Typography sx={{ color: alpha(brandTokens.parchment, 0.65), mt: 0.5 }}>
           Test Shippo rate calculations and address validation. All requests are logged.
         </Typography>
       </Box>
 
-      <Alert severity="warning">
+      <Alert severity="warning" role="status">
         This tool sends live API requests to Shippo. Use only for testing and debugging.
         Ensure SHIPPO_API_TOKEN and SHIPPO_TEST_MODE are configured correctly.
       </Alert>
@@ -143,6 +144,7 @@ export default function AdminShippingDebugPage() {
             />
             
             <Select
+              aria-label="Country"
               value={address.country}
               onChange={(e) => handleInputChange('country', e.target.value)}
               size="small"

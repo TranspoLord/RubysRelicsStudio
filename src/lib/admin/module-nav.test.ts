@@ -4,7 +4,7 @@ import { activeAdminModuleLabel, resolveActiveAdminHref } from '@/lib/admin/modu
 
 /**
  * The hrefs the panel actually ships (`ADMIN_MODULES` in
- * `src/app/admin/(panel)/layout.tsx`), so the matrix below is the real one.
+ * `src/lib/admin/admin-modules.ts`), so the matrix below is the real one.
  */
 const ADMIN_MODULE_HREFS = [
   '/admin',

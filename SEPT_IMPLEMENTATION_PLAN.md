@@ -176,30 +176,44 @@ and §9.7).
     `BreadcrumbList`). Tests: **55 files / 389 tests** (was 52/378), type-check/build clean.
   - **Note:** local URLs resolve to `http://localhost:3000` (the documented `getSiteUrl()` dev fallback);
     production will use `NEXT_PUBLIC_SITE_URL`.
-- **Batch 11 (next) — the remaining non-UI work.** §1.1 (migration history — still blocks any `db push`),
-  OCT-20/21/22/23/24/26/27, and §10.16/§10.17's two open decisions. (§8.6's code half was already shipped in
-  Batch 7 §7.11; only its data half — collage `alt` text — remains, as OCT-27.)
-- **Batch 5 — §9.4, §9.7, §9.10, §9.11, §8.7.** Overflow, control names, per-route titles, heading levels.
-  §9.4 needs a layout measurement tool picked first (see OCT-5).
-- **Batch 6 — §7.2 + §7.4 + §7.5 + §7.10 + §3.4.** Section ordering (`sort_order` made real — it can now use
-  the registry from §7.3), the banner switch/CTA/link, favicon + OG image, and the Shop All Preview editor
-  that §7.3 just unblocked.
+- **Batch 11 — 2026-10-01 (§9.9 + §9.13–§9.17 + OCT-20 + OCT-21 + OCT-24, ✅ shipped).** The admin-panel
+  polish + CMS-ordering pass:
+  - **§9.9** — the module rail is a `Drawer` below `md` (was ~906 px of chrome above content on phones); the
+    trigger shows the current module, and the list is one shared `moduleNavItems` (3 contract cases).
+  - **§9.13–§9.17** — five static info/warning `Alert`s are `role="status"` (not assertive `alert`); seven
+    catalog back-links gained `aria-label` + `justifySelf: 'start'`; `/admin/finance`'s labor card gained a
+    "No labor recorded yet." empty state; the custom-requests toolbar CTA no longer wraps; request cards are
+    titled by customer name (not a raw UUID).
+  - **OCT-20** — all 16 remaining unnamed `<Select>`s named (plus a repo-wide guard), and the admin `<title>` is
+    server-rendered per module segment (`adminModuleMetadata()` / `ADMIN_MODULES` in
+    `src/lib/admin/admin-modules.ts`, 11 `layout.tsx` files — the proxy was not touched).
+  - **OCT-21** — one `AdminPageHeading` (`h1`, 24 px) replaced 23 pages' divergent h1 sizes.
+  - **OCT-24** — `sort_order` is finally settable (`saveHomepageSectionOrder()` + `PUT
+    /api/admin/homepage/sections` + ↑/↓ controls on `/admin/homepage`).
+  - **Tests: 58 files / 423 tests**, type-check/build/eslint clean.
+  - **Still open after Batch 11:** OCT-13 (migration-history baseline), OCT-22 (announcement-banner switch +
+    duplicate row), OCT-23 (footer slug), OCT-26 (copy decisions), OCT-27 (collage alt text), plus the items
+    consolidated under `OCT_IMPLEMENTATION_PLAN.md` → "Open items carried from SEPT".
 
 ## Summary (2026-09-16 audit; §7 added 2026-09-19; §8, §9 and §10 added 2026-09-24)
 
+> Counts are **as of 2026-10-01, post-Batch-11**. Open items (🟡/❌) are cross-referenced to
+> `OCT_IMPLEMENTATION_PLAN.md` — the OCT-20/21/24 residuals have shipped; the rest live in that plan's
+> "Open items carried from SEPT" and its OCT-13/22/23/26/27 entries.
+
 | Section | ✅ Done | 🟡 Partial | ❌ Not done | Other |
 |---|---|---|---|---|
-| 1. Security & deployment | 3 | 0 | 3 | — |
-| 2. Retention & notification | 6 | 3 | 5 | 1 unverified |
+| 1. Security & deployment | 3 | 0 | 2 | 1 obsolete |
+| 2. Retention & notification | 7 | 3 | 4 | 1 obsolete |
 | 3. Future-products / homepage | 6 | 3 | 3 | — |
 | 4. Product designer / 3D | 0 | 2 | 2 | — |
 | 5. General hygiene | 2 | 0 | 0 | — |
 | 6. Live DB follow-ups | 1 | 0 | 2 | 1 corrected, 2 informational |
 | 7. Storefront UI (added 2026-09-19) | 12 | 3 | 0 | 4 informational |
-| 8. Storefront UI, 2nd pass (added 2026-09-24) | 4 | 0 | 5 | — |
-| 9. Admin panel UI (added 2026-09-24) | 7 | 2 | 8 | 1 unverified area (interactions) |
-| 10. Admin auth switch: MFA → Google OAuth (added 2026-09-24) | 14 | 1 | 0 | 2 open decisions |
-| **Total** | **55** | **14** | **28** | **11** |
+| 8. Storefront UI, 2nd pass (added 2026-09-24) | 8 | 0 | 1 | — |
+| 9. Admin panel UI (added 2026-09-24) | 16 | 0 | 0 | 1 obsolete, 1 unverified area |
+| 10. Admin auth switch: MFA → Google OAuth (added 2026-09-24) | 16 | 1 | 0 | — |
+| **Total** | **71** | **12** | **14** | **11** |
 
 Highest-value open items: **the admin panel's blocking redirect is fixed** — the Edge verifier had been
 deriving a different session-signing key than the signer, so *no* login could reach `/admin` (§9.1) — which
@@ -1084,7 +1098,7 @@ High:
    on Catalog and `/admin/orders` on Orders. The `main` half of this item is §9.3's one-attribute fix. Guard:
    `src/components/admin/admin-shell.contract.test.ts` (asserts the landmarks, `aria-current`, the helper
    import, and that the old `pathname === mod.href` comparison cannot come back).
-7. **Nameless controls everywhere.** 🟡 **PARTIAL (2026-09-30, Batch 5).** Fixed in this batch:
+7. **Nameless controls everywhere.** ✅ **DONE (2026-09-30 Batch 5 + 2026-10-01 Batch 11).** Fixed in this batch:
    - **the 17 `MuiSwitch-input` toggles** on `/admin/homepage` — one `inputProps={{ 'aria-label': `${meta.title} — show on homepage` }}` on the single switch rendered per `SECTION_ORDER` key *is* the 17 controls. `inputProps` is deliberate: a bare `aria-label` lands on MUI's root span, while the audit's finding was about the `<input>` itself.
    - **the four 26×26 reorder/hide/remove icon buttons** in the tile editor, now `Move tile N up` / `down` / `Hide|Show tile N` / `Remove tile N` (`Tooltip` is a description, not a name).
    - **the header search input** (one fix covering all 23 routes) — `aria-label="Search orders, products and custom requests"`.
@@ -1100,24 +1114,28 @@ High:
 
 Medium:
 
-9. **On a phone the panel spends 906 px on chrome before content.** ❌ **NOT DONE.** At 390×844 the sticky
-   `header` is 118 px and the module rail is 788 px, so the content `section` starts at **y = 943** — all 12
-   modules stack above the page below `md` (`AdminShell.tsx:326`). Fix: collapse the rail into a disclosure
-   or Drawer below `md` and show the current module in the trigger.
+9. **On a phone the panel spends 906 px on chrome before content.** ✅ **DONE (2026-10-01, Batch 11).** At 390×844 the sticky
+   `header` is 118 px and the module rail was 788 px, so the content `section` started at **y = 943** — all 12
+   modules stacked above the page below `md`. The rail is now hidden below `md` (`display: { xs: 'none', md: 'block' }`)
+   and rendered in a left `Drawer` instead, opened by a button in the content area that shows the current module
+   (`"Open modules menu — currently {activeModuleLabel}"`). The module list is extracted to a single
+   `moduleNavItems` variable shared by the sidebar and the Drawer so the two cannot drift apart. Guarded by three
+   new source-contract cases in `admin-a11y.contract.test.ts` (rail hidden below md, one `Drawer` + single-source
+   list, trigger named with the current module).
 10. **One `<title>` for 23 routes, and a hard-coded header label.** ✅ **DONE (2026-09-30, Batch 5).**
     **Header label:** the sticky bar now renders `{activeModuleLabel ?? 'Admin Dashboard'}`, resolved by
     `activeAdminModuleLabel()` (`src/lib/admin/module-nav.ts`, 3 new test cases) — the *same* helper that marks
     the active rail entry, so the bar and the rail cannot disagree.
     **Title:** the shell sets `document.title = "<Module> | Ruby's Relics Studio"` on every route change, so
     tabs/history/bookmarks are now distinguishable — which is the concrete symptom the item filed.
-    **Limitation, recorded rather than hidden:** that is a *client-side* title, because the panel's pages are a
-    mix of server and client components (13 client pages cannot export `metadata`) and there is no per-route
-    `layout.tsx` yet. The SSR title remains the root default until hydration; the admin tree is
-    `noindex, nofollow`, so nothing crawler-facing depends on it. The SSR-authentic alternative (a
-    `layout.tsx` per route exporting `metadata`) is filed as OCT-20.
+    **Resolved (2026-10-01, Batch 11):** the title is now server-rendered per module segment too —
+    `ADMIN_MODULES` + `adminModuleMetadata()` in `src/lib/admin/admin-modules.ts` feed 11 `layout.tsx` files
+    (plus the dashboard `page.tsx`), so the pre-hydration `<title>` matches the post-hydration one and the
+    root default no longer flashes. The admin tree is still `noindex, nofollow`. See `OCT_IMPLEMENTATION_PLAN.md`
+    → OCT-20 for the record.
     Guard: `src/components/admin/admin-a11y.contract.test.ts` asserts the header is derived (and that a literal
     "Admin Dashboard" cannot return) and that exactly one resolver call exists.
-11. **Heading structure is absent or inconsistent on 23/23 routes.** 🟡 **PARTIAL (2026-09-30, Batch 5).**
+11. **Heading structure is absent or inconsistent on 23/23 routes.** ✅ **DONE (2026-09-30 Batch 5 + 2026-10-01 Batch 11).**
     **Fixed:** the five routes with no `h1` now declare one on their own title text —
     `/admin/schedule` and `/admin/abandoned-carts` (`variant="h5" component="h1"`),
     `/admin/shipping/debug` (`component="h2"` → `"h1"`), product detail and product pricing (a new `h1` above
@@ -1145,7 +1163,7 @@ Medium:
 
 Low:
 
-13. **Empty states and notices are emitted as duplicated `role="alert"`.** ❌ **NOT DONE.** Each string
+13. **Empty states and notices are emitted as duplicated `role="alert"`.** ✅ **DONE (2026-10-01, Batch 11).** Each string
     renders twice (`No orders matched the current filters.`, both inventory messages, the Shippo test-mode
     notice, the shipping-debug warning), so an assertive live region interrupts twice for static content —
     render once, as plain text or `role="status"`.
@@ -1153,7 +1171,7 @@ Low:
 Follow-ups filed on the 2026-09-24 re-read (same evidence set, source-verified):
 
 14. **(High, a11y) Nine catalog routes ship a nameless icon-only back link — and on six of them it is a
-    full-width target.** ❌ **NOT DONE.** `catalog/{products,categories,processes,future-products,`
+    full-width target.** ✅ **DONE (2026-10-01, Batch 11).** `catalog/{products,categories,processes,future-products,`
     `future-product-statuses}/page.tsx` and `catalog/products/new/page.tsx` all render
     `<IconButton component={Link} href="/admin/catalog"><ArrowBack /></IconButton>` with **no** `aria-label`,
     **no** visible text and no tooltip, so the accessible name is empty (WCAG 4.1.2 / 2.4.4). The same bare
@@ -1167,7 +1185,7 @@ Follow-ups filed on the 2026-09-24 re-read (same evidence set, source-verified):
     same component, two behaviours. Fix: `aria-label="Back to catalog"` (or a labelled text button) **and**
     `justifySelf: 'start'` so the hit area matches the glyph. §9.7 covers the four 26×26 reorder buttons on
     `/admin/homepage`; this adds nine routes.
-15. **(Low) `/admin/finance`'s "Labor Stage Breakdown" card has no empty state.** ❌ **NOT DONE.**
+15. **(Low) `/admin/finance`'s "Labor Stage Breakdown" card has no empty state.** ✅ **DONE (2026-10-01, Batch 11).**
     `finance/page.tsx:400-420` renders the card heading and then an unconditional `finance.laborByStage.map(...)`
     — no `length === 0` branch, unlike its two siblings (`:370` guards `itemContributions` with "No contribution
     rows for this range.", and the recent-labor card is guarded as well). With zero labor rows the card is a
@@ -1175,14 +1193,14 @@ Follow-ups filed on the 2026-09-24 re-read (same evidence set, source-verified):
     beside it shows title + column headers + empty-state line (~115 px). This is the single exception to
     Part 2 §1.3's honest empty states. Fix: a `laborByStage.length === 0` branch in the muted tier
     (`alpha(parchment, 0.55)`, ≥12px per §9.5's floor).
-16. **(Low) `/admin/custom-requests`: the primary toolbar CTA wraps to three lines.** ❌ **NOT DONE.** The
+16. **(Low) `/admin/custom-requests`: the primary toolbar CTA wraps to three lines.** ✅ **DONE (2026-10-01, Batch 11).** The
     toolbar is a 4-control `Stack` (`custom-requests/page.tsx:426`) and the "Run Recovery Reminders" button
     (`:454-460`) sets no `whiteSpace: 'nowrap'` / `minWidth`, so at 1440 px it renders as "Run / Recovery /
     Reminders" on three lines, ≈93 px tall beside 53 px siblings
     (`01-custom-requests-00-desktop-tile-01.png`). Its label also swaps to "Sending reminders..." while
     running, so the toolbar's height changes mid-action. Fix: `whiteSpace: 'nowrap'` + a `minWidth`, or shorten
     the label and carry the count elsewhere.
-17. **(Low) `/admin/custom-requests`: request cards are titled with a raw UUID.** ❌ **NOT DONE.**
+17. **(Low) `/admin/custom-requests`: request cards are titled with a raw UUID.** ✅ **DONE (2026-10-01, Batch 11).**
     `custom-requests/page.tsx:499-501` makes `{row.id}` the card's bold title, so the most prominent text on
     each card is a 36-character UUID while the customer's identity sits in the dimmer second line. The
     codebase's own convention is better: `abandoned-carts/page.tsx:219` renders `{row.id.slice(0, 8)}…`. Fix:

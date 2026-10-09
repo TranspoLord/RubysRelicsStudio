@@ -13,6 +13,7 @@ import { alpha } from '@mui/material/styles'
 import Link from 'next/link'
 
 import { brandTokens } from '@/theme/theme'
+import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
 
 interface CatalogStats {
   totalProducts: number
@@ -76,9 +77,9 @@ export default function CatalogDashboardPage() {
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
       <Box>
-        <Typography variant="h4" component="h1" sx={{ mb: 0.5 }}>
+        <AdminPageHeading>
           Catalog
-        </Typography>
+        </AdminPageHeading>
         <Typography sx={{ color: alpha(brandTokens.parchment, 0.65) }}>
           Manage products, categories, pricing, and promotions from this hub.
         </Typography>

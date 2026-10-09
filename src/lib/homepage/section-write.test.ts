@@ -8,7 +8,7 @@ vi.mock('@/lib/supabase/client', () => ({
   getSupabaseAdmin: mocks.getSupabaseAdmin,
 }))
 
-import { saveHomepageSection } from '@/lib/homepage/section-write'
+import { saveHomepageSection, saveHomepageSectionOrder } from '@/lib/homepage/section-write'
 
 /**
  * §7.3 regression suite. The defect was silent: an update matching zero rows is
@@ -143,6 +143,48 @@ describe('saveHomepageSection — create path (§7.3)', () => {
     mocks.getSupabaseAdmin.mockReturnValue(supabase)
 
     const result = await saveHomepageSection({ sectionKey: 'hero', isVisible: true })
+
+    expect(result.ok).toBe(false)
+    expect(result.ok === false && result.error).toMatch(/no row was written/i)
+  })
+})
+
+describe('saveHomepageSectionOrder — reorder path (OCT-24)', () => {
+  it('writes sort_order on the update path when a row exists', async () => {
+    const { supabase, calls } = makeSupabase()
+    mocks.getSupabaseAdmin.mockReturnValue(supabase)
+
+    const result = await saveHomepageSectionOrder('shop_all_preview', 40)
+
+    expect(result).toEqual({ ok: true })
+    expect(calls.update).toHaveBeenCalledOnce()
+    expect(calls.upsert).not.toHaveBeenCalled()
+    expect(calls.update.mock.calls[0][0].sort_order).toBe(40)
+  })
+
+  it('creates the row when the key has none, so ordering a row-less key cannot no-op', async () => {
+    const { supabase, calls } = makeSupabase({ update: { data: [], error: null } })
+    mocks.getSupabaseAdmin.mockReturnValue(supabase)
+
+    const result = await saveHomepageSectionOrder('shop_all_preview', 40)
+
+    expect(result).toEqual({ ok: true })
+    expect(calls.upsert).toHaveBeenCalledOnce()
+    const [payload, options] = calls.upsert.mock.calls[0]
+    expect(options).toEqual({ onConflict: 'section_key' })
+    expect(payload.section_key).toBe('shop_all_preview')
+    expect(payload.sort_order).toBe(40)
+    expect(payload.is_visible).toBe(true)
+  })
+
+  it('reports a failure when neither branch wrote a row', async () => {
+    const { supabase } = makeSupabase({
+      update: { data: [], error: null },
+      upsert: { data: [], error: null },
+    })
+    mocks.getSupabaseAdmin.mockReturnValue(supabase)
+
+    const result = await saveHomepageSectionOrder('shop_all_preview', 40)
 
     expect(result.ok).toBe(false)
     expect(result.ok === false && result.error).toMatch(/no row was written/i)

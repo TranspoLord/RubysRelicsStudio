@@ -24,6 +24,8 @@ import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import { alpha } from '@mui/material/styles'
 import { brandTokens } from '@/theme/theme'
+import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
+import { orderHomepageSections, RENDERABLE_HOMEPAGE_SECTIONS } from '@/lib/homepage/section-order'
 
 // ─── Section metadata ─────────────────────────────────────────────────────────
 
@@ -145,6 +147,9 @@ export default function AdminHomepagePage() {
   const [savingTile, setSavingTile] = useState<TileKey | null>(null)
   const [visibilityMessage, setVisibilityMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [tileMessages, setTileMessages] = useState<Record<string, { type: 'success' | 'error'; text: string }>>({})
+  const [renderableOrder, setRenderableOrder] = useState<SectionKey[]>(() => [...RENDERABLE_HOMEPAGE_SECTIONS])
+  const [savingOrder, setSavingOrder] = useState(false)
+  const [reorderMessage, setReorderMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   // ── Hero Collage State ─────────────────────────────────────────────────────
   const [heroCollage, setHeroCollage] = useState<HeroCollageState>({
@@ -187,12 +192,13 @@ export default function AdminHomepagePage() {
         const res = await fetch('/api/admin/homepage/sections')
         if (!res.ok) throw new Error('Failed to load')
         const { sections: raw } = await res.json() as {
-          sections: Record<string, { is_visible: boolean; content?: Record<string, unknown> }>
+          sections: Record<string, { is_visible: boolean; sort_order?: number | null; content?: Record<string, unknown> }>
         }
 
         const vis: Record<string, boolean> = {}
         for (const key of SECTION_ORDER) vis[key] = raw[key]?.is_visible !== false
         setVisibility(vis)
+        setRenderableOrder(orderHomepageSections(raw, RENDERABLE_HOMEPAGE_SECTIONS).map((s) => s.key))
 
         // Load hero collage config — always pad images to 6 slots for the editor
         const collageRaw = raw['hero_collage']
@@ -287,6 +293,37 @@ export default function AdminHomepagePage() {
       setVisibilityMessage({ type: 'error', text: err instanceof Error ? err.message : 'Save failed.' })
     } finally {
       setSavingVisibility(false)
+    }
+  }
+
+  async function handleMoveSection(key: SectionKey, direction: 'up' | 'down') {
+    if (savingOrder) return
+    const index = renderableOrder.indexOf(key)
+    const target = direction === 'up' ? index - 1 : index + 1
+    // hero is pinned at index 0 — nothing may move above it.
+    if (index < 0 || target < 1 || target >= renderableOrder.length) return
+
+    const next = [...renderableOrder]
+    ;[next[index], next[target]] = [next[target], next[index]]
+    setRenderableOrder(next)
+    setSavingOrder(true)
+    setReorderMessage(null)
+
+    try {
+      const res = await fetch('/api/admin/homepage/sections', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderedKeys: next }),
+      })
+      const data = await res.json() as { error?: string }
+      if (!res.ok) throw new Error(data.error ?? 'Reorder failed.')
+      setReorderMessage({ type: 'success', text: 'Section order saved.' })
+      setTimeout(() => setReorderMessage(null), 3500)
+    } catch (err) {
+      setRenderableOrder(renderableOrder)
+      setReorderMessage({ type: 'error', text: err instanceof Error ? err.message : 'Reorder failed.' })
+    } finally {
+      setSavingOrder(false)
     }
   }
 
@@ -422,12 +459,15 @@ export default function AdminHomepagePage() {
     )
   }
 
+  const reorderableKeys = renderableOrder.filter((key) => key !== 'hero')
+  const displayKeys: SectionKey[] = ['hero', 'hero_collage', ...reorderableKeys]
+
   return (
     <Box sx={{ display: 'grid', gap: 4 }}>
       <Box>
-        <Typography variant="h4" component="h1" sx={{ mb: 0.5 }}>
+        <AdminPageHeading>
           Homepage
-        </Typography>
+        </AdminPageHeading>
         <Typography sx={{ color: alpha(brandTokens.parchment, 0.62) }}>
           Control which sections appear on the storefront homepage, and configure the shortcut tile editors below.
         </Typography>
@@ -466,10 +506,12 @@ export default function AdminHomepagePage() {
             mb: 3,
           }}
         >
-          {SECTION_ORDER.map((key) => {
+          {displayKeys.map((key) => {
             const meta = SECTION_META[key]
             const isTile = TILE_KEYS.has(key)
             const on = visibility[key] !== false
+            const rIndex = renderableOrder.indexOf(key)
+            const isReorderable = key !== 'hero' && key !== 'hero_collage'
             return (
               <Box
                 key={key}
@@ -525,17 +567,39 @@ export default function AdminHomepagePage() {
                     {meta.description}
                   </Typography>
                 </Box>
-                <Switch
-                  size="small"
-                  checked={on}
-                  onChange={(e) => setVisibility((prev) => ({ ...prev, [key]: e.target.checked }))}
-                  // §9.7: this switch was one of 17 bare `MuiSwitch-input`s with
-                  // no accessible name — its only name was the adjacent text,
-                  // which was not associated with the input. `inputProps`
-                  // targets the <input> itself, which is what was unnamed.
-                  inputProps={{ 'aria-label': `${meta.title} — show on homepage` }}
-                  sx={{ flexShrink: 0 }}
-                />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+                  {isReorderable && (
+                    <>
+                      <IconButton
+                        size="small"
+                        aria-label={`Move ${meta.title} up`}
+                        disabled={savingOrder || rIndex <= 1}
+                        onClick={() => void handleMoveSection(key, 'up')}
+                      >
+                        <ArrowUpwardIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        aria-label={`Move ${meta.title} down`}
+                        disabled={savingOrder || rIndex === renderableOrder.length - 1}
+                        onClick={() => void handleMoveSection(key, 'down')}
+                      >
+                        <ArrowDownwardIcon fontSize="small" />
+                      </IconButton>
+                    </>
+                  )}
+                  <Switch
+                    size="small"
+                    checked={on}
+                    onChange={(e) => setVisibility((prev) => ({ ...prev, [key]: e.target.checked }))}
+                    // §9.7: this switch was one of 17 bare `MuiSwitch-input`s with
+                    // no accessible name — its only name was the adjacent text,
+                    // which was not associated with the input. `inputProps`
+                    // targets the <input> itself, which is what was unnamed.
+                    inputProps={{ 'aria-label': `${meta.title} — show on homepage` }}
+                    sx={{ flexShrink: 0 }}
+                  />
+                </Box>
               </Box>
             )
           })}
@@ -544,6 +608,12 @@ export default function AdminHomepagePage() {
         {visibilityMessage && (
           <Alert severity={visibilityMessage.type} sx={{ mb: 2 }}>
             {visibilityMessage.text}
+          </Alert>
+        )}
+
+        {reorderMessage && (
+          <Alert severity={reorderMessage.type} sx={{ mb: 2 }}>
+            {reorderMessage.text}
           </Alert>
         )}
 

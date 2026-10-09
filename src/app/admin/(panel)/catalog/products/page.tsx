@@ -17,6 +17,7 @@ import ArrowBack from '@mui/icons-material/ArrowBack'
 import Link from 'next/link'
 
 import { brandTokens } from '@/theme/theme'
+import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
 
 type StatusFilter = 'all' | 'active' | 'inactive' | 'archived'
 
@@ -148,13 +149,13 @@ export default function AdminProductsPage() {
 
   return (
     <Box sx={{ display: 'grid', gap: 1.4 }}>
-      <IconButton component={Link} href="/admin/catalog" sx={{ p: 0.5, ml: -0.5 }}>
+      <IconButton component={Link} href="/admin/catalog" aria-label="Back to catalog" sx={{ p: 0.5, ml: -0.5, justifySelf: 'start' }}>
         <ArrowBack />
       </IconButton>
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 1 }}>
         <Box>
-          <Typography variant="h4" component="h1">Products</Typography>
+          <AdminPageHeading>Products</AdminPageHeading>
           <Typography sx={{ color: alpha(brandTokens.parchment, 0.65) }}>
             Filter products, manage lifecycle, and open the unified product builder.
           </Typography>

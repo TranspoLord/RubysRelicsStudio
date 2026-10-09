@@ -17,6 +17,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 import { brandTokens } from '@/theme/theme'
+import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
 
 interface CategoryOption {
   key: string
@@ -137,14 +138,14 @@ export default function NewProductPage() {
 
   return (
     <Box sx={{ display: 'grid', gap: 1.4, maxWidth: 600 }}>
-      <IconButton component={Link} href="/admin/catalog/products" sx={{ p: 0.5, ml: -0.5 }}>
+      <IconButton component={Link} href="/admin/catalog/products" aria-label="Back to products" sx={{ p: 0.5, ml: -0.5, justifySelf: 'start' }}>
         <ArrowBack />
       </IconButton>
 
       <Box>
-        <Typography variant="h4" component="h1" sx={{ mb: 0.5 }}>
+        <AdminPageHeading>
           Create New Product
-        </Typography>
+        </AdminPageHeading>
         <Typography sx={{ color: alpha(brandTokens.parchment, 0.65) }}>
           Enter basic details and continue editing in the builder.
         </Typography>
@@ -172,6 +173,7 @@ export default function NewProductPage() {
         />
 
         <Select
+          aria-label="Category"
           size="small"
           value={categoryKey}
           onChange={(event) => setCategoryKey(event.target.value)}

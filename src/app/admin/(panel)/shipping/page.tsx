@@ -15,6 +15,7 @@ import { alpha } from '@mui/material/styles'
 
 import { brandTokens } from '@/theme/theme'
 import { ShippoSettings } from '@/lib/shippo/settings'
+import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
 
 interface ShippingPageData {
   settings: ShippoSettings
@@ -117,7 +118,7 @@ export default function AdminShippingPage() {
   if (!data) {
     return (
       <Box sx={{ display: 'grid', gap: 1.1 }}>
-        <Typography variant="h4" component="h1">Shipping</Typography>
+        <AdminPageHeading>Shipping</AdminPageHeading>
         <Alert severity="error">Failed to load shipping settings</Alert>
       </Box>
     )
@@ -126,7 +127,7 @@ export default function AdminShippingPage() {
   return (
     <Box sx={{ display: 'grid', gap: 2.2 }}>
       <Box>
-        <Typography variant="h4" component="h1">Shipping</Typography>
+        <AdminPageHeading>Shipping</AdminPageHeading>
         <Typography sx={{ color: alpha(brandTokens.parchment, 0.65), mt: 0.5 }}>
           Configure Shippo integration for shipping rate calculations and tracking.
         </Typography>
@@ -169,7 +170,7 @@ export default function AdminShippingPage() {
         </Typography>
 
         {data.isTestMode && (
-          <Alert severity="info" sx={{ mt: 0.5 }}>
+          <Alert severity="info" role="status" sx={{ mt: 0.5 }}>
             Shippo is in test mode. Rates will be from Shippo's test carriers.
           </Alert>
         )}

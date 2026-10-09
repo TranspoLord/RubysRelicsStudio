@@ -14,6 +14,7 @@ import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
 
 import { brandTokens } from '@/theme/theme'
+import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
 
 interface CategoryOption {
   key: string
@@ -470,9 +471,9 @@ export default function ProductPageEditorPage({ params }: { params: Promise<{ id
   return (
     <Box sx={{ display: 'grid', gap: 1.2, overflowX: 'hidden' }}>
       {/* §9.11: the page had no h1 at all and started at h6. */}
-      <Typography variant="h4" component="h1" sx={{ mb: 0.2 }}>
+      <AdminPageHeading>
         {product.title || 'Product'}
-      </Typography>
+      </AdminPageHeading>
 
       {error && <Alert severity="error">{error}</Alert>}
       {success && <Alert severity="success">{success}</Alert>}
@@ -697,6 +698,7 @@ export default function ProductPageEditorPage({ params }: { params: Promise<{ id
             sx={{ minWidth: 180 }}
           />
           <Select
+            aria-label="Option type"
             size="small"
             value={optionType}
             onChange={(event) => setOptionType(event.target.value as ProductOptionRow['option_type'])}
@@ -742,6 +744,7 @@ export default function ProductPageEditorPage({ params }: { params: Promise<{ id
 
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
           <Select
+            aria-label="Option for value"
             size="small"
             value={selectedOptionIdForValue}
             onChange={(event) => setSelectedOptionIdForValue(event.target.value)}

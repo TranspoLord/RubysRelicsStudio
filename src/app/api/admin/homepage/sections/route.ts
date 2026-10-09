@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { requireAdminApiSession } from '@/lib/admin/auth'
 import { writeAdminAuditLog } from '@/lib/admin/audit'
-import { saveHomepageSection } from '@/lib/homepage/section-write'
+import { saveHomepageSection, saveHomepageSectionOrder } from '@/lib/homepage/section-write'
 import { isHomepageSectionKey, HOMEPAGE_SECTION_KEYS, type HomepageSectionKey } from '@/lib/homepage/sections'
+import { RENDERABLE_HOMEPAGE_SECTIONS } from '@/lib/homepage/section-order'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 
 // §7.3: the key list lives in src/lib/homepage/sections.ts so this route, the
@@ -129,4 +130,82 @@ export async function PATCH(request: Request) {
   })
 
   return NextResponse.json({ ok: true, created })
+}
+
+/**
+ * PUT /api/admin/homepage/sections
+ * Reorders the renderable sections. Body: { orderedKeys: string[] } — a
+ * permutation of the renderable keys (hero is pinned first by
+ * `orderHomepageSections()` regardless of what order arrives here). Each key is
+ * written with `sort_order = index` through `saveHomepageSectionOrder()`, which
+ * creates the row when the key has none (§7.3), so ordering a row-less key such
+ * as `shop_all_preview` cannot silently no-op.
+ */
+export async function PUT(request: Request) {
+  const auth = await requireAdminApiSession(request, {
+    key: 'admin:homepage:sections:reorder',
+    maxRequests: 20,
+    windowMs: 60_000,
+  })
+  if (!auth.ok) return auth.response
+
+  let body: unknown
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 })
+  }
+
+  if (typeof body !== 'object' || body === null || !Array.isArray((body as Record<string, unknown>).orderedKeys)) {
+    return NextResponse.json({ error: 'Body must have an orderedKeys array.' }, { status: 400 })
+  }
+
+  const orderedKeys = (body as { orderedKeys: unknown[] }).orderedKeys
+  const renderable = RENDERABLE_HOMEPAGE_SECTIONS as readonly string[]
+
+  if (orderedKeys.length !== renderable.length) {
+    return NextResponse.json(
+      { error: `orderedKeys must contain exactly ${renderable.length} renderable sections.` },
+      { status: 400 }
+    )
+  }
+
+  const seen = new Set<string>()
+  for (let i = 0; i < orderedKeys.length; i++) {
+    const key = orderedKeys[i]
+    if (typeof key !== 'string' || !renderable.includes(key) || seen.has(key)) {
+      return NextResponse.json(
+        { error: 'orderedKeys must be a permutation of the renderable section keys.' },
+        { status: 400 }
+      )
+    }
+    seen.add(key)
+  }
+
+  const errors: string[] = []
+  await Promise.all(
+    orderedKeys.map(async (key, index) => {
+      const saved = await saveHomepageSectionOrder(key as HomepageSectionKey, index)
+      if (!saved.ok) errors.push(key as string)
+    })
+  )
+
+  if (errors.length > 0) {
+    console.error('[admin:homepage:sections:reorder] db error for keys:', errors)
+    return NextResponse.json(
+      { error: `Failed to reorder section(s): ${errors.join(', ')}.` },
+      { status: 500 }
+    )
+  }
+
+  await writeAdminAuditLog({
+    action: 'homepage.sections.reorder',
+    entityType: 'homepage_section',
+    route: '/api/admin/homepage/sections',
+    request,
+    status: 'success',
+    details: { orderedKeys },
+  })
+
+  return NextResponse.json({ ok: true })
 }
