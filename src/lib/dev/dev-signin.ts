@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { generateTotpCode } from '@/lib/auth/totp'
 
 /**
- * Dev-only admin sign-in helper (SEPT_IMPLEMENTATION_PLAN §8, Batch 8).
+ * Dev-only admin sign-in helper (docs/archive/SEPT_IMPLEMENTATION_PLAN §8, Batch 8).
  *
  * Why this exists: the panel's credential is a Supabase Google-OAuth session
  * (§10), so the visual-audit harness (`UI_AUDIT.md` §4–§7) cannot reach `/admin`

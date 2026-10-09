@@ -1,5 +1,5 @@
 /**
- * Admin authorization gates (SEPT_IMPLEMENTATION_PLAN §10.3 / §10.4).
+ * Admin authorization gates (docs/archive/SEPT_IMPLEMENTATION_PLAN §10.3 / §10.4).
  *
  * Replaces the shared-key + emailed-MFA model. An account may act as an admin
  * only when both gates agree:

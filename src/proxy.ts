@@ -1,5 +1,5 @@
 /**
- * Admin auth gate (SEC-012, SEPT_IMPLEMENTATION_PLAN §10.5) + CSP nonce
+ * Admin auth gate (SEC-012, docs/archive/SEPT_IMPLEMENTATION_PLAN §10.5) + CSP nonce
  * generation (SEC-047).
  *
  * Next 16 deprecated the `middleware` file convention in favour of `proxy`

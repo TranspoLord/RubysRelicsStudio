@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * Route/page gate matrix (SEPT_IMPLEMENTATION_PLAN §10.3 / §10.4).
+ * Route/page gate matrix (docs/archive/SEPT_IMPLEMENTATION_PLAN §10.3 / §10.4).
  *
  * The two things this file exists to protect:
  *   1. the gate fails **closed** — absent session, wrong role, missing/

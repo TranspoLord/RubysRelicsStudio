@@ -1,5 +1,5 @@
 /**
- * Homepage section registry (SEPT_IMPLEMENTATION_PLAN §7.3; the seed of §7.2).
+ * Homepage section registry (docs/archive/SEPT_IMPLEMENTATION_PLAN §7.3; the seed of §7.2).
  *
  * Until now each admin route carried its own private `ALL_SECTION_KEYS` array and
  * had no idea what order a section should occupy, so a *new* row could only be

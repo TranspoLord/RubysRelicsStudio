@@ -11,7 +11,7 @@
 > covered: the product designer (customer-facing), Square's hosted checkout, email templates, and
 > real-device rendering (iOS Safari / Android Chrome).
 >
-> **Superseded for tracking purposes (2026-09-24).** `SEPT_IMPLEMENTATION_PLAN.md` §7–§9 mirrors this document
+> **Superseded for tracking purposes (2026-09-24).** `docs/archive/SEPT_IMPLEMENTATION_PLAN.md` §7–§9 mirrors this document
 > and is the **single source of truth** for statuses, counts and severities — where the two differ, the plan
 > wins. Two counts were wrong here and are corrected in both files: **A4** affects **four** routes (not five),
 > and **A9** counts **17** section switches (not 15 — `SECTION_ORDER` holds 17 keys with one bare `<Switch>`
@@ -162,7 +162,7 @@ it is instruction, validation and quantity. The isolated badge case is the viole
 **`Unique Pieces` = 3.34:1** (`#8B4FBE` on `alpha('#8B4FBE', 0.15)`, `ShopOrderPaths.tsx:47–50`), while its
 siblings in the same component pass (`Most Popular` = gold; `Ships Fastest` = `#5A9A3A`, measured **4.90:1**) —
 so the pattern is sound and only the violet token is too dark for its tint. (Same palette drift already logged
-as item 7 of `SEPT_IMPLEMENTATION_PLAN.md`.)
+as item 7 of `docs/archive/SEPT_IMPLEMENTATION_PLAN.md`.)
 
 **Fix — one floor, applied as a sweep.** Replace every body-size `alpha(PARCHMENT, ≤0.5)` with
 **`alpha(PARCHMENT, 0.62)` (≈5.9:1)**, or use the existing `parchmentMuted` token `#9E8A6A` (**5.93:1**), and

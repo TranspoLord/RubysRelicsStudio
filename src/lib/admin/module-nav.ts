@@ -1,5 +1,5 @@
 /**
- * Active-module resolution for the admin panel rail (SEPT_IMPLEMENTATION_PLAN §9.6).
+ * Active-module resolution for the admin panel rail (docs/archive/SEPT_IMPLEMENTATION_PLAN §9.6).
  *
  * Before this, `AdminShell` marked a module active with `pathname === mod.href`,
  * so the highlight **vanished** on every nested route — `/admin/catalog/products`

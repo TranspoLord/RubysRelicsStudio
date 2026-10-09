@@ -1,5 +1,5 @@
 /**
- * Homepage section *ordering* (SEPT_IMPLEMENTATION_PLAN §7.2).
+ * Homepage section *ordering* (docs/archive/SEPT_IMPLEMENTATION_PLAN §7.2).
  *
  * `src/app/page.tsx` used to render a fixed JSX sequence, so the admin's
  * `sort_order` was decorative: `getHomepageSections()` returned it and nothing

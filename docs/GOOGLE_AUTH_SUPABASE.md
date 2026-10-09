@@ -37,7 +37,7 @@ Only allow-listed accounts get in: `npm run admin:grant -- <google-email>` /
 `npm run admin:revoke -- <google-email>`, keyed by `auth.users.id` — never by
 email. The former `ADMIN_LOGIN_KEY` + emailed-MFA flow is no longer on any
 request path; its files and tables are removed by
-`SEPT_IMPLEMENTATION_PLAN.md` §10.8–§10.12.
+`docs/archive/SEPT_IMPLEMENTATION_PLAN.md` §10.8–§10.12.
 
 Authorization reads `app_metadata` only. `user_metadata` is writable by the
 signed-in user, so a token carrying `user_metadata.role === 'admin'` is **not**
@@ -148,7 +148,7 @@ Development). `.env.example` holds the annotated template.
 | `NEXT_PUBLIC_VERCEL_URL` | auto | Vercel preview fallback when no site URL is set |
 | `NEXT_PUBLIC_APP_ENV` | yes | `development` \| `test` \| `production` (branch isolation) |
 | `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID` / `_SECRET` | local CLI only | Substituted into `supabase/config.toml` by `supabase start` |
-| `ADMIN_LOGIN_KEY`, `ADMIN_MFA_EMAIL`, `SESSION_*_SEED`, `MFA_CODE_HASH_KEY_SEED` | retired | Legacy admin key + MFA — off the request path since 2026-09-26, removed by `SEPT_IMPLEMENTATION_PLAN.md` §10.13 |
+| `ADMIN_LOGIN_KEY`, `ADMIN_MFA_EMAIL`, `SESSION_*_SEED`, `MFA_CODE_HASH_KEY_SEED` | retired | Legacy admin key + MFA — off the request path since 2026-09-26, removed by `docs/archive/SEPT_IMPLEMENTATION_PLAN.md` §10.13 |
 
 The Google Client Secret lives **only** in the Supabase provider settings (and
 the local CLI env). It is never read by the Next.js app.
@@ -185,7 +185,7 @@ For authorization decisions, use `getClaims()` (or `getUser()`), never
 - **Decide the customer account surface.** `/sign-in` is reachable directly but
   is not linked from the header nav yet.
 - **Admin panel**: migrated to Google OAuth on 2026-09-26 (see §1). Still open:
-  deleting the retired key + MFA code and tables (`SEPT_IMPLEMENTATION_PLAN.md`
+  deleting the retired key + MFA code and tables (`docs/archive/SEPT_IMPLEMENTATION_PLAN.md`
   §10.8–§10.12), and deciding whether a *second* factor is wanted — Supabase
   supports per-account TOTP MFA (`supabase.auth.mfa.*`), which is a different
   mechanism from the emailed codes that were removed.

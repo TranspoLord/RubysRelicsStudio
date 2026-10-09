@@ -1,5 +1,5 @@
 /**
- * The single write path for `exp_homepage_sections` (SEPT_IMPLEMENTATION_PLAN §7.3).
+ * The single write path for `exp_homepage_sections` (docs/archive/SEPT_IMPLEMENTATION_PLAN §7.3).
  *
  * Before this, all five writers in `sections/[key]/route.ts` and the batch writer
  * in `sections/route.ts` did `.update({…}).eq('section_key', key)` and looked only

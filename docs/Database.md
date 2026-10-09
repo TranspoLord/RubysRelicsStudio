@@ -880,7 +880,7 @@
 
 ## Table `exp_admin_users`
 
-The admin allow-list (migration `066`, `SEPT_IMPLEMENTATION_PLAN.md` §10.1).
+The admin allow-list (migration `066`, `docs/archive/SEPT_IMPLEMENTATION_PLAN.md` §10.1).
 Keyed by `auth.users.id` — never by email, so an email change on an admin's
 Google account neither grants nor revokes access. Service role only (RLS
 enabled, no policies, all access revoked from `anon` / `authenticated`).

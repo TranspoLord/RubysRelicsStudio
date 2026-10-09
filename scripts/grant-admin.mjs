@@ -1,5 +1,5 @@
 /**
- * Grants admin access to a Google account (SEPT_IMPLEMENTATION_PLAN §10.2).
+ * Grants admin access to a Google account (docs/archive/SEPT_IMPLEMENTATION_PLAN §10.2).
  *
  * Usage:
  *   npm run admin:grant -- admin@example.com

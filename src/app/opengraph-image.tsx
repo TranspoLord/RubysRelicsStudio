@@ -1,7 +1,7 @@
 import { ImageResponse } from 'next/og'
 
 /**
- * Programmatic Open Graph image (SEPT_IMPLEMENTATION_PLAN §7.10).
+ * Programmatic Open Graph image (docs/archive/SEPT_IMPLEMENTATION_PLAN §7.10).
  *
  * There was no OG image at all, so every share of the site rendered as a bare
  * link. Like `icon.tsx` this is generated at build time from brand tokens, which

@@ -7,7 +7,7 @@
  * SECURITY: authorization data is read from `app_metadata` only.
  * `user_metadata` (`raw_user_meta_data`) is writable by the signed-in user, so a
  * token carrying `user_metadata.role === 'admin'` is **not** an admin
- * (SEPT_IMPLEMENTATION_PLAN §10.0).
+ * (docs/archive/SEPT_IMPLEMENTATION_PLAN §10.0).
  */
 
 /** Role value written by `scripts/grant-admin.mjs` (§10.2). */

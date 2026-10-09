@@ -6,7 +6,7 @@ import { ADMIN_ROLE, hasAdminRole, hasAal2, readAuthClaims } from '@/lib/auth/cl
  * Claim narrowing is a security boundary: everything downstream trusts its
  * output, and the one rule it enforces is that authorization data comes from
  * `app_metadata` (service-role writable) and never from `user_metadata`
- * (user-writable) — SEPT_IMPLEMENTATION_PLAN §10.0.
+ * (user-writable) — docs/archive/SEPT_IMPLEMENTATION_PLAN §10.0.
  */
 describe('readAuthClaims', () => {
   it('reads the subject, email, aal and app_metadata', () => {

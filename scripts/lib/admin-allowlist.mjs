@@ -1,5 +1,5 @@
 /**
- * Admin allow-list tooling (SEPT_IMPLEMENTATION_PLAN §10.1 / §10.2).
+ * Admin allow-list tooling (docs/archive/SEPT_IMPLEMENTATION_PLAN §10.1 / §10.2).
  *
  * The allow-list is `exp_admin_users`, keyed by `auth.users.id`. An account is
  * an admin only when both gates agree:

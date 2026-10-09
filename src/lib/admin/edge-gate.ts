@@ -1,5 +1,5 @@
 /**
- * Edge gate for the admin panel (SEPT_IMPLEMENTATION_PLAN §10.5).
+ * Edge gate for the admin panel (docs/archive/SEPT_IMPLEMENTATION_PLAN §10.5).
  *
  * The proxy (src/proxy.ts — `middleware` before Next 16) runs before the route
  * handler, so it can read a verified JWT claim but cannot query Postgres before

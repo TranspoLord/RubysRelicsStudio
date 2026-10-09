@@ -200,6 +200,13 @@ and §9.7).
 > Counts are **as of 2026-10-01, post-Batch-11**. Open items (🟡/❌) are cross-referenced to
 > `OCT_IMPLEMENTATION_PLAN.md` — the OCT-20/21/24 residuals have shipped; the rest live in that plan's
 > "Open items carried from SEPT" and its OCT-13/22/23/26/27 entries.
+>
+> **Added 2026-10-08:** this plan and the review are now **archived** — both live in `docs/archive/`
+> (`SEPT_IMPLEMENTATION_PLAN.md`, `REMEDIATION_PLAN_2026-10-06.md`), because every open item was confirmed
+> tracked in `OCT_IMPLEMENTATION_PLAN.md` (that plan's §2 "Open items carried from SEPT", §4 and §5). The
+> review's cross-reference into that plan is its §4; §5 is the batch plan; **§6 is the Product Design Studio
+> epic** — this plan's §4.1–§4.4 designer debt is absorbed there. The review's §0.1 records the convention
+> that completed items are logged here (in the batch log below) and new discoveries become `OCT-n` entries.
 
 | Section | ✅ Done | 🟡 Partial | ❌ Not done | Other |
 |---|---|---|---|---|

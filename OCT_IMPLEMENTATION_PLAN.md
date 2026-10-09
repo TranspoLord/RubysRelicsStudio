@@ -1,11 +1,18 @@
 # October Implementation Plan — issues & todos
 
-Companion to `SEPT_IMPLEMENTATION_PLAN.md`. **This file carries issues and todos only**; shipped work and
-status changes belong in the September plan (which is the single source of truth for open work). Items are
-numbered `OCT-n`, and each names the batch it belongs to.
+**This is the single living plan for open work.** It carries issues and todos only; shipped work is recorded
+in the batch execution log of `docs/archive/SEPT_IMPLEMENTATION_PLAN.md` (the September plan, **archived
+2026-10-08** once every open item was confirmed tracked here — see §2 "Open items carried from SEPT" and
+§4). Items are numbered `OCT-n`, and each names the batch it belongs to.
 
-Execution model: the September plan is executed in small, test-covered batches. Batch 1 (§7.1 + §7.6) is
-recorded in `SEPT_IMPLEMENTATION_PLAN.md` → "Batch execution log".
+**Archived companions (moved to `docs/archive/` on 2026-10-08):**
+- `docs/archive/SEPT_IMPLEMENTATION_PLAN.md` — the September audit + the Batch 1–11 execution log. Historical.
+- `docs/archive/REMEDIATION_PLAN_2026-10-06.md` — an independent five-lens review with 76 ranked items
+  (`#1`–`#76`). It holds the detailed item bodies (file:line, failure scenario, implementation steps);
+  **§4 below is its cross-reference into this plan** (what it revises, and the new items by tier).
+
+Execution model: small, test-covered batches — see **§5** for the batch plan and **§3** for the verification
+recipe. §6 is the Product Design Studio epic.
 
 ---
 
@@ -494,7 +501,7 @@ listed at the end so they are not re-opened.)
 - **§2.6 (Medium)** — Art Guard restricted-artwork review workflow in admin (no `art-guard`/
   `restricted_artwork` in `src/`).
 - **§2.7 (Low, decision)** — pricing-module consolidation: `/admin/pricing` and `/admin/catalog/pricing`
-  both still exist (also flagged in `REMEDIATION_PLAN_2026-10-06.md`).
+  both still exist (also flagged in `docs/archive/REMEDIATION_PLAN_2026-10-06.md`).
 - **§2.8 (Medium)** — WCAG 2.2 AA remediation completion: `/admin`, the product designer, Square's hosted
   checkout and real-device rendering are still un-audited (the storefront audit half shipped as §8).
 - **§2.11 (Medium)** — real-device + performance (LCP/CLS) pass; responsiveness is capture-based only.
@@ -571,3 +578,327 @@ renders, remember `/admin` needs an authenticated session — which this environ
 
 
   check (`exp_taxonomy`) before picking the replacement slug — do not guess one from the repo.
+
+---
+
+## 4. docs/archive/REMEDIATION_PLAN_2026-10-06.md — the 76-item multi-lens review (added 2026-10-08)
+
+`docs/archive/REMEDIATION_PLAN_2026-10-06.md` (repo root) is an independent five-lens review (2 security, 2 UX, 1
+reliability/privacy) of the code at `4aeb56f`, reconciled against `963e97f`. It carries **76 ranked items**
+(`#1`–`#76`; P0 `#1`–`#11` · P1 `#12`–`#35` · P2 `#36`–`#65` · P3 `#66`–`#76`) with file:line locations,
+failure scenarios and implementation steps. That document is the **detailed source**; this section is the
+cross-reference so the two cannot drift. Item bodies are deliberately not duplicated here.
+
+**Operational, effective now (no code):**
+- **Do not press "Run batch" on Admin → Abandoned Carts** until #8 ships — it emails customers who already paid.
+- Run #1's read-only checks 1–3 and 9. If #1 check 1 shows shop orders failing, reconcile Square transactions
+  against `exp_orders` by hand and contact the affected customers.
+
+**Verification status.** The review's coordinator re-verified every Critical and top-High claim, and this
+repo's agent re-checked eight of the *new* claims against `963e97f` on 2026-10-08 — **all eight reproduced**
+(#6 CSRF scope, #7 `has_designer` default, #8 `/100` + `order_id is null`, #17 `/cart` button, #26
+`valueId`/`optionValueId` mismatch, #34 dead `getAdminSessionSettings`, #44 `id.ilike` on a uuid, #66
+`sanitizeAuthNextPath`). Treat the rest as **Likely / Needs-verification** until #1 has run. Baseline on
+`963e97f`: `tsc --noEmit` clean · `vitest run` 57 files / 406 tests (but `auth-route-pattern.test.ts` passes
+vacuously on Windows — #16) · `eslint .` **8 errors / 12 warnings** · `npm audit` **7 high** (2 prod:
+`sharp`, `source-map-js`).
+
+### 4.1 Items that REVISE an existing OCT/SEPT entry
+- **#9** supersedes **OCT-30**'s "`npm run audit` exits 0" and closes **OCT-12**: two production advisories
+  reappeared after Batch 9; fix = non-breaking `npm audit fix` + `npm uninstall square codegraph` + a
+  **prod-only** CI gate (`npm audit --omit=dev --audit-level=high`).
+- **#16** is the umbrella over **OCT-12, OCT-13, OCT-17** and **SEPT §1.3**: a real CI gate, the 8 lint
+  errors, and the Windows-vacuous route-pattern test.
+- **#8** contradicts **SEPT §2.3** (marked DONE): the capture→order linkage was never built, so the batch
+  emails paying customers. *(stop the batch — see the operational note above.)*
+- **#10** escalates **SEPT Batch 8 / `UI_AUDIT.md` §15.3**: the dev sign-in helper's loopback check is a no-op
+  under `next dev` (it reads the server *bind* host, not the client), and `963e97f` made it worse — it now
+  auto-completes MFA and writes a production admin's TOTP secret in plaintext to `%TEMP%`.
+- **#63** narrows **SEPT §2.10 / §7.10**: sitemap, robots and JSON-LD shipped (Batch 10); what remains is the
+  canonical URL, product OG image, `/shop` metadata and `noindex` on private pages.
+- **Different defects, same files** — do not treat the earlier item as covering these: **#24** (homepage
+  editor dual `is_visible` + failed-load fall-through) vs **OCT-29/§9.4** (layout) and **OCT-24** (`sort_order`);
+  **#26** (builder delete-option-value) vs **OCT-20** (unnamed Selects); **#41/#45/#49/#72/#75/#76** vs
+  **§9.9/§9.13/§9.16/§9.17/OCT-20**.
+
+  Items **#9, #16, #24 and #26** appear only in this sub-section (they revise or are entangled with an
+  existing entry rather than being wholly new); the remaining 72 items are listed in §4.2–§4.5. (#8 and #10
+  are new *and* revise a SEPT entry, so they appear in both.)
+
+
+### 4.2 New items — P0 (do now)
+- **#1 (Gate)** — read-only live-state sweep (9 checks) that gates the P0 set.
+- **#2 (Critical, Payments)** — shop orders paid but never recorded: `payment_mode='square_checkout'` violates
+  the CHECK; the Square link is created before the insert; insert errors are swallowed. *(overlaps SEPT §1.3)*
+- **#3 (High, Security)** — anon can `execute` the SECURITY DEFINER RPCs (rate-limit / promo / inventory) and
+  the `exp_commission_queue` view bypasses RLS. *(also deletes the dead `CommissionQueueTracker`)*
+- **#4 (High, Payments)** — Square webhook marks paid without reading `payment.status`; dead event names;
+  loses events on failure; no state guard.
+- **#5 (High, Payments)** — the server accepts tampered option values and ignores process add-ons, combo
+  discounts and NFC that the storefront charges for.
+- **#6 (High, Admin)** — the whole custom-request pipeline fails CSRF (admin mutations live outside `/api/admin`).
+- **#7 (Critical, Admin)** — "Save Base Price" silently turns off `has_designer` and nulls the mockup URL
+  (full-replace PUT). *(hotfix is a few lines)*
+- **#8 (High, Reliability)** — abandoned-cart emails paying customers, prices ÷100, repeats attacker text.
+- **#10 (High, Security)** — dev sign-in helper mints a production admin session over the LAN.
+- **#11 (Medium, Security)** — Supabase Auth: wildcard redirect URLs on prod; grants resolved by email.
+
+
+### 4.3 New items — P1 (core-flow correctness)
+`#12` inventory never reserved/checked · `#13` success page says "Stripe", no order number/email ·
+`#14` fire-and-forget email sends · `#15` stale quote links stay payable · `#17` `/cart` checkout button
+always 400s · `#18` `/future-products` notify lands on raw JSON · `#19` automatic deals never apply ·
+`#20` public checkout endpoint unhardened · `#21` Shippo webhook mapping/CHECK · `#22` order cannot be
+fulfilled from the panel · `#23` cancel/refund no confirm + transition→cancelled skips release ·
+`#25` product detail editor discards edits · `#27` variant "Weight" is machine-hours; `weight_lb` uneditable ·
+`#28` Send Quote one-click + internal note emailed · `#29` artwork "file" option never uploads ·
+`#30` checkout gating/error feedback · `#31` address form (no name, no autofill, unlabeled selects) ·
+`#32` upload rules contradict · `#33` configurator a11y · `#34` sessions never expire / dead TTL control ·
+`#35` money rounding + no sales tax.
+
+### 4.4 New items — P2 (important)
+`#36` public signup abuse · `#37` no timeouts / env validation · `#38` no scheduler · `#39` finance dates +
+timezone · `#40` privacy & email compliance · `#41` custom-request lifecycle · `#42` no unsaved-changes guard ·
+`#43` inventory save overwrites stock · `#44` search/notifications dead-ends · `#45` orders list ·
+`#46` bulk email no preview · `#47` product publish loop · `#48` promotions admin · `#49` feedback/toasts ·
+`#50` number inputs · `#51` dashboard queues · `#52` designer unreachable · `#53` quantity stepper/tier chips ·
+`#54` intake-form validation · `#55` sold-out dead end · `#56` no not-found/error pages · `#57` no mobile search ·
+`#58` cart clarity · `#59` no contact/link recovery · `#60` funnel analytics unfired · `#61` shipping/tax
+disclosure · `#62` performance · `#63` SEO remainder · `#64` SVG sanitizer / bucket listing ·
+`#65` RLS-lockdown script coverage.
+
+### 4.5 New items — P3 (polish)
+`#66` `sanitizeAuthNextPath` open redirect · `#67` panel page gate skipped on partial navigation ·
+`#68` `/auth/auth-error` displays attacker text · `#69` headers/cookies/image-proxy drift ·
+`#70` `/shop/all` invisible filters · `#71` toggle groups no selected state · `#72` schedule by pasted UUID ·
+`#73` expired session mid-edit · `#74` dead-end copy · `#75` keyboard/SR gaps · `#76` formatting/time zones.
+
+### 4.6 Suggested batches (from the review's §3)
+Operational (no code) → **A** safety net (#9 remainder, #16) → **B** DB lockdown (#3, #65) → **C** checkout
+integrity (#2, #12, #19, #20, #5, #35) → **D** payment events (#4, #13, #14, #21) → **E** admin unblock
+(#6, #15, #28, #7, #23) → **F** auth hardening (#10, #11, #34, #66–#69) → **G** storefront conversion
+(#17, #18, #30–#33, #29) → **H** operations (#8, #38, #37, #39, #40, #36) → then P2/P3 by area.
+
+
+---
+
+## 5. Execution batches (added 2026-10-08)
+
+Every open item in this plan, in dependency order — a small, reviewable PR each. Item ids: `OCT-n` (this
+plan), `#n` (`docs/archive/REMEDIATION_PLAN_2026-10-06.md`), `§n` (`docs/archive/SEPT_IMPLEMENTATION_PLAN.md`). Verification recipe: §3.
+
+**Pre-flight (no code):**
+- Run **#1** — the read-only live-state sweep. It gates the P0 set and converts Likely → Confirmed.
+- **Operational:** do not run the Abandoned-Carts batch until **#8** ships (it emails paying customers).
+
+### Batch O-A — Safety net & CI (do first)
+`#9` (dependency cleanup + prod-only audit gate) · `#16` (CI workflow, 8 lint errors, route-pattern test) ·
+`OCT-16` · `OCT-12` (closed by #9) · `OCT-17` (`git rm --cached` the CLI cache) · `§1.3` (checkout route
+tests — land with #2/#16). *Everything below then lands with CI enforcing type-check / lint / tests / build.*
+
+### Batch O-B — Migration baseline & DB lockdown (SQL)
+`OCT-13` (baseline the migration history **before** any CLI migration) · `#3` (revoke EXECUTE on the
+SECURITY DEFINER RPCs; drop the RLS-bypassing `exp_commission_queue` view; delete the dead
+`CommissionQueueTracker`) · `#65` (extend `test-rls-lockdown.mjs` to cover the RPCs/views/storage).
+
+### Batch O-C — Checkout integrity
+`#2` (order-first sequence + `payment_mode` CHECK + idempotency) · `#12` (reserve/check inventory) ·
+`#19` (atomic promo claims) · `#20` (rate limit + item cap + address/email validation) · `#5` (one pricing
+engine; tamper-proof validation; process/combo/NFC parity) · `#35` (integer-cents money math + tax).
+*One branch, in that order — they share the checkout route.*
+
+### Batch O-D — Payment events & email
+`#4` (Square webhook: status check, real event names, state guard, dedupe) · `#13` (post-payment page +
+confirmation email) · `#14` (`sendEmail` wrapper + idempotency) · `#21` (Shippo webhook mapping + CHECK).
+
+### Batch O-E — Admin unblock
+`#6` (move custom-request mutations under `/api/admin` so CSRF works) · `#15` (deactivate superseded quote
+links) · `#28` (Send Quote confirm + note split) · `#7` (pricing-page clobber hotfix + PATCH semantics) ·
+`#23` (cancel/refund confirm; transition→cancelled releases stock).
+
+### Batch O-F — Auth hardening
+`#10` (dev sign-in token + no plaintext TOTP) · `#11` (Supabase Auth dashboard: exact redirect URLs,
+confirmed-Google grants) · `#34` (session TTL decision + enforcement) · `#66`–`#69` (redirect sanitizer,
+panel page gate, auth-error text, headers/cookies/image-proxy).
+
+### Batch O-G — Storefront conversion
+`#17` (`/cart` → `/checkout`) · `#18` (`/future-products` notify form) · `#29` (artwork "file" upload) ·
+`#30` (checkout gating/errors) · `#31` (address form) · `#32` (upload rules) · `#33` (configurator a11y).
+
+### Batch O-H — Operations, resilience & privacy
+`#8` (abandoned-cart correctness) · `#36` (public-endpoint abuse) · `#37` (timeouts + env validation) ·
+`#38` (scheduler) · `#39` (finance dates + timezone) · `#40` (privacy & email compliance).
+
+### Batch O-I — Admin UX (P2/P3) & remaining OCT entries
+`#24` · `#25` · `#26` · `#27` · `#41`–`#51` · `#72`–`#76` (the admin items) · `OCT-22` (announcement-banner
+switch + duplicate row) · `OCT-23` (footer slug) · `OCT-26` (copy decisions) · `OCT-27` (collage alt text) ·
+`OCT-14` (`.env`/Vitest check) · `OCT-15` (theme colour dedup) · `OCT-11` (UI_AUDIT.md doc links).
+
+### Batch O-J — Storefront UX & performance (P2/P3)
+`#52`–`#63` (designer, quantity, intake, sold-out, error pages, mobile search, cart, contact, analytics,
+disclosure, performance, SEO remainder) · `#70` · `#71`.
+
+### Batch O-K — SEPT-only residuals (no remediation item)
+These have no `#n` counterpart, so they are not in §4: `§2.2` (gift-ideas route + gift message) ·
+`§2.6` (Art Guard review workflow) · `§3.6` (tabbed future-products admin) · `§3.7` (future-products query
+module) · `§3.10` (rich-text sanitization) · `§4.1` (per-product template governance) · `§4.3` (designer
+integration tests) · `§4.4` (interactive 3D).
+
+**SEPT items covered by a remediation item** (no separate batch): `§1.3`→#2/#16 · `§2.7`→#48 · `§2.8`→
+#33/#57/#58/#71/#75 · `§2.11`→#62 · `§2.13`→#38 · `§2.14`→#35 · `§3.5`→#48 · `§3.8`→#18 · `§3.11`→#60 ·
+`§4.2`→#29 · `§8.8`→#61 · `§10.13`→#37/#11. §9's "unverified interactions" area is covered by
+#33/#57/#58/#71/#75 plus the harness work.
+
+
+---
+
+## 6. Product Design Studio — WYSIWYG product customizer (epic, added 2026-10-08)
+
+A multi-iteration epic that turns the existing Konva popup designer
+(`src/components/shop/ProductDesigner.tsx`) into a reusable, lazy-loaded design studio: 2D + 3D rendering,
+non-destructive image editing, and a pluggable multi-format export pipeline (raster + vector + 3D). Every
+decision in §6.1 was settled with the owner on 2026-10-08; the batches are in §6.3.
+
+### 6.1 Decisions locked (2026-10-08)
+
+- **Stack — build on OSS (all MIT).** Konva + react-konva (2D, already installed); three +
+  `@react-three/fiber` v9 + `@react-three/drei` v10 (3D); `makerjs` (DXF/SVG/PDF/STL); three's own exporters
+  + `@needle-tools/fbx-exporter` (GLB/STL/OBJ/PLY/USDZ/FBX); `fflate` (client-side zip); `imagetracerjs`
+  (raster→vector, **pure JS**); `opentype.js` (text→outlines). **No commercial SDK.**
+- **3D from parametric primitives** — `slab` / `plate` / `box` / `cylinder` / `tumbler`, sized from the
+  product's design template. Artwork is applied via **texture mapping for wraps** and **drei `<Decal>` for
+  flat/logo placement**; each primitive carries a **UV region** for the print area so the art maps exactly to
+  the printable zone. Real per-product GLB meshes are a later override (`model_url`) behind the same API.
+  **PBR materials are deferred** — see `POTENTIAL_FUTURE.md` → §3.
+- **Packaging — in-app module `src/design-studio/`** with a barrel `index.ts`, lazy-loaded via
+  `next/dynamic({ ssr: false })`. The public API is a **serializable config + result**, so an npm workspace
+  package or an iframe/`postMessage` host is a later drop-in with no caller changes.
+- **CSP — zero new directives.** Stay on **uncompressed** GLB and **pure-JS** libraries: Draco/Meshopt need
+  `script-src 'wasm-unsafe-eval'` and KTX2/blob-workers need `worker-src 'self' blob:`, both of which fight
+  #69 (which is tightening this policy). Choosing `imagetracerjs` over `potrace-wasm` keeps tracing
+  client-side with no WASM.
+- **Processing — client-first, server-optional.** The whole export pipeline runs in the browser with no CSP
+  change; the exporter registry carries `backend: 'client' | 'server'` so a server fallback can be added later
+  for low-power devices, very large prints (a 300 DPI 20×20 in canvas is ≈6000×6000 px ≈ 140 MB), or
+  persistence. The host is deliberately low-power, so client-first is the default.
+- **Design storage — browser-side.** The working document + undo history live in **IndexedDB** (cookies are
+  ~4 KB and cannot hold image data; cookies carry only tiny flags), so there is no database bloat and no
+  account machinery. The design is uploaded to the server at add-to-cart/checkout, where the order takes a
+  **snapshot** (§6.4).
+- **Export packaging — `packaging: 'zip' | 'files'`, default `'zip'`** (via `fflate`): one artifact and one
+  download. Zipping pays off on the text formats (DXF/SVG/OBJ/ASCII-STL compress ~5–10×); PNG/JPG barely
+  shrink. `'files'` stays available because some laser/slicer apps will not open a `.zip` directly.
+- **Units & dimensions — configurable** (`in` | `cm` | `mm`) with a **dimension watermark/label baked into
+  the export**, so the laser/print software knows the physical size even when metadata is stripped.
+- **Uploads — configurable policy** (`{ raster, vector, trace }`) per product/template, so vector-only
+  products (laser) and raster products (sublimation) can differ, and tracing stays optional.
+- **Privacy —** the browser-stored design and any collected data get a plain-language "what we store and
+  why" disclosure (consent banner + privacy page). Coordinate with #40.
+
+
+### 6.2 Public API (DS-0 deliverable)
+
+The whole point of the epic is a clean, npm-publishable contract. **Entry** = `openDesignStudio(config)`;
+**exit** = `Promise<DesignStudioResult | null>` (`null` = cancelled).
+
+```ts
+// src/design-studio/index.ts
+export class RendererCanvasConfig {
+  // immutable chainable builder — every .withX() returns a NEW instance, so a
+  // base config can be shared and specialised (RendererConfigOne / RendererConfigTwo).
+  withMode(mode: '2d' | '3d' | 'both'): this
+  withTemplate(template: DesignTemplate): this
+  withUnits(units: 'in' | 'cm' | 'mm'): this
+  withDimensionWatermark(on: boolean): this
+  withUploadPolicy(policy: { raster: boolean; vector: boolean; trace: boolean }): this
+  withExports(specs: ExportSpec[]): this
+  withPackaging(packaging: 'zip' | 'files'): this
+  clone(): RendererCanvasConfig
+  toJSON(): DesignStudioConfig          // serializable → survives postMessage + browser storage
+}
+
+export interface DesignTemplate {
+  shape: { kind: 'slab' | 'plate' | 'box' | 'cylinder' | 'tumbler'; /* dims in the configured unit */ }
+  print_area: { x: number; y: number; w: number; h: number; bleed: number; safe: number }
+  dpi: number
+  material?: string            // PBR preset id — reserved, see POTENTIAL_FUTURE.md §3
+  model_url?: string | null    // GLB override (later); primitive is used when null
+}
+
+export function openDesignStudio(config: RendererCanvasConfig | DesignStudioConfig):
+  Promise<DesignStudioResult | null>
+
+export interface DesignStudioResult {
+  document: DesignDocumentV2
+  outputs: Array<{ spec: ExportSpec; blob: Blob }>
+  download(): void             // zips (or downloads) the set per `packaging`
+}
+
+export function DesignStudioHost(props: DesignStudioHostProps): React.ReactElement
+export function registerTool(tool: DesignTool): void            // extensible image edits (serializable ops)
+export function registerExporter(exporter: DesignExporter): void
+// DesignExporter = { id; ext; mime; backend: 'client' | 'server'; render(design, opts) }
+```
+
+**Two constraints that keep it npm-ready:**
+1. **Serializable** — `RendererCanvasConfig` is a thin wrapper that emits a plain object via `toJSON()`, and
+   `openDesignStudio()` accepts **either** the class **or** the plain object. This is what keeps the
+   iframe/`postMessage` and browser-storage paths working unchanged.
+2. **Framework-light** — the config + registries must not import React/MUI, so the core also runs in Node
+   (the headless runner in §6.3/DS-7).
+
+A **standalone harness** makes the entry/exit contract executable: a dev route `/dev/design-studio` that
+mounts the studio from a fixture config (no product page, no cart, no auth) for visual iteration, plus a
+headless runner (`scripts/render-design.mjs`) that takes a config + fixture and writes the outputs — which is
+what makes golden-file export tests possible in CI.
+
+
+### 6.3 Batches
+
+Each batch is a reviewable PR. Effort: S / M / L.
+
+| Batch | Theme | Scope |
+|---|---|---|
+| **DS-0** (S) | Spike + API contract + ADR | Prove three/r3f under Next 16 + React 19 (`ssr:false`); measure the lazy chunk; confirm the CSP holds unchanged (uncompressed GLB, pure-JS libs); freeze the §6.2 API and the `DesignDocumentV1 → V2` shape; settle the §6.4 decisions. Deliverable: ADR + types + a spike branch. |
+| **DS-1** (S–M) | Extract library + popup + parity | Stand up `src/design-studio/`; move `ProductDesigner` in with **no behaviour change**; `DesignStudioHost` dialog + `openDesignStudio()`; lazy-load; wire `ProductConfigurator` → **closes #52**. |
+| **DS-2** (M) | 2D image editing | Upload (sanitized, #64); **non-destructive** source + ordered-op pipeline; `registerTool` registry (crop / rotate / scale / threshold / …) with a params UI; multi-image layers; **undo/redo** (IndexedDB history); keyboard + screen-reader access (layer list, numeric X/Y/size/rotation, arrow-key nudge, live region). |
+| **DS-3** (L) | 3D primitives + artwork | `shape.kind` → three geometry; **texture mapping for wraps** + **drei `<Decal>`** for flat/logo; UV region ↔ print area; 2D/3D/both switch; camera presets + reset view; `frameloop="demand"` when idle; `model_url` override hook. |
+| **DS-4a** (L) | Raster + vector export | `registerExporter` registry; PNG/JPG at explicit pixel dimensions + DPI (PNG `pHYs` / JPG JFIF); SVG (real units + `viewBox`) + DXF (units header) via `makerjs`; text→outlines via `opentype.js` (bundled OFL fonts); mono/threshold colour mode for engraving; **client-side raster→vector tracing** (`imagetracerjs`, pure JS); **dimension watermark/label**; **`fflate` zip packaging**. |
+| **DS-4b** (L) | 3D export | GLB / STL / OBJ via three's exporters, FBX via `@needle-tools/fbx-exporter`; **plain/uncompressed** (no Draco); round-trip test (re-import) as the exit criterion. |
+| **DS-5** (M) | Templates & print fidelity | The **design template** (shape + print area + DPI + units) on the product/builder → **closes SEPT §4.1**; upload-token rebind → **§4.2**; designer integration tests → **§4.3**. |
+| **DS-6** (M) | Integration & hardening | Cart/order propagation (order-time **snapshot**, §6.4); **download from the editor**; rendered cart/order thumbnail; **admin visibility of the design + its files** (ties to #22); a11y (#33/#75); perf (#62); sanitization of every upload **and** every generated artifact; **privacy/"what we store" copy** (#40); tests. |
+| **DS-7** (M) | Config API + npm packaging + harness | `RendererCanvasConfig` + registries as a framework-light, serializable, **publishable** package; the `/dev/design-studio` standalone route + `scripts/render-design.mjs` headless runner; golden-file export tests. |
+
+**Testing (all batches).** This repo has **no DOM harness** (OCT-5), so: pure-function unit tests (op pipeline,
+shape→geometry, template/print-area math, unit conversion, tracing, DXF/SVG serialization); **golden-file**
+export tests (fixed design → asserted bytes); **round-trip** tests (FBX/GLB re-imported into three's loaders,
+STL validated); source-contract tests (three/Konva **not** statically imported on the product page; the API
+stays serializable); and a **manual exit criterion** — "the DXF opens in LightBurn at the right size; the STL
+slices in PrusaSlicer."
+
+### 6.4 Deferred to DS-0
+
+1. **Fidelity bar** — is true-vector DXF/SVG + slicable STL required for v1 (the intent), or is a high-res raster acceptable?
+2. **Snapshot vs reference** — recommended **hybrid**: reference for the working design + a **snapshot on the order line** at purchase + thumbnail + export files in `design-artifacts`.
+3. **Vector-vs-trace default** per product type (laser = vector-preferred; sublimation = raster).
+4. **Mono/threshold colour mode** required for engraving?
+5. **HDRI / environment sourcing** — default to three's **`RoomEnvironment`** (generated in code: no file, no fetch, no CSP change); an HDRI file must be bundled or served from Supabase Storage (a CDN would need a new CSP origin).
+6. **Which fonts** are offerable (and bundled for outlining) — Cinzel/Inter are OFL, so bundleable.
+7. **Watermark/proof** — a low-res watermarked proof for the customer vs the high-res production file?
+
+### 6.5 Cross-references
+
+- **Closes:** SEPT §4.1–§4.4 (designer debt), remediation **#52** (designer unreachable / static Konva / not touch-ready) and the export half of **#64** (SVG sanitizer).
+- **Depends on:** **#62** (lazy-load + code-split), **#69** (CSP tightening), **#40** (privacy copy), **#33/#75** (a11y), **#22** (admin sees the artwork).
+- **Owns:** the `DesignDocumentV1 → V2` schema migration (v1 has no 3D fields by design; the `shape` reference is the only 3D addition).
+
+### 6.6 Risks
+
+- **Bundle size** — three is heavy; lazy-load + code-split is mandatory, not optional (#62).
+- **CSP** — uncompressed GLB + pure-JS only; any WASM or blob-worker forces a directive that fights #69.
+- **React 19 alignment** — r3f v9 / drei v10 / react-konva v19 must line up; DS-0 proves it.
+- **FBX exporter maturity** — `@needle-tools/fbx-exporter` is small/new; the DS-4b round-trip test is the gate.
+- **DXF text** — must be converted to outlines, and the fonts bundled, or the laser PC substitutes glyphs.
+- **Client-side limits** — very large prints exceed browser canvas memory; the `backend: 'server'` escape hatch is the mitigation.
+- **IndexedDB eviction** — browsers can evict browser storage, so the customer is warned to add to cart to save the design to the order.
+

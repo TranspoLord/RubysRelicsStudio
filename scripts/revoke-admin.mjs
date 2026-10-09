@@ -1,5 +1,5 @@
 /**
- * Revokes admin access from a Google account (SEPT_IMPLEMENTATION_PLAN §10.2).
+ * Revokes admin access from a Google account (docs/archive/SEPT_IMPLEMENTATION_PLAN §10.2).
  *
  * Usage:
  *   npm run admin:revoke -- admin@example.com

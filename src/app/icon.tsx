@@ -1,7 +1,7 @@
 import { ImageResponse } from 'next/og'
 
 /**
- * Programmatic favicon (SEPT_IMPLEMENTATION_PLAN §7.10).
+ * Programmatic favicon (docs/archive/SEPT_IMPLEMENTATION_PLAN §7.10).
  *
  * `public/` does not exist and there is no `src/app/icon.*`, so `/favicon.ico`
  * 404'd on every page load. Next generates this route at build time, which avoids

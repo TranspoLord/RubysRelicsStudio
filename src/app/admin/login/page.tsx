@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 }
 
 /**
- * Admin sign-in entry point (SEPT_IMPLEMENTATION_PLAN 10.6).
+ * Admin sign-in entry point (docs/archive/SEPT_IMPLEMENTATION_PLAN 10.6).
  *
  * Google sign-in replaces the old shared-key form. This page stays exempt from
  * the Edge gate (ADMIN_AUTH_EXEMPT_PATHS) - otherwise nobody could reach it to

@@ -15,7 +15,7 @@ const BG_SURFACE = '#161210'
 const BG_ELEVATED = '#1E1A15'
 const BG_CARD = '#231F19'
 
-// ─── Contrast floors (SEPT_IMPLEMENTATION_PLAN §8.1 / §8.3 / §9.5 / §9.12) ─────
+// ─── Contrast floors (docs/archive/SEPT_IMPLEMENTATION_PLAN §8.1 / §8.3 / §9.5 / §9.12) ─────
 
 /**
  * Text-safe semantic tones.

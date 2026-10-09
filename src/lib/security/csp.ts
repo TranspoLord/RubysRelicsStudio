@@ -1,5 +1,5 @@
 /**
- * Content-Security-Policy construction (SEC-047; SEPT_IMPLEMENTATION_PLAN §7.1/§7.6).
+ * Content-Security-Policy construction (SEC-047; docs/archive/SEPT_IMPLEMENTATION_PLAN §7.1/§7.6).
  *
  * The policy is built here rather than inside `src/proxy.ts` for one reason: the
  * nonce must be identical in three places — the `Content-Security-Policy` header,

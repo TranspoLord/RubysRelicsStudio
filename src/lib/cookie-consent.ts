@@ -18,7 +18,7 @@ export interface CookieConsentState {
  * used to render inside the admin panel too: `position: fixed; bottom: 0` over
  * the module rail, where its 87 px bar made "Abandoned Carts" and "Homepage"
  * unclickable until a *storefront* consent bar was dismissed
- * (SEPT_IMPLEMENTATION_PLAN §9.2 — the same defect as §8.2 with a second blast
+ * (docs/archive/SEPT_IMPLEMENTATION_PLAN §9.2 — the same defect as §8.2 with a second blast
  * radius).
  *
  * Consent is a storefront concern, so the rule is "storefront only": the panel

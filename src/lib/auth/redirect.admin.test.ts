@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { ADMIN_NEXT_FALLBACK, sanitizeAdminNextPath } from '@/lib/auth/redirect'
 
 /**
- * The admin login's `next` guard (SEPT_IMPLEMENTATION_PLAN §10.4).
+ * The admin login's `next` guard (docs/archive/SEPT_IMPLEMENTATION_PLAN §10.4).
  *
  * The generic sanitizer is covered in `redirect.test.ts`; this file covers the
  * extra rule an admin login adds — the destination must stay inside `/admin`,
