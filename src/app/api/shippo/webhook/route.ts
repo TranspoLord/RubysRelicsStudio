@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { createHash } from 'node:crypto'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
-import { getResend } from '@/lib/resend/client'
+import { sendEmail } from '@/lib/resend/send'
 import { safeLogError } from '@/lib/security/logger'
 import { safeHtmlEscape } from '@/lib/validate'
 
@@ -153,26 +153,28 @@ export async function POST(request: Request) {
 
       // Send notification email if order is delivered
       if (status.toLowerCase().includes('deliver') && order.customer_email) {
-        try {
-          const resend = getResend()
-          const fromAddress = process.env.SHIPPO_FROM_EMAIL || 'orders@rubysrelics.com'
-          const origin = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://rubysrelicsstudio.com'
-          const trackUrl = order.guest_tracking_token
-            ? `${origin}/orders/${encodeURIComponent(order.id)}?access=${encodeURIComponent(order.guest_tracking_token)}`
-            : `${origin}/shop`
+        const origin = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://rubysrelicsstudio.com'
+        const trackUrl = order.guest_tracking_token
+          ? `${origin}/orders/${encodeURIComponent(order.id)}?access=${encodeURIComponent(order.guest_tracking_token)}`
+          : `${origin}/shop`
 
-          await resend.emails.send({
-            from: fromAddress,
-            to: [order.customer_email],
-            subject: 'Your order has been delivered!',
-            html: `
-              <h2>Order Delivered</h2>
-              <p>Your order #${safeHtmlEscape(order.id)} has been delivered via ${safeHtmlEscape(carrier.toUpperCase())} tracking #${safeHtmlEscape(tracking_number)}.</p>
-              <p><a href="${safeHtmlEscape(trackUrl)}">View order details</a></p>
-            `,
-          })
-        } catch (emailError) {
-          safeLogError('[shippo:webhook] Failed to send email:', emailError)
+        // OCT #14: a typed result, and a deterministic key so a repeated
+        // DELIVERED update cannot send a second email. The carrier/tracking
+        // values are coerced because Shippo omits them on some events — the old
+        // `carrier.toUpperCase()` threw a 500 when it did.
+        const deliveredEmail = await sendEmail({
+          to: order.customer_email,
+          subject: 'Your order has been delivered!',
+          idempotencyKey: `delivered:${order.id}`,
+          html: `
+            <h2>Order Delivered</h2>
+            <p>Your order #${safeHtmlEscape(order.id)} has been delivered via ${safeHtmlEscape(String(carrier ?? '').toUpperCase())} tracking #${safeHtmlEscape(String(tracking_number ?? ''))}.</p>
+            <p><a href="${safeHtmlEscape(trackUrl)}">View order details</a></p>
+          `,
+        })
+
+        if (!deliveredEmail.ok) {
+          safeLogError('[shippo:webhook] Failed to send email:', deliveredEmail.error)
         }
       }
     }

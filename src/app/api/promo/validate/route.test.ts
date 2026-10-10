@@ -97,6 +97,62 @@ describe('POST /api/promo/validate', () => {
     expect(payload.promo?.code).toBe('SAVE10')
   })
 
+  // OCT #3: the row `id`s must never reach the client — with them, an anon
+  // caller could loop exp_increment_promo_code_usage(id) and exhaust the code
+  // for everyone. (The revoke itself lives in migration 068 and is asserted by
+  // src/lib/security/rpc-grants.contract.test.ts.)
+  it('never returns a promo or deal row id', async () => {
+    const promoId = '11111111-1111-1111-1111-111111111111'
+    const dealId = '22222222-2222-2222-2222-222222222222'
+
+    mocks.getSupabaseAdmin.mockReturnValue(
+      makeSupabase(
+        [
+          {
+            id: promoId,
+            code: 'SAVE10',
+            discount_type: 'percent',
+            discount_value: 10,
+            is_active: true,
+            usage_limit: null,
+            usage_count: 0,
+            valid_from: null,
+            valid_to: null,
+          },
+        ],
+        [
+          {
+            id: dealId,
+            name: 'Sticker bundle',
+            trigger_type: 'code',
+            code: 'SAVE10',
+            conditions_json: {},
+            rewards_json: {},
+            is_active: true,
+            is_stackable: false,
+            usage_limit: null,
+            usage_count: 0,
+            valid_from: null,
+            valid_to: null,
+          },
+        ]
+      )
+    )
+
+    const response = await POST(makeRequest({ code: 'save10' }))
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(payload.promo).toEqual({ code: 'SAVE10', discountType: 'percent', discountValue: 10 })
+    expect(payload.promo).not.toHaveProperty('id')
+    expect(payload.deals).toHaveLength(1)
+    expect(payload.deals[0]).not.toHaveProperty('id')
+
+    const serialized = JSON.stringify(payload)
+    expect(serialized).not.toContain(promoId)
+    expect(serialized).not.toContain(dealId)
+  })
+
   it('rejects a code longer than 40 characters', async () => {
     mocks.getSupabaseAdmin.mockReturnValue(makeSupabase([], []))
 

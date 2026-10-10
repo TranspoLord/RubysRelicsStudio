@@ -27,7 +27,7 @@ interface SupabasePlan {
 
 function createSupabase(plan: SupabasePlan) {
   const calls = {
-    orderUpdateEq: vi.fn(async () => ({ error: plan.updateError ?? null })),
+    orderUpdateEq: vi.fn(async (..._args: unknown[]) => ({ error: plan.updateError ?? null })),
     eventInsert: vi.fn(async () => ({ error: null })),
   }
 
@@ -45,9 +45,26 @@ function createSupabase(plan: SupabasePlan) {
               }),
             })),
           })),
-          update: vi.fn(() => ({
-            eq: calls.orderUpdateEq,
-          })),
+          update: vi.fn(() => {
+            // OCT #4: the route now chains .eq('status', …).select('id') for
+            // optimistic concurrency, so the mock needs the full chain.
+            const chain: Record<string, unknown> = {}
+            // Record only the first `.eq` so the existing single-call assertions
+            // still hold now that the route chains two of them.
+            let recorded = false
+            chain.eq = vi.fn((column: string, value: unknown) => {
+              if (!recorded) {
+                calls.orderUpdateEq(column, value)
+                recorded = true
+              }
+              return chain
+            })
+            chain.select = vi.fn(async () => ({
+              data: plan.updateError ? null : [{ id: 'order-1' }],
+              error: plan.updateError ?? null,
+            }))
+            return chain
+          }),
         }
       }
 
@@ -149,7 +166,7 @@ describe('PATCH /api/admin/orders', () => {
 
   it('cancels unpaid order and releases inventory', async () => {
     const calls = {
-      orderUpdateEq: vi.fn(async () => ({ error: null })),
+      orderUpdateEq: vi.fn(async (..._args: unknown[]) => ({ error: null })),
       eventInsert: vi.fn(async () => ({ error: null })),
       noteInsert: vi.fn(async () => ({ error: null })),
       rpc: vi.fn(async () => ({ data: { ok: true }, error: null })),
@@ -174,9 +191,20 @@ describe('PATCH /api/admin/orders', () => {
                 })),
               })),
             })),
-            update: vi.fn(() => ({
-              eq: calls.orderUpdateEq,
-            })),
+            update: vi.fn(() => {
+              // OCT #4: the route chains .eq('status', …).select('id') now.
+              const chain: Record<string, unknown> = {}
+              let recorded = false
+              chain.eq = vi.fn((column: string, value: unknown) => {
+                if (!recorded) {
+                  calls.orderUpdateEq(column, value)
+                  recorded = true
+                }
+                return chain
+              })
+              chain.select = vi.fn(async () => ({ data: [{ id: 'order-1' }], error: null }))
+              return chain
+            }),
           }
         }
 
@@ -232,7 +260,7 @@ describe('PATCH /api/admin/orders', () => {
 
   it('marks paid order as refunded and records refund event', async () => {
     const calls = {
-      orderUpdateEq: vi.fn(async () => ({ error: null })),
+      orderUpdateEq: vi.fn(async (..._args: unknown[]) => ({ error: null })),
       eventInsert: vi.fn(async () => ({ error: null })),
       noteInsert: vi.fn(async () => ({ error: null })),
     }
@@ -256,9 +284,20 @@ describe('PATCH /api/admin/orders', () => {
                 })),
               })),
             })),
-            update: vi.fn(() => ({
-              eq: calls.orderUpdateEq,
-            })),
+            update: vi.fn(() => {
+              // OCT #4: the route chains .eq('status', …).select('id') now.
+              const chain: Record<string, unknown> = {}
+              let recorded = false
+              chain.eq = vi.fn((column: string, value: unknown) => {
+                if (!recorded) {
+                  calls.orderUpdateEq(column, value)
+                  recorded = true
+                }
+                return chain
+              })
+              chain.select = vi.fn(async () => ({ data: [{ id: 'order-1' }], error: null }))
+              return chain
+            }),
           }
         }
 

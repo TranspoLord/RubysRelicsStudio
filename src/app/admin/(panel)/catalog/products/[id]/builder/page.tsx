@@ -1638,7 +1638,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
 
                   {isAssigned && (
                     <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), fontStyle: 'italic' }}>
-                      Auto-generates "{getProcessAutoOption(pt.key)?.label}" option in Options section
+                      Auto-generates &quot;{getProcessAutoOption(pt.key)?.label}&quot; option in Options section
                     </Typography>
                   )}
                 </Stack>
@@ -1698,7 +1698,7 @@ export default function ProductBuilderPage({ params }: { params: Promise<{ id: s
                     </Typography>
                     {cd.label && (
                       <Typography sx={{ fontSize: '0.78rem', color: alpha(brandTokens.parchment, 0.62), flex: 1 }}>
-                        "{cd.label}"
+                        &quot;{cd.label}&quot;
                       </Typography>
                     )}
                     <Button size="small" variant="text" color="error" onClick={() => removeComboDiscount(cd.localId)}>

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { requireAdminApiSession } from '@/lib/admin/auth'
 import { writeAdminAuditLog } from '@/lib/admin/audit'
 import { getSupabaseAdmin, branch } from '@/lib/supabase/client'
-import { getEmailSenderAddress, getResend } from '@/lib/resend/client'
+import { sendEmail } from '@/lib/resend/send'
 import { createSquareCheckout } from '@/lib/square/client'
 import { safeHtmlEscape } from '@/lib/validate'
 import { parseJsonBodyOrError } from '@/lib/security/body'
@@ -48,14 +48,12 @@ async function sendQuoteEmail(input: {
   statusUrl: string
   note: string | null
 }) {
-  if (!process.env.RESEND_API_KEY) return
-
-  const resend = getResend()
-  const fromAddress = await getEmailSenderAddress()
-  await resend.emails.send({
-    from: fromAddress,
-    to: [input.customerEmail],
+  // OCT #14: return the typed result so `send_quote` can report
+  // `warnings: ['email_not_sent']` instead of claiming success.
+  return sendEmail({
+    to: input.customerEmail,
     subject: `Your custom quote is ready (${input.requestId.slice(0, 8)})`,
+    idempotencyKey: `quote:${input.requestId}:${input.quoteAmount}`,
     html: `
       <h2>Your Quote Is Ready</h2>
       <p><strong>Request ID:</strong> ${safeHtmlEscape(input.requestId)}</p>

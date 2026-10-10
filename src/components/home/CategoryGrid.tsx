@@ -37,11 +37,11 @@ export function CategoryGrid({ categories }: CategoryGridProps = {}) {
     glowColor: cat.glow_color ?? brandTokens.forgeGold,
   }))
 
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null)
+
   if (items.length === 0) {
     return null
   }
-
-  const [hoveredKey, setHoveredKey] = useState<string | null>(null)
 
   return (
     <Box

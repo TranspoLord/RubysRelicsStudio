@@ -1,4 +1,4 @@
-import { getEmailSenderAddress, getResend } from '@/lib/resend/client'
+import { sendEmail } from '@/lib/resend/send'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 
 function escapeHtml(value: string): string {
@@ -24,13 +24,10 @@ async function sendAbandonedRequestEmail(input: {
     ? `${base.replace(/\/$/, '')}/custom-orders/${input.requestId}?access=${encodeURIComponent(input.accessToken)}`
     : `${base.replace(/\/$/, '')}/custom-orders`
 
-  const resend = getResend()
-  const fromAddress = await getEmailSenderAddress()
-
-  const { error } = await resend.emails.send({
-    from: fromAddress,
-    to: [input.customerEmail],
+  const result = await sendEmail({
+    to: input.customerEmail,
     subject: `Still interested in your custom request? (${input.requestId.slice(0, 8)})`,
+    idempotencyKey: `abandoned-request:${input.requestId}`,
     html: `
       <h2>Your custom request is still waiting</h2>
       <p>We noticed your request is still in the queue and wanted to make sure you still want to move forward.</p>
@@ -42,8 +39,8 @@ async function sendAbandonedRequestEmail(input: {
     `,
   })
 
-  if (error) {
-    console.error('[custom-request-recovery:email]', error)
+  if (!result.ok) {
+    console.error('[custom-request-recovery:email]', result.error)
     return false
   }
 

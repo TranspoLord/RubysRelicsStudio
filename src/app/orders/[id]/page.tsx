@@ -26,6 +26,9 @@ interface OrderRow {
   production_estimate_band: string
   subtotal: number
   discount_amount: number
+  shipping_cost: number
+  shipping_discount: number
+  tax_amount: number
   order_total: number
   created_at: string
   guest_tracking_expires_at: string | null
@@ -38,7 +41,7 @@ async function getGuestOrder(orderId: string, accessToken: string) {
 
   const { data: order, error } = await supabase
     .from('exp_orders')
-    .select('id, status, payment_status, production_estimate_band, subtotal, discount_amount, order_total, created_at, guest_tracking_expires_at')
+    .select('id, status, payment_status, production_estimate_band, subtotal, discount_amount, shipping_cost, shipping_discount, tax_amount, order_total, created_at, guest_tracking_expires_at')
     .eq('id', orderId)
     .eq('guest_tracking_token', accessToken)
     .single()
@@ -194,6 +197,20 @@ export default async function OrderTrackingPage({
                 <Box sx={{ display: 'grid', gap: 0.45, mt: 0.3 }}>
                   <SummaryRow label="Subtotal" value={Number(result.order.subtotal)} />
                   <SummaryRow label="Discounts" value={-Number(result.order.discount_amount)} />
+                  {/* OCT #35: shipping was missing entirely, and the row only
+                      appears when there is something to show. */}
+                  {Number(result.order.shipping_cost) > 0 && (
+                    <SummaryRow label="Shipping" value={Number(result.order.shipping_cost)} />
+                  )}
+                  {Number(result.order.shipping_discount) > 0 && (
+                    <SummaryRow
+                      label="Shipping discount"
+                      value={-Number(result.order.shipping_discount)}
+                    />
+                  )}
+                  {Number(result.order.tax_amount) > 0 && (
+                    <SummaryRow label="Tax" value={Number(result.order.tax_amount)} />
+                  )}
                   <SummaryRow label="Total" value={Number(result.order.order_total)} emph />
                 </Box>
               </Box>

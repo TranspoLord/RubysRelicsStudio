@@ -171,7 +171,7 @@ export default function AdminShippingPage() {
 
         {data.isTestMode && (
           <Alert severity="info" role="status" sx={{ mt: 0.5 }}>
-            Shippo is in test mode. Rates will be from Shippo's test carriers.
+            Shippo is in test mode. Rates will be from Shippo&apos;s test carriers.
           </Alert>
         )}
       </Box>

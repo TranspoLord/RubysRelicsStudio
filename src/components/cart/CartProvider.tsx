@@ -15,8 +15,14 @@ import type { DesignDocumentV1 } from '@/lib/design/schema'
 import { parseDesignDocument } from '@/lib/design/schema'
 
 import { brandTokens } from '@/theme/theme'
+import { clampQty, repriceLine } from '@/lib/cart/repricing'
+import type { PricingContext } from '@/lib/pricing/engine'
 
-const CART_STORAGE_KEY = 'rrs_cart_v1'
+// OCT #5: v2 stores `{ items, pricingContexts }` so a quantity change in the cart
+// can re-price through the shared engine instead of scaling a stale per-unit
+// amount. v1 carts are still read (items only) — see the load effect.
+const CART_STORAGE_KEY = 'rrs_cart_v2'
+const CART_STORAGE_KEY_V1 = 'rrs_cart_v1'
 
 export interface CartItemOption {
   key: string
@@ -44,6 +50,15 @@ export interface CartItem {
   imageEmoji?: string | null
   weight?: number | null
   designDocument?: DesignDocumentV1 | null
+  /** OCT #5: the NFC tag add-on chosen for this line, if any. */
+  nfc?: CartItemNfc | null
+}
+
+/** OCT #5: the NFC tag add-on payload. */
+export interface CartItemNfc {
+  enabled: boolean
+  targetData: string
+  leaveUnlocked: boolean
 }
 
 function asFiniteMoney(value: unknown): number {
@@ -97,6 +112,21 @@ function normalizeCartItem(input: unknown): CartItem | null {
     return null
   }
 
+  // OCT #5: keep the NFC add-on across reloads, or the cart would silently drop
+  // it and the customer would be charged less than the line shows.
+  const rawNfc = (row as { nfc?: unknown }).nfc
+  const nfc: CartItemNfc | null =
+    rawNfc && typeof rawNfc === 'object' && (rawNfc as { enabled?: unknown }).enabled === true
+      ? {
+          enabled: true,
+          targetData:
+            typeof (rawNfc as { targetData?: unknown }).targetData === 'string'
+              ? (rawNfc as { targetData: string }).targetData.slice(0, 250)
+              : '',
+          leaveUnlocked: (rawNfc as { leaveUnlocked?: unknown }).leaveUnlocked === true,
+        }
+      : null
+
   return {
     key: row.key,
     productId: row.productId,
@@ -116,6 +146,7 @@ function normalizeCartItem(input: unknown): CartItem | null {
     imageEmoji: typeof row.imageEmoji === 'string' ? row.imageEmoji : null,
     weight: typeof row.weight === 'number' ? row.weight : null,
     designDocument,
+    nfc,
   }
 }
 
@@ -128,18 +159,14 @@ interface CartContextValue {
   drawerOpen: boolean
   openDrawer: () => void
   closeDrawer: () => void
-  addItem: (item: CartItem) => void
+  /** OCT #5: pass the product's pricing context so the cart can re-tier. */
+  addItem: (item: CartItem, context?: PricingContext) => void
   removeItem: (key: string) => void
   updateQuantity: (key: string, quantity: number) => void
   clearCart: () => void
 }
 
 const CartContext = createContext<CartContextValue | null>(null)
-
-function clampQty(quantity: number): number {
-  if (!Number.isFinite(quantity)) return 1
-  return Math.max(1, Math.min(999, Math.floor(quantity)))
-}
 
 function QtyBtn({
   children,
@@ -178,6 +205,10 @@ function QtyBtn({
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [items, setItems] = useState<CartItem[]>([])
+  // OCT #5: one snapshot per product, shared by every line of that product, so
+  // three lines of the same product do not store three copies. Entries are
+  // released as soon as no cart line references them.
+  const [pricingContexts, setPricingContexts] = useState<Record<string, PricingContext>>({})
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   const openDrawer = useCallback(() => setDrawerOpen(true), [])
@@ -186,13 +217,36 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(CART_STORAGE_KEY)
-      if (!raw) return
-      const parsed = JSON.parse(raw) as CartItem[]
-      if (!Array.isArray(parsed)) return
-      const normalized = parsed
-        .map((item) => normalizeCartItem(item))
-        .filter((item): item is CartItem => item !== null)
-      setItems(normalized)
+      if (raw) {
+        const parsed = JSON.parse(raw) as {
+          items?: unknown
+          pricingContexts?: Record<string, PricingContext>
+        }
+        if (Array.isArray(parsed?.items)) {
+          setItems(
+            parsed.items
+              .map((item) => normalizeCartItem(item))
+              .filter((item): item is CartItem => item !== null)
+          )
+        }
+        if (parsed?.pricingContexts && typeof parsed.pricingContexts === 'object') {
+          setPricingContexts(parsed.pricingContexts)
+        }
+        return
+      }
+
+      // OCT #5: a v1 cart has no snapshots. Load its items so the customer keeps
+      // their cart; those lines fall back to their stored totals and the server
+      // re-prices at checkout.
+      const legacy = window.localStorage.getItem(CART_STORAGE_KEY_V1)
+      if (!legacy) return
+      const parsedLegacy = JSON.parse(legacy) as unknown
+      if (!Array.isArray(parsedLegacy)) return
+      setItems(
+        parsedLegacy
+          .map((item) => normalizeCartItem(item))
+          .filter((item): item is CartItem => item !== null)
+      )
     } catch {
       // Ignore malformed storage.
     }
@@ -200,11 +254,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items))
+      window.localStorage.setItem(
+        CART_STORAGE_KEY,
+        JSON.stringify({ items, pricingContexts })
+      )
     } catch {
       // Ignore storage write errors.
     }
-  }, [items])
+  }, [items, pricingContexts])
 
   const itemCount = useMemo(
     () => items.reduce((sum, item) => sum + clampQty(item.quantity), 0),
@@ -226,25 +283,30 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [items]
   )
 
-  function addItem(next: CartItem) {
+  function addItem(next: CartItem, context?: PricingContext) {
+    const snapshot = context ?? pricingContexts[next.productId]
+    if (context) {
+      setPricingContexts((prev) => ({ ...prev, [next.productId]: context }))
+    }
+
     setItems((prev) => {
       const existing = prev.find((item) => item.key === next.key)
       if (!existing) return [...prev, { ...next, quantity: clampQty(next.quantity) }]
 
-      const mergedQty = clampQty(existing.quantity + next.quantity)
-      const unitSubtotal = next.quantity > 0 ? next.lineSubtotal / next.quantity : next.unitPrice
-      const unitDiscount = next.quantity > 0 ? next.lineDiscount / next.quantity : 0
-      const unitTotal = next.quantity > 0 ? next.lineTotal / next.quantity : next.unitPrice
+      // OCT #5: re-price the merged line rather than scaling the old per-unit
+      // amount — the merged quantity may sit in a different bulk tier.
+      const mergedQty = existing.quantity + next.quantity
+      const merged = repriceLine(
+        { ...existing, ...next, quantity: mergedQty },
+        mergedQty,
+        snapshot
+      )
 
       return prev.map((item) => {
         if (item.key !== next.key) return item
         return {
           ...item,
-          quantity: mergedQty,
-          unitPrice: next.unitPrice,
-          lineSubtotal: unitSubtotal * mergedQty,
-          lineDiscount: unitDiscount * mergedQty,
-          lineTotal: unitTotal * mergedQty,
+          ...merged,
           imageUrl: next.imageUrl ?? item.imageUrl,
           imageEmoji: next.imageEmoji ?? item.imageEmoji,
           selectedProcessKeys: next.selectedProcessKeys ?? item.selectedProcessKeys,
@@ -255,30 +317,36 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }
 
   function removeItem(key: string) {
-    setItems((prev) => prev.filter((item) => item.key !== key))
+    const remaining = items.filter((item) => item.key !== key)
+    setItems(remaining)
+
+    // OCT #5: release the snapshots no remaining line needs. This is what keeps
+    // localStorage bounded — a snapshot lives only while a cart line uses it.
+    const stillUsed = new Set(remaining.map((item) => item.productId))
+    setPricingContexts((contexts) => {
+      const next: Record<string, PricingContext> = {}
+      for (const [productId, context] of Object.entries(contexts)) {
+        if (stillUsed.has(productId)) next[productId] = context
+      }
+      return next
+    })
   }
 
   function updateQuantity(key: string, quantity: number) {
-    const nextQty = clampQty(quantity)
     setItems((prev) =>
       prev.map((item) => {
         if (item.key !== key) return item
-        const unitSubtotal = item.quantity > 0 ? item.lineSubtotal / item.quantity : item.unitPrice
-        const unitDiscount = item.quantity > 0 ? item.lineDiscount / item.quantity : 0
-        const unitTotal = item.quantity > 0 ? item.lineTotal / item.quantity : item.unitPrice
-        return {
-          ...item,
-          quantity: nextQty,
-          lineSubtotal: unitSubtotal * nextQty,
-          lineDiscount: unitDiscount * nextQty,
-          lineTotal: unitTotal * nextQty,
-        }
+        // OCT #5: re-tier through the engine instead of scaling the amount
+        // captured at add time.
+        return { ...item, ...repriceLine(item, quantity, pricingContexts[item.productId]) }
       })
     )
   }
 
-const clearCart = useCallback(() => {
+  const clearCart = useCallback(() => {
     setItems([])
+    // OCT #5: no lines left, so no snapshots are needed.
+    setPricingContexts({})
   }, [])
 
   const value = useMemo<CartContextValue>(

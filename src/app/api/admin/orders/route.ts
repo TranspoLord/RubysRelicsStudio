@@ -300,10 +300,22 @@ export async function PATCH(request: Request) {
         patch.cancelled_at = new Date().toISOString()
       }
 
-      const { error } = await supabase
+      // OCT #4: optimistic concurrency. The status was read above, so scope the
+      // write to it — a webhook that paid or cancelled the order in between must
+      // not be clobbered by a stale transition.
+      const { data: updatedRows, error } = await supabase
         .from('exp_orders')
         .update(patch)
         .eq('id', orderId)
+        .eq('status', order.status)
+        .select('id')
+
+      if (!error && (updatedRows ?? []).length === 0) {
+        return NextResponse.json(
+          { error: 'Order changed since you loaded it — reload and try again.' },
+          { status: 409 }
+        )
+      }
 
       if (error) {
         console.error('[admin:orders:transition]', error.message)
@@ -348,7 +360,8 @@ export async function PATCH(request: Request) {
 
       const note = asOptionalString(body.note, 500)
 
-      const { error } = await supabase
+      // OCT #4: same optimistic guard as the transition path.
+      const { data: cancelledRows, error } = await supabase
         .from('exp_orders')
         .update({
           status: 'cancelled',
@@ -356,6 +369,15 @@ export async function PATCH(request: Request) {
           updated_at: new Date().toISOString(),
         })
         .eq('id', orderId)
+        .eq('status', order.status)
+        .select('id')
+
+      if (!error && (cancelledRows ?? []).length === 0) {
+        return NextResponse.json(
+          { error: 'Order changed since you loaded it — reload and try again.' },
+          { status: 409 }
+        )
+      }
 
       if (error) {
         console.error('[admin:orders:cancel]', error.message)

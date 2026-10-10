@@ -691,25 +691,296 @@ plan), `#n` (`docs/archive/REMEDIATION_PLAN_2026-10-06.md`), `§n` (`docs/archiv
 - Run **#1** — the read-only live-state sweep. It gates the P0 set and converts Likely → Confirmed.
 - **Operational:** do not run the Abandoned-Carts batch until **#8** ships (it emails paying customers).
 
-### Batch O-A — Safety net & CI (do first)
+### Batch O-A — Safety net & CI ✅ SHIPPED (2026-10-08)
 `#9` (dependency cleanup + prod-only audit gate) · `#16` (CI workflow, 8 lint errors, route-pattern test) ·
 `OCT-16` · `OCT-12` (closed by #9) · `OCT-17` (`git rm --cached` the CLI cache) · `§1.3` (checkout route
 tests — land with #2/#16). *Everything below then lands with CI enforcing type-check / lint / tests / build.*
 
-### Batch O-B — Migration baseline & DB lockdown (SQL)
-`OCT-13` (baseline the migration history **before** any CLI migration) · `#3` (revoke EXECUTE on the
-SECURITY DEFINER RPCs; drop the RLS-bypassing `exp_commission_queue` view; delete the dead
-`CommissionQueueTracker`) · `#65` (extend `test-rls-lockdown.mjs` to cover the RPCs/views/storage).
+**Shipped:** `npm audit fix` + `npm uninstall square codegraph` — **prod audit now exits 0** (`found 0
+vulnerabilities`; the 5 remaining highs are the dev-only `braces` chain). New `.github/workflows/ci.yml`
+(type-check / lint / test / build, SHA-pinned actions, dummy env) plus `.nvmrc` (`22`) and `engines`.
+`security-audit.yml` fixed (prod-only audit, `grep -qi`, SHA-pinned actions, `.nvmrc`). All **8 lint errors**
+fixed (CategoryGrid hook order; 6 unescaped entities) and the dead `CommissionQueueTracker` deleted (also
+part of `#3`). The route-pattern test now walks all **36** routes (it walked **0** on Windows) and fails on a
+planted offence. `supabase/.temp/cli-latest` untracked (OCT-17). README doc list refreshed.
+**Verification:** type-check 0 · lint 0 errors (12 pre-existing warnings) · 424 tests · build clean.
+**Still deferred from #16:** the schema-contract test (fails by design until `#2`/`#21`), the `safeLogError`
+code/details/hint enrichment, and `database.ts` generation (needs OCT-13). `§1.3` lands with `#2` in O-C.
 
-### Batch O-C — Checkout integrity
-`#2` (order-first sequence + `payment_mode` CHECK + idempotency) · `#12` (reserve/check inventory) ·
-`#19` (atomic promo claims) · `#20` (rate limit + item cap + address/email validation) · `#5` (one pricing
-engine; tamper-proof validation; process/combo/NFC parity) · `#35` (integer-cents money math + tax).
-*One branch, in that order — they share the checkout route.*
+### Batch O-B — Migration baseline & DB lockdown (SQL) — **code shipped 2026-10-08; application pending owner**
 
-### Batch O-D — Payment events & email
-`#4` (Square webhook: status check, real event names, state guard, dedupe) · `#13` (post-payment page +
-confirmation email) · `#14` (`sendEmail` wrapper + idempotency) · `#21` (Shippo webhook mapping + CHECK).
+`#3` **written:** `supabase/migrations/068_db_privilege_lockdown.sql` revokes EXECUTE on the seven callable
+SECURITY DEFINER RPCs (`increment_rate_limit`, `cleanup_expired_rate_limits`, `exp_reserve_order_inventory`,
+`exp_release_order_inventory`, `exp_increment_promo_code_usage`, `exp_increment_bundle_deal_usage`, plus the
+dead `cleanup_expired_mfa_codes` — already absent from the live project, so its revoke is guarded with
+`to_regprocedure` to avoid an `42883` that would abort the script) from `public, anon, authenticated` and
+grants them to `service_role` only;
+`alter default privileges` stops future `public` functions inheriting PUBLIC EXECUTE; the RLS-bypassing
+`exp_commission_queue` view is dropped; `increment_rate_limit` is re-created with `p_expires_at` clamped to
+`now() + interval '1 day'`. `/api/promo/validate` no longer returns promo/deal row `id`s. Guards:
+`src/lib/security/rpc-grants.contract.test.ts` (every callable definer function needs a literal
+`revoke execute`, with a planted-offence case) and a new case in `src/app/api/promo/validate/route.test.ts`.
+`docs/archive/verification/00_TABLES.md` corrected — its "no PII exposed" claim about the view was false.
+
+`#65` **written:** `scripts/test-rls-lockdown.mjs` now probes removed relations (must be gone), protected
+tables (denied, or empty *only* when the table actually holds rows), the service-role-only RPCs as `anon`,
+private bucket listing, and — new — a throwaway **authenticated** user (created and deleted through the
+service role) because the dropped view was granted to `authenticated`. Strict by default
+(`RLS_TEST_ALLOW_SKIPS=1` opts out). New read-only `supabase/verification/security_posture.sql` covers the
+`#1` live-sweep checks 2, 3 and 8.
+
+**Blocked on owner (OCT-13):** baselining `supabase_migrations.schema_migrations` and *applying* `068` — via
+the dashboard SQL editor or `npx supabase db query --linked`, **never** `db push`. The Supabase CLI is not
+installed in this environment, so the script and the `#1` sweep stay red by design until then.
+**Verification (code):** type-check 0 · lint 0 errors · 428 tests / 59 files · build clean.
+
+### Batch O-C — Checkout integrity — **✅ COMPLETE 2026-10-09** (`#2`, `#20`, `#12`, `#19`, `#5`, `#35`; only the owner's tax decision is outstanding)
+
+`#2` **written (needs the owner to apply `069`):** `supabase/migrations/069_checkout_order_integrity.sql`
+widens `exp_orders_payment_mode_check` to allow `square_checkout` — that alone fixes the "every shop order
+insert fails with 23514" bug — and adds `checkout_attempt_id` / `square_payment_link_id` /
+`square_payment_link_url` plus the two unique indexes (attempt, `square_order_id`).
+`src/app/api/square/checkout/route.ts` now writes the order **before** creating the Square link, treats an
+insert failure as fatal (500, no Square call), cancels the order on a Square error (502) or an items failure,
+and deletes the link if it cannot be attached (500). `checkoutAttemptId` (validated as a UUID) makes retries
+idempotent; `CheckoutPageView` derives it from a cart signature so an edited cart never reuses a stale link,
+and no longer re-enables Pay while the browser is navigating. New `deleteSquarePaymentLink()` in
+`src/lib/square/client.ts`. Guards: `src/app/api/square/checkout/route.test.ts` (6 cases — order-first,
+idempotency, insert failure, Square 502, link-delete, bad address) and the deferred `#16` schema contract
+`src/lib/schema/payment-mode.contract.test.ts`.
+
+`#20` **shipped:** the route now rate-limits (`rateLimit('checkout:<ip>', 10, 10 min, { failClosed: true })` →
+429 with `Retry-After`), caps the body at **2 MB** (was 20 MB) and the cart at **50 items**, validates the buyer
+email, sanitizes the phone, and rebuilds `shippingAddress` from a whitelist (`name` ≤100, `street1`/`street2`
+≤200, `city` ≤100, `state` ≤50, `zip` ≤20, `country` ∈ `NORTH_AMERICA_COUNTRIES`) so an extra key can no longer
+reach `exp_orders.shipping_address` or the Shippo payload. *`name` and `buyerEmail` stay optional because the
+storefront form does not require them yet — `#31`/`#30` flip that together with the form change.* The route test
+now has 12 cases, including 429, the 51-item cap, an invalid email, an unsupported country and the whitelist.
+
+`#12` **shipped (no migration needed — `exp_reserve_order_inventory` already exists in 061 and is
+service-role-only after `068`):** a new `findUnavailableLine()` aggregates the requested quantity per product,
+fetches `exp_product_inventory` and evaluates it with `evaluateInventoryState()`, returning **409** with
+`{ productId, available }` *before* the pricing queries, the Shippo call and the Square link. After the order and
+its items are written, the route calls `exp_reserve_order_inventory` — which re-checks under `FOR UPDATE` — and
+on `ok:false` cancels the order and returns 409 with **no Square link ever created**. 6 new route cases
+(18 total): force_out_of_stock, quantity above available, missing inventory row, reserve short, reserve error,
+and "reserves exactly once".
+
+> ⚠ **Operational risk until `#38` ships.** Before this, nothing ever held stock; now every *abandoned*
+> checkout holds a reservation indefinitely, and the repo has **no scheduler** (no `vercel.json`, no cron
+> routes) to expire `awaiting_payment` orders. Manual mitigation today: the admin **Cancel** action releases
+> (`admin/orders/route.ts:366`). `#38` adds `/api/cron/expire-checkouts` — the plan pairs it with `#12`, and it
+> also needs `#4`. Recommend `#38` before any stock-limited launch.
+
+`#19` **written (needs the owner to apply `070`):** `supabase/migrations/070_promo_redemptions.sql` adds
+`exp_try_redeem_promo_code` / `exp_try_redeem_bundle_deal` — a single conditional `UPDATE` whose `FOUND`
+is returned, so N concurrent claims at `usage_limit = 1` give exactly one winner — plus
+`exp_release_promo_code` / `exp_release_bundle_deal` (decrement, floor 0). All four are revoked from
+`public, anon, authenticated` and granted to `service_role`; `exp_orders.promo_code_id` and `bundle_deal_ids`
+record what an order consumed so the `#38` sweeper can release it. The route now resolves **automatic deals
+independently of any code** (they were dropped whenever no code was entered, *and* whenever a promo code was
+entered), returns **422 `{ code: 'promo_invalid' }`** for a code that resolves to nothing instead of silently
+charging full price, and **claims before the Square link exists** — releasing any earlier claim if a later one
+fails — replacing the old unconditional post-link increment. 5 new route cases (23 total), including a source
+contract that the route no longer contains `exp_increment_promo_code_usage`.
+
+> ⚠ **Owner review before deploy.** Fixing step 1 means **automatic bundle deals now actually apply**, which
+> changes the prices customers see. Before deploying, run
+> `select id, name, trigger_type, conditions_json, rewards_json from public.exp_bundle_deals where is_active and trigger_type = 'automatic';`
+> and confirm every row is intended. This is the plan's own risk note for `#19`.
+
+`#5` **partially shipped — the validation half only.** `src/lib/pricing/engine.ts` now rejects a tampered
+payload instead of pricing it: the quantity must be an integer in 1–999; an option entry must be a
+`{key, value}` string pair; unknown keys, repeated keys and values over 500 chars are refused; and a `select`
+(or a `checkbox` that defines values) must name an **enabled** value — closing both the "`Walnut` prices at +$0
+vs `walnut` +$25" hole and the disabled-value hole. Free text and numbers are still accepted as typed with no
+delta. The route returns 400 for a non-integer quantity instead of clamping it (it used to send `"1.5"` to
+Square), and `pricing-preview` clamps to 1–999 so the admin tool keeps working. `MAX_LINE_QUANTITY` is now
+exported from the engine as the single source of truth. 11 new `engine.test.ts` cases + 2 route cases.
+
+`#5` **parity half shipped.** `PricingContext` now carries `process_pricing` and `combo_discounts`, and
+`computeCanonicalLine` takes `selectedProcessKeys` (default `[]`). The process and combo math is ported
+verbatim from the storefront (percent / fixed_amount / cheapest_free, computed per unit then × quantity), so
+the **"$37 shown / $25 charged"** gap is closed in both directions. Unknown, disabled and repeated process
+keys return `null` (→ 400). `findMatchingComboDiscount` is exported and now ignores `is_enabled = false`
+combos (the storefront query already filtered them, so parity holds). Both `fetchPricingContext` and the admin
+`pricing-preview` fetch the two new tables, and the preview accepts `processKeys`.
+`071_order_item_process_keys.sql` adds `exp_order_items.selected_process_keys text[]` and `nfc jsonb`; the route
+stores the keys in the cart snapshot, the order-item rows and the Square line description. The route now
+returns **`chargedTotalCents`**, and `CheckoutPageView` compares it with its own summary — on a mismatch it
+shows "Your total was updated to $X. Press Pay again to continue." instead of redirecting silently (an
+acknowledgement ref lets the second click through). 8 new `engine.test.ts` cases + 2 route cases.
+
+`#5` **NFC shipped — owner decision: price it, placeholder $1, changeable later.**
+`PricingContext.nfc_price_delta` (default **$1**) plus a trailing `nfc?: { enabled: boolean }` parameter price
+the add-on. The configurator now adds it to `unitPrice` (the label had always read "adds $1.00" while nothing
+charged it), `CartItem` carries `nfc: { enabled, targetData, leaveUnlocked }` (normalized on load so a reload
+cannot silently drop it), the cart key includes the NFC payload so two different tags do not merge into one
+line, and the route prices it and stores `{ targetData, leaveUnlocked }` in `exp_order_items.nfc`. The delta is
+per product, so the owner can change the price in the catalog without a deploy. 4 engine cases + 1 route case.
+
+`#5` **complete — one pricing function everywhere.** `ProductConfigurator`, `CartProvider` (via the new
+`src/lib/cart/repricing.ts`) and the checkout route all call `computeCanonicalLine`, so the product page, the
+cart drawer and Square cannot disagree. The configurator's duplicated tier/process/combo maths and its local
+`findMatchingBulkTier` / `findMatchingComboDiscount` are deleted; it prices through the engine with an explicit
+`{ allowIncomplete: true }` (a live preview must price a selection the customer has not finished making —
+checkout never passes it, so the strict path still guards the money).
+
+**Cart re-tier (step 6):** `CartProvider` now keeps a **deduped** `pricingContexts: Record<productId,
+PricingContext>` — one snapshot per product, shared by every line of that product — and re-prices on quantity
+change through the engine instead of scaling `lineTotal / item.quantity`. Storage moved to `rrs_cart_v2`
+(`{ items, pricingContexts }`); a v1 cart is still read (items only) and those lines fall back to scaling until
+the server re-prices at checkout. Snapshots are released the moment no line references them — on `removeItem`
+(when the last line for that product goes) and on `clearCart`. Repricing lives in `src/lib/cart/repricing.ts` so
+it is unit-testable without a DOM harness. 6 new `repricing.test.ts` cases (10 → 2 drops the tier, 2 → 10
+applies it, processes/NFC priced for the new quantity, the v1 fallback, quantity clamping).
+
+`#35` **shipped except the tax decision and the Shipping/Tax display rows.** `computeCanonicalLine` now returns
+exact integer cents (`unitCents` = the UNDISCOUNTED unit, `lineSubtotalCents`, `lineDiscountCents` rounded
+exactly once, `lineTotalCents`), and the route sends Square the **undiscounted** unit price plus a
+`FIXED_AMOUNT` / `LINE_ITEM` discount per discounted line (free shipping = a discount on the shipping line, so
+the line still shows what was bought). Square's own reference defines a LINE_ITEM FIXED_AMOUNT `amount_money` as
+"the total declared monetary amount of the discount" — applied once to the line — so the charge is now
+`unit × qty − discount`, exactly the displayed total. All three worked examples now charge the displayed amount
+($11.84 / **$145.25** / $9.97; the middle one used to charge $145.00). `072_order_money_reconciliation.sql` adds
+`shipping_discount` and `tax_amount`; `shipping_cost` is stored pre-discount and `discount_amount` no longer
+absorbs the free-shipping portion, so `subtotal − discount + shipping − shipping_discount + tax = order_total`
+holds and is asserted **before the insert** via `reconcileOrderTotals()` (`src/lib/pricing/reconcile.ts`) — a
+mismatch logs and returns 500 while nothing payable exists yet. Per-item `line_total` is now post-promo, and
+`cart_snapshot` items carry `line_subtotal_cents` / `line_discount_cents` / `line_total_cents`. 4 engine cases +
+4 reconciliation cases + a **500-cart seeded-RNG invariant** test.
+
+**Step 5 done for both pages:** the success page and the guest order page now show **Shipping**, **Shipping
+discount** and **Tax** rows, each rendered only when non-zero (shipping was missing from both entirely, which is
+why a total could not be checked by eye). The **email** rows land with `#13` in O-D, which builds the
+confirmation email.
+
+**Only outstanding in `#35`:** step 4 — `tax_amount` is stored but always **0** until the owner sets a
+nexus/tax policy (Square automatic tax vs explicit rates). The Tax row is already wired, so enabling it is
+config, not code.
+
+**Batch O-C is complete.** Next: **O-D — Payment events & email** (`#4` Square webhook, `#13` success page +
+confirmation email, `#14` `sendEmail` wrapper + idempotency, `#21` Shippo webhook).
+
+> ⚠ **Tell the owner:** step 2 changes what the **Square dashboard** shows — discounts now appear as explicit
+> discount lines instead of being baked into unit prices, so historical vs new orders will look different in
+> reporting.
+
+**Remaining in O-C:** nothing — the batch is complete. (The owner's tax/nexus decision is a config follow-up,
+not batch work.)
+
+**Verification:** type-check 0 · lint 0 errors · 500 tests / 63 files · build clean.
+
+### Batch O-D — Payment events & email — **in progress: `#14` foundation shipped 2026-10-09**
+
+`#14` **foundation shipped.** `src/lib/resend/send.ts` is now the one place an email is sent: it checks
+`RESEND_API_KEY` and the sender, inspects Resend's `{ data, error }` (v4 never throws — which is exactly why a
+rejected send looked like success), maps **429/5xx to `retryable`** and everything else to a permanent failure,
+and passes a deterministic `idempotencyKey` (sent as the `Idempotency-Key` header — verified against the
+installed SDK's `CreateEmailRequestOptions`). 14 unit cases cover the key, 429, 5xx, 422, a missing API key, an
+unconfigured sender, a thrown network error and a response with no id.
+
+Adopted in the two webhooks O-D depends on:
+- **Square** (payment → custom request) uses `sendEmail` with key `paid:${orderId}`, and logs a failed send
+  instead of dropping it.
+- **Shippo** (`DELIVERED`) uses key `delivered:${orderId}`, and the carrier/tracking values are now coerced —
+  the old `carrier.toUpperCase()` threw a 500 whenever Shippo omitted the carrier (part of `#21`).
+
+**All eight call sites are migrated** — `custom-orders/[id]`, `custom-orders` (×2), `abandoned-cart`,
+`back-in-stock`, `capacity-alerts`, `custom-request-recovery` and the two webhooks — so the contract test
+"no `resend.emails.send(` outside `src/lib/resend/send.ts`" is **green**. Two real bugs died with the sweep:
+
+- **Back-in-stock and capacity alerts no longer mark a subscriber `notified` after a rejected send.** A 429
+  (Resend's 2 req/s default, easily hit by a 100–200 recipient restock fan-out) used to consume the alert
+  silently; now the alert stays `active` and the next run retries.
+- Each send carries a deterministic key (`back-in-stock:<token>`, `capacity:<token>`, `abandoned-cart:<order>`,
+  `quote:<request>:<amount>`, `request-received:<request>`, `admin-new-request:<request>`,
+  `abandoned-request:<request>`, `paid:<order>`, `delivered:<order>`), so a replay or a second processor run is
+  a no-op instead of a duplicate email.
+
+**Retry bookkeeping shipped.** `073_email_send_bookkeeping.sql` adds `send_attempts`, `last_send_error` and
+`claimed_at` to both alert tables, plus partial indexes for the claim query. Each processor now **claims** an
+alert with a conditional update — `.eq('status', 'active').or('claimed_at.is.null,claimed_at.lt.<15 min ago>')`
+— and skips it when another run already owns it, so two concurrent runs cannot both send; a claim left behind
+by a crash is reclaimable after 15 minutes. A failed send releases the claim, increments `send_attempts` and
+stores `last_send_error`, so a permanently bad address becomes visible instead of silent.
+
+**Still open in `#14`:** moving the restock fan-out off the admin request — 100–200 sequential sends inside one
+PATCH is *why* the 429s happen at all; the plan suggests `after()` or the `#38` cron — and `send_quote`
+returning `warnings: ['email_not_sent']` so the admin UI stops claiming success on a failed send (the send
+function already returns the result; only the response shape and the warning UI are missing).
+
+**Then in O-D:** `#4` (Square webhook status check, real event names, state guard, dedupe) · `#13` (post-payment
+page + confirmation email) · `#21` (Shippo mapping + the `exp_order_status_events` CHECK widening).
+
+#### `#4` — implementation note (read before starting; there is a sequencing trap)
+
+> ⚠ **The status guard and the Square webhook subscription must ship TOGETHER.** Today the handler marks an
+> order paid on `payment.created` without reading `payment.status`. Adding the correct
+> `payment.status === 'COMPLETED'` guard *alone* would stop every order being marked paid, because the real
+> COMPLETED transition arrives as **`payment.updated`** — and the webhook is not subscribed to that event yet
+> (`payment.completed`/`payment.failed` in the handler are not Square event types at all, so those branches are
+> dead). So: land the handler rewrite, **then** have the owner add `payment.updated`, `refund.created` and
+> `refund.updated` in the Square dashboard, and only then deploy. Doing either half alone breaks payments.
+
+**Shipped 2026-10-09 — the two safe halves** (neither changes payment marking, so both are inert alone):
+- ✅ **Migration `074_mark_order_paid.sql`**: the RPC (idempotent, row-locked `for update`, amount-checked,
+  never regresses the fulfilment status, execute revoked from `public, anon, authenticated`) + the `#21`
+  `action_type` widening (`tracking_update` / `payment_webhook` / `expired` / `refund_webhook` were all being
+  written and rejected by the CHECK, so those events were silently dropped) + `exp_orders.refunded_amount`.
+  **Nothing calls the RPC yet**, so applying it is inert.
+- ✅ **Admin race guard** (`admin/orders/route.ts`): the transition *and* cancel writes now carry
+  `.eq('status', order.status).select('id')` and return **409 "Order changed since you loaded it — reload and
+  try again."** on 0 rows — closing the mirror race where a webhook payment or cancellation was clobbered by a
+  stale admin write.
+
+**Order of work for the rest:**
+1. ✅ **Migration `075_tax_aware_mark_order_paid.sql`** — the owner enabled Square's automatic tax, and
+   `074`'s RPC compared the payment against the **pre-tax** `order_total`, so every tax-bearing payment would
+   have reported `amount_mismatch` and the order would never be marked paid (the same "paid, nothing recorded"
+   failure, from a new direction). The 6-argument version takes `p_tax_cents`, stores `tax_amount`, folds the tax
+   into `order_total` so the reconciliation identity still holds, and compares the tax-inclusive total. The
+   5-argument version is dropped so there is one entry point. `retrieveSquareOrder()` was added to
+   `src/lib/square/client.ts` because automatic tax lives on the **order** (`total_tax_money`), not the payment.
+2. ✅ **Handler rewritten** (`src/app/api/webhooks/square/route.ts`):
+   - reads `payment.status` and only proceeds on `COMPLETED`; FAILED/CANCELED downgrade a **pending** order only;
+     APPROVED/PENDING just record and wait;
+   - handles `payment.created` **and** `payment.updated`; the dead `payment.completed`/`payment.failed` branches
+     are gone;
+   - a **missing** `amount_money` is no longer "nothing to compare" — it refuses to mark paid; currency must be
+     `USD` and the location must match;
+   - calls `exp_mark_order_paid` instead of an unguarded update, so the row is locked, the amount is checked
+     tax-inclusive, and the fulfilment status can never regress;
+   - dedupe inserts `processed = false`, treats **only `23505`** as a duplicate, and **clears the row before
+     returning 500** on a failure — that is what makes Square's retry actually work; rows are kept **7 days**;
+   - the date parse is guarded, and the customer email only runs when the RPC reports `marked_paid`.
+3. **Still to do in `#4`:** the refund branch (`refund.created`/`refund.updated` → `refunded` /
+   `partially_refunded` + `refunded_at` / `refunded_amount` — the columns exist), moving the email into `after()`
+   so latency never delays Square's 200, and the route tests (HMAC-signed bodies). Plus the owner-side
+   reconciliation of any order historically marked paid on a non-COMPLETED status.
+4. **Owner**: subscribe the webhook to `payment.updated`, `refund.created`, `refund.updated`.
+   → `jsonb`, `security definer`, `set search_path = ''`, execute revoked from `public, anon, authenticated`.
+   Locks the row `for update`, returns `already_paid`, checks the amount, sets `payment_status='paid'` +
+   `paid_at` + `square_payment_id`, moves `awaiting_payment → paid` (and reports `was_cancelled`), and inserts a
+   status event. It does **not** reserve inventory — `#12` reserves at checkout.
+2. **Handler**: dedupe with `processed=false` (only `23505` is a duplicate; any other insert error → 500; delete
+   the row on a processing failure so Square's retry works). Handle `payment.created` **and** `payment.updated`,
+   calling the RPC only on `COMPLETED` + `USD` + a matching `location_id`, using `amount_money.amount`
+   (excludes tips). FAILED/CANCELED → `payment_status='failed'` guarded by `payment_status='pending'`.
+   Refunds → `refunded`/`partially_refunded` + `refunded_at`/`refunded_amount`. Guard every `new Date(x)` with
+   `isNaN`. Send the email/admin notification only when the RPC reports `marked_paid`, inside `after()`.
+3. **Admin PATCH** (`admin/orders/route.ts`): every status write gains `.eq('status', order.status).select('id')`
+   and returns **409 "Order changed — reload"** on 0 rows (the same race exists for `cancel` / `mark_refunded`).
+4. **Owner**: subscribe the webhook to `payment.updated`, `refund.created`, `refund.updated`.
+5. **Reconcile**: orders already marked paid on a non-COMPLETED status need a one-off read-only check against
+   Square's Payments API using `square_payment_id`.
+
+Tests: sign bodies with `createHmac('sha256', key).update(notificationUrl + body).digest('base64')` — FAILED →
+no paid update; APPROVED → no RPC; `payment.updated` COMPLETED → RPC once; `already_paid` → no email; missing
+amount → no RPC; CAD → no RPC; a throw → 500 **and** the dedupe row deleted (so redelivery succeeds); `23505` →
+200; bad signature → 401; refund COMPLETED → `refunded`. Plus an admin-route test for the 409.
+
+**Verification (so far):** type-check 0 · lint 0 errors · 514 tests / 64 files · build clean.
 
 ### Batch O-E — Admin unblock
 `#6` (move custom-request mutations under `/api/admin` so CSRF works) · `#15` (deactivate superseded quote
@@ -868,6 +1139,7 @@ Each batch is a reviewable PR. Effort: S / M / L.
 | **DS-5** (M) | Templates & print fidelity | The **design template** (shape + print area + DPI + units) on the product/builder → **closes SEPT §4.1**; upload-token rebind → **§4.2**; designer integration tests → **§4.3**. |
 | **DS-6** (M) | Integration & hardening | Cart/order propagation (order-time **snapshot**, §6.4); **download from the editor**; rendered cart/order thumbnail; **admin visibility of the design + its files** (ties to #22); a11y (#33/#75); perf (#62); sanitization of every upload **and** every generated artifact; **privacy/"what we store" copy** (#40); tests. |
 | **DS-7** (M) | Config API + npm packaging + harness | `RendererCanvasConfig` + registries as a framework-light, serializable, **publishable** package; the `/dev/design-studio` standalone route + `scripts/render-design.mjs` headless runner; golden-file export tests. |
+| **DS-8** (M) | Project files: save / open / autosave-resume | A self-contained **`.rrsdesign`** project file (zip, via the existing `fflate` dep): `design.json` + the original uploads, byte-exact and content-addressed. `serializeProject()` / `parseProject()` live in the **framework-light core** (no React), so they ship with the DS-7 package. The editor gets **Save project** / **Open project…**; a debounced **draft autosave** to IndexedDB gives crash recovery with a "Resume your design?" prompt. Undo/redo is **not** embedded by default. See §6.7. |
 
 **Testing (all batches).** This repo has **no DOM harness** (OCT-5), so: pure-function unit tests (op pipeline,
 shape→geometry, template/print-area math, unit conversion, tracing, DXF/SVG serialization); **golden-file**
@@ -901,4 +1173,70 @@ slices in PrusaSlicer."
 - **DXF text** — must be converted to outlines, and the fonts bundled, or the laser PC substitutes glyphs.
 - **Client-side limits** — very large prints exceed browser canvas memory; the `backend: 'server'` escape hatch is the mitigation.
 - **IndexedDB eviction** — browsers can evict browser storage, so the customer is warned to add to cart to save the design to the order.
+
+### 6.7 Project files — save / open / autosave (locked 2026-10-09)
+
+The design lives in IndexedDB (§6.1) and §6.6 already warns that **browsers can evict browser storage**. So
+"the customer closed the tab" has two different answers, worth keeping distinct:
+
+| Scenario | Answer | Why |
+|---|---|---|
+| Closed the tab / refreshed by accident | **Draft autosave → "Resume your design?"** | IndexedDB survives a tab close in the same browser |
+| Cleared browsing data, different browser/device, or wants a copy | **Save project file → Open project…** | The only real backup; also shareable |
+
+**The file — `.rrsdesign`, a zip (not bare JSON).** `fflate` is already a dependency for export packaging
+(§6.1), so this adds nothing new. A zip keeps images as **binary** (base64 in JSON would inflate them ~33%) and
+stays inspectable by the customer:
+
+```
+design.json           ← format tag, version, savedAt, product ref, DesignStudioConfig, DesignDocumentV2
+assets/<sha256>.png   ← the original uploads, byte-exact, content-addressed
+```
+
+Because the design is **non-destructive** (§6.1: "source + ordered-op pipeline"), the document references assets
+by hash and every crop/rotate/threshold is an *op*, not a new bitmap — so the assets are stored once no matter
+how many edits are made.
+
+**Undo/redo — the cost is essentially zero in bytes.** The undo stack is a list of `DesignDocumentV2` snapshots
+(layer list + transforms + op pipeline, a few KB each), and every snapshot points at the *same* immutable,
+content-addressed assets. 50 steps ≈ 250 KB of JSON, with **zero extra image bytes**:
+- **In-session** — in-memory ring buffer (DS-2 needs this anyway).
+- **Across reloads** — the IndexedDB history store DS-2 already plans, capped (≈50 entries or ≈2 MB of doc JSON,
+  whichever comes first).
+- **In the saved file** — **not embedded by default.** Cheap in bytes, but the file stops being a portable design
+  and becomes a session recording, and one customer rarely wants another's undo stack. Offer it behind
+  `includeHistory: true` for support/debugging.
+- **Never persisted** — derived caches (a traced SVG, a downscaled preview). Recomputable, so ephemeral and
+  evictable, never part of the file.
+
+**Autosave for crash recovery.** On every document mutation, debounce (~1 s) a write of the working doc to
+IndexedDB under a draft key scoped to the product. On mount, if a draft exists and is newer than the cutoff,
+offer "Resume your design?" with the saved time. Notes:
+- **IndexedDB, not localStorage** — localStorage is ~5 MB, string-only and *synchronous* (it blocks the main
+  thread on every write), and it cannot hold image data. That is why §6.1 already chose IndexedDB.
+- **It is recovery, not backup.** IndexedDB is per-origin and evictable (§6.6). The saved file is the backup and
+  the order-time snapshot (§6.4) is the durable record.
+- **Retention** — discard unused drafts past a cutoff and cap total draft bytes, so a browser cannot fill up.
+
+**Open project (upload).** A file the customer chose is still untrusted input, so the same discipline as a fresh
+upload applies (#64):
+- Validate the format tag + version; **zip-bomb caps** on entry count and total uncompressed size.
+- Re-validate `design.json` against the schema (`parseDesignProject()`, sibling of `parseDesignDocument`).
+- **Sniff every asset's bytes** rather than trusting the stored mime, and run them through the same sanitizer as
+  a fresh upload (SVG especially — reject script/`foreignObject`).
+- Verify each asset's hash matches its filename; **dedupe by hash** on restore so re-opening a project does not
+  duplicate an image already in storage.
+- A **version migration chain**, so a file saved today still opens after a `V2 → V3` bump (§6.5 owns the schema).
+
+**Where the code goes.** `serializeProject()` / `parseProject()` belong in the **framework-light core** (no
+React/MUI) beside `RendererCanvasConfig`, so they ship with the DS-7 package and the headless runner can
+round-trip a file in CI. Only the buttons belong to the host.
+
+**Decisions (owner-confirmed 2026-10-09):**
+1. **Embed the assets — yes.** Self-contained, so the file restores anywhere, even after the upload token
+   expires. A 5 MB photo yields a ~5 MB file (binary in the zip, not base64).
+2. **Include undo history in the file — no** by default; behind `includeHistory: true` for support/debugging.
+3. **Draft retention — 7 days**, plus a total draft byte cap.
+4. **Offer `Save project` before checkout — yes.** It is the only protection against IndexedDB eviction, which
+   §6.6 already flags.
 

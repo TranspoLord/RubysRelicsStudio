@@ -101,14 +101,15 @@ export async function POST(request: Request) {
       valid,
       promo: appliedPromo
         ? {
-            id: appliedPromo.id,
+            // OCT #3: the row `id` is intentionally NOT returned — with it, an
+            // anon caller could loop `exp_increment_promo_code_usage(id)` and
+            // exhaust a code for everyone. Return only what the UI displays.
             code: appliedPromo.code,
             discountType: appliedPromo.discount_type,
             discountValue: Number(appliedPromo.discount_value),
           }
         : null,
       deals: appliedDeals.map((deal) => ({
-        id: deal.id,
         name: deal.name,
         triggerType: deal.trigger_type,
         code: deal.code,

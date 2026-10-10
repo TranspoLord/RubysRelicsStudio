@@ -193,3 +193,250 @@ describe('computeCanonicalLine — stepped discount', () => {
     expect(line?.lineDiscount).toBe(0)
   })
 })
+
+// ── OCT #5: option / quantity validation ─────────────────────────────────────
+// The engine used to accept a tampered payload: an unmatched value priced at +$0
+// and was stored verbatim, a disabled value was priced, a repeated key summed its
+// deltas, and a non-integer quantity reached Square as a string.
+const OPTION_PRODUCT: PricingContext = {
+  ...BASE_PRODUCT,
+  options: [
+    {
+      option_key: 'finish',
+      label: 'Finish',
+      option_type: 'select',
+      is_required: false,
+      values: [
+        { label: 'Gloss', value: 'gloss', price_delta: 1, is_enabled: true },
+        { label: 'Matte', value: 'matte', price_delta: 3, is_enabled: false },
+      ],
+    },
+    {
+      option_key: 'engraving',
+      label: 'Engraving',
+      option_type: 'text',
+      is_required: false,
+      values: [],
+    },
+  ],
+}
+
+describe('computeCanonicalLine — OCT #5 validation', () => {
+  it('rejects a case-mismatched option value instead of pricing it at +$0', () => {
+    expect(
+      computeCanonicalLine(OPTION_PRODUCT, 1, null, [{ key: 'finish', value: 'Gloss' }]),
+    ).toBeNull()
+  })
+
+  it('rejects a disabled option value', () => {
+    expect(
+      computeCanonicalLine(OPTION_PRODUCT, 1, null, [{ key: 'finish', value: 'matte' }]),
+    ).toBeNull()
+  })
+
+  it('rejects a repeated option key', () => {
+    expect(
+      computeCanonicalLine(OPTION_PRODUCT, 1, null, [
+        { key: 'finish', value: 'gloss' },
+        { key: 'finish', value: 'gloss' },
+      ]),
+    ).toBeNull()
+  })
+
+  it('rejects an unknown option key', () => {
+    expect(computeCanonicalLine(OPTION_PRODUCT, 1, null, [{ key: 'nope', value: 'x' }])).toBeNull()
+  })
+
+  it('rejects a non-string option value without throwing', () => {
+    expect(
+      computeCanonicalLine(OPTION_PRODUCT, 1, null, [
+        { key: 'finish', value: 5 as unknown as string },
+      ]),
+    ).toBeNull()
+  })
+
+  it('rejects an over-long option value', () => {
+    expect(
+      computeCanonicalLine(OPTION_PRODUCT, 1, null, [
+        { key: 'engraving', value: 'x'.repeat(501) },
+      ]),
+    ).toBeNull()
+  })
+
+  it.each([1.5, 0, 1000, -1, Number.NaN])('rejects quantity %s', (quantity) => {
+    expect(computeCanonicalLine(OPTION_PRODUCT, quantity, null, [])).toBeNull()
+  })
+
+  it('still accepts an enabled value and adds its delta', () => {
+    const line = computeCanonicalLine(OPTION_PRODUCT, 1, null, [{ key: 'finish', value: 'gloss' }])
+    expect(line?.unitPriceBeforeDiscount).toBe(11)
+  })
+
+  it('prices free text at +$0 and records the typed value', () => {
+    const line = computeCanonicalLine(OPTION_PRODUCT, 1, null, [
+      { key: 'engraving', value: 'For Ruby' },
+    ])
+    expect(line?.unitPriceBeforeDiscount).toBe(10)
+    expect(line?.selectedOptions.engraving).toBe('For Ruby')
+  })
+})
+
+
+// ── OCT #5: process add-ons and multi-process combo discounts ────────────────
+// These are what the storefront charged but the engine ignored, so Square
+// undercharged (processes) or overcharged (combos).
+const PROCESS_PRODUCT: PricingContext = {
+  ...BASE_PRODUCT,
+  options: [],
+  bulk_discounts: [],
+  process_pricing: [
+    { id: 'p1', product_id: 'product-1', process_type_key: 'uv_print', price_delta: 5, is_enabled: true },
+    { id: 'p2', product_id: 'product-1', process_type_key: 'engrave', price_delta: 12, is_enabled: true },
+    { id: 'p3', product_id: 'product-1', process_type_key: 'retired', price_delta: 99, is_enabled: false },
+  ],
+  combo_discounts: [
+    {
+      id: 'c1',
+      product_id: 'product-1',
+      min_processes: 2,
+      discount_type: 'cheapest_free',
+      discount_value: null,
+      label: null,
+      is_enabled: true,
+    },
+  ],
+}
+
+describe('computeCanonicalLine — OCT #5 processes and combos', () => {
+  it('adds a +$5 process to the unit price and the cents', () => {
+    const line = computeCanonicalLine(PROCESS_PRODUCT, 1, null, [], ['uv_print'])
+    expect(line?.unitPriceBeforeDiscount).toBe(15)
+    expect(line?.unitAmountCents).toBe(1500)
+  })
+
+  it('applies cheapest_free to the smaller process delta', () => {
+    const line = computeCanonicalLine(PROCESS_PRODUCT, 1, null, [], ['uv_print', 'engrave'])
+    expect(line?.processDiscount).toBe(5)
+    expect(line?.lineTotal).toBe(22)
+    expect(line?.appliedCombo?.id).toBe('c1')
+  })
+
+  it('multiplies the combo discount by the quantity', () => {
+    const line = computeCanonicalLine(PROCESS_PRODUCT, 3, null, [], ['uv_print', 'engrave'])
+    // (10 + 5 + 12) * 3 = 81, less 5 * 3 = 15
+    expect(line?.lineTotal).toBe(66)
+  })
+
+  it('does not apply a combo below the two-process threshold', () => {
+    const line = computeCanonicalLine(PROCESS_PRODUCT, 1, null, [], ['engrave'])
+    expect(line?.processDiscount).toBe(0)
+    expect(line?.lineTotal).toBe(22)
+  })
+
+  it('records the priced process keys on the line', () => {
+    const line = computeCanonicalLine(PROCESS_PRODUCT, 1, null, [], ['uv_print', 'engrave'])
+    expect(line?.selectedProcessKeys).toEqual(['uv_print', 'engrave'])
+  })
+
+  it('rejects an unknown process key', () => {
+    expect(computeCanonicalLine(PROCESS_PRODUCT, 1, null, [], ['nope'])).toBeNull()
+  })
+
+  it('rejects a disabled process key', () => {
+    expect(computeCanonicalLine(PROCESS_PRODUCT, 1, null, [], ['retired'])).toBeNull()
+  })
+
+  it('rejects a repeated process key', () => {
+    expect(computeCanonicalLine(PROCESS_PRODUCT, 1, null, [], ['uv_print', 'uv_print'])).toBeNull()
+  })
+})
+
+// ── OCT #5: the NFC tag add-on ───────────────────────────────────────────────
+// The label always read "adds $1.00" but nothing priced or stored it.
+describe('computeCanonicalLine — OCT #5 NFC add-on', () => {
+  it('prices the NFC tag using the product delta', () => {
+    const line = computeCanonicalLine(
+      { ...PROCESS_PRODUCT, nfc_price_delta: 2.5 },
+      1,
+      null,
+      [],
+      [],
+      { enabled: true }
+    )
+    expect(line?.unitPriceBeforeDiscount).toBe(12.5)
+    expect(line?.nfcEnabled).toBe(true)
+  })
+
+  it('defaults the NFC delta to $1 when the product does not set one', () => {
+    const line = computeCanonicalLine(PROCESS_PRODUCT, 1, null, [], [], { enabled: true })
+    expect(line?.unitPriceBeforeDiscount).toBe(11)
+  })
+
+  it('does not price NFC when it is not enabled', () => {
+    const line = computeCanonicalLine(PROCESS_PRODUCT, 1, null, [], [], { enabled: false })
+    expect(line?.unitPriceBeforeDiscount).toBe(10)
+    expect(line?.nfcEnabled).toBe(false)
+  })
+
+  it('multiplies the NFC delta by the quantity', () => {
+    const line = computeCanonicalLine(PROCESS_PRODUCT, 3, null, [], [], { enabled: true })
+    expect(line?.lineTotal).toBe(33)
+  })
+})
+
+// ── OCT #35: the charge must equal the displayed amount ──────────────────────
+// These three are the worked examples from the review. The old engine rounded a
+// per-unit amount and multiplied it back, so the display, the stored row and the
+// Square charge each landed on a different number.
+describe('computeCanonicalLine — OCT #35 exact cents', () => {
+  function priced(basePrice: number, quantity: number, percent: number) {
+    const product: PricingContext = {
+      ...BASE_PRODUCT,
+      base_price: basePrice,
+      variants: [],
+      options: [],
+      bulk_discounts: [
+        {
+          min_qty: 1,
+          max_qty: null,
+          discount_type: 'percent',
+          discount_value: percent,
+          step_qty: null,
+          label: null,
+          description: null,
+          sort_order: 0,
+          is_enabled: true,
+        },
+      ],
+    }
+    return computeCanonicalLine(product, quantity, null, [])
+  }
+
+  it('$1.99 × 7 at 15% charges $11.84', () => {
+    const line = priced(1.99, 7, 15)
+    expect(line?.lineTotalCents).toBe(1184)
+    expect(line?.lineTotal).toBe(11.84)
+  })
+
+  it('$0.35 × 500 at 17% charges $145.25 (used to charge $145.00)', () => {
+    const line = priced(0.35, 500, 17)
+    expect(line?.lineTotalCents).toBe(14525)
+    expect(line?.lineTotal).toBe(145.25)
+  })
+
+  it('$3.50 × 3 at 5% charges $9.97', () => {
+    const line = priced(3.5, 3, 5)
+    expect(line?.lineTotalCents).toBe(997)
+    expect(line?.lineTotal).toBe(9.97)
+  })
+
+  it('keeps the undiscounted unit exact, so Square can apply the discount itself', () => {
+    const line = priced(1.99, 7, 15)
+    expect(line?.unitCents).toBe(199)
+    expect(line?.lineSubtotalCents).toBe(1393)
+    expect(line?.lineDiscountCents).toBe(209)
+    // unit × qty − the FIXED_AMOUNT LINE_ITEM discount is the charge, exactly.
+    expect(199 * 7 - 209).toBe(line?.lineTotalCents)
+  })
+})
+

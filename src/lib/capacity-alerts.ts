@@ -1,12 +1,14 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
-import { getEmailSenderAddress, getResend } from '@/lib/resend/client'
+import { sendEmail } from '@/lib/resend/send'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 
 interface CapacityAlertRow {
   id: string
   category_key: string
   email: string
+  /** OCT #14: failed send attempts, surfaced instead of failing silently. */
+  send_attempts?: number | null
 }
 
 function getSecret(): string {
@@ -71,13 +73,12 @@ async function sendCapacityReopenedEmail(input: {
   categorySlug: string
   token: string
 }) {
-  const resend = getResend()
-  const fromAddress = await getEmailSenderAddress()
-
-  await resend.emails.send({
-    from: fromAddress,
-    to: [input.email],
+  // OCT #14: return the typed result so the caller only marks the alert
+  // `notified` when the email actually went out.
+  return sendEmail({
+    to: input.email,
     subject: `Capacity reopened for ${input.categoryName}`,
+    idempotencyKey: `capacity:${input.token}`,
     html: `
       <h2>Good news - queue capacity reopened</h2>
       <p><strong>${input.categoryName}</strong> is accepting new orders again.</p>
@@ -99,7 +100,7 @@ export async function processCapacityReopenedAlerts(options?: {
 
   let query = supabase
     .from('exp_capacity_reopen_alerts')
-    .select('id, category_key, email')
+    .select('id, category_key, email, send_attempts')
     .eq('status', 'active')
     .order('created_at', { ascending: true })
     .limit(limit)
@@ -147,14 +148,49 @@ export async function processCapacityReopenedAlerts(options?: {
       continue
     }
 
+    // OCT #14: claim the alert before sending, so two concurrent processor runs
+    // cannot both send it. A claim left behind by a crash is reclaimable after
+    // 15 minutes.
+    const claimCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString()
+    const { data: claimed } = await supabase
+      .from('exp_capacity_reopen_alerts')
+      .update({ claimed_at: new Date().toISOString() })
+      .eq('id', alert.id)
+      .eq('status', 'active')
+      .or(`claimed_at.is.null,claimed_at.lt.${claimCutoff}`)
+      .select('id')
+      .maybeSingle()
+
+    if (!claimed) {
+      skipped += 1
+      continue
+    }
+
     try {
       const token = createCapacityUnsubscribeToken(alert.category_key, alert.email)
-      await sendCapacityReopenedEmail({
+      const sendResult = await sendCapacityReopenedEmail({
         email: alert.email,
         categoryName: taxonomy.name,
         categorySlug: taxonomy.slug,
         token,
       })
+
+      // OCT #14: a rejected send used to still mark the alert `notified`.
+      if (!sendResult.ok) {
+        failed += 1
+        console.error('[capacity-alerts:send]', sendResult.error)
+        // Release the claim and record why, so the next run retries.
+        await supabase
+          .from('exp_capacity_reopen_alerts')
+          .update({
+            claimed_at: null,
+            send_attempts: Number(alert.send_attempts ?? 0) + 1,
+            last_send_error: sendResult.error,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', alert.id)
+        continue
+      }
 
       const now = new Date().toISOString()
       const { error: updateError } = await supabase

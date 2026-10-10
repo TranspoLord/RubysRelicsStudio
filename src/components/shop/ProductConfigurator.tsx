@@ -17,6 +17,8 @@ import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart'
 import { alpha } from '@mui/material/styles'
 
 import { brandTokens } from '@/theme/theme'
+import { computeCanonicalLine } from '@/lib/pricing/engine'
+import type { PricingBulkTier, PricingContext } from '@/lib/pricing/engine'
 import { useCart } from '@/components/cart/CartProvider'
 import { SquareCheckoutButton } from './SquareCheckoutButton'
 import { ProductDesigner, type DesignerElement } from './ProductDesigner'
@@ -160,70 +162,48 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
       : null
   const isOutOfStock = isReadyMade && product.is_in_stock === false
 
+  // OCT #5: the storefront now prices through the shared engine — the same
+  // function the checkout route and the admin preview call — so the product
+  // page, the cart and Square cannot disagree.
   const pricing = useMemo(() => {
-    let unitPrice = product.base_price
-
-    const selectedVariant = variants.find((v) => v.id === state.variantId)
-    if (selectedVariant) unitPrice += selectedVariant.price_delta
-
-    for (const opt of options) {
-      const selectedVal = state.optionValues[opt.option_key]
-      if (!selectedVal) continue
-      const matchingValue = opt.values?.find((v) => v.value === selectedVal)
-      if (matchingValue) unitPrice += matchingValue.price_delta
-    }
-
-    for (const processKey of state.selectedProcessKeys) {
-      const process = process_pricing.find((p) => p.process_type_key === processKey)
-      if (process) unitPrice += process.price_delta
-    }
-
-    let processDiscount = 0
-    const activeComboDiscount = findMatchingComboDiscount(
-      combo_discounts,
-      state.selectedProcessKeys.length
+    const line = computeCanonicalLine(
+      product as unknown as PricingContext,
+      state.quantity,
+      state.variantId,
+      Object.entries(state.optionValues)
+        .filter(([, value]) => typeof value === 'string' && value.length > 0)
+        .map(([key, value]) => ({ key, value })),
+      state.selectedProcessKeys,
+      state.nfcEnabled ? { enabled: true } : null,
+      // A live preview prices a selection the customer has not finished making.
+      // Checkout does not pass this, so the strict path still guards the money.
+      { allowIncomplete: true }
     )
-    if (activeComboDiscount) {
-      const processTotal = state.selectedProcessKeys.reduce((sum, key) => {
-        const p = process_pricing.find((pp) => pp.process_type_key === key)
-        return sum + (p?.price_delta ?? 0)
-      }, 0)
 
-      if (activeComboDiscount.discount_type === 'percent') {
-        processDiscount = processTotal * (activeComboDiscount.discount_value! / 100)
-      } else if (activeComboDiscount.discount_type === 'fixed_amount') {
-        processDiscount = activeComboDiscount.discount_value!
-      } else if (activeComboDiscount.discount_type === 'cheapest_free') {
-        processDiscount = state.selectedProcessKeys.reduce((min, key) => {
-          const p = process_pricing.find((pp) => pp.process_type_key === key)
-          return (p?.price_delta ?? 0) < min ? (p?.price_delta ?? 0) : min
-        }, Number.POSITIVE_INFINITY)
+    if (!line) {
+      // Only reachable for a malformed payload — the UI offers valid values
+      // only. Show the bare base price rather than breaking the configurator.
+      return {
+        unitPrice: product.base_price,
+        subtotal: product.base_price * state.quantity,
+        discount: 0,
+        processDiscount: 0,
+        total: product.base_price * state.quantity,
+        activeBulkTier: null,
+        activeComboDiscount: null,
       }
     }
 
-    const subtotal = unitPrice * state.quantity
-    const activeBulkTier = findMatchingBulkTier(product.bulk_discounts ?? [], state.quantity)
-    let discount = processDiscount * state.quantity
-    if (activeBulkTier) {
-      if (activeBulkTier.discount_type === 'percent') {
-        discount += subtotal * (activeBulkTier.discount_value / 100)
-      } else if (activeBulkTier.discount_type === 'fixed_amount') {
-        discount += activeBulkTier.discount_value * state.quantity
-      } else if (activeBulkTier.discount_type === 'unit_price') {
-        discount += Math.max(0, (unitPrice - activeBulkTier.discount_value) * state.quantity)
-      } else if (activeBulkTier.discount_type === 'stepped') {
-        const stepQty = Number(activeBulkTier.step_qty ?? 0)
-        if (stepQty > 0) {
-          const steps = Math.floor(state.quantity / stepQty)
-          const perUnitDiscount = Math.min(unitPrice, steps * Number(activeBulkTier.discount_value))
-          discount += perUnitDiscount * state.quantity
-        }
-      }
+    return {
+      unitPrice: line.unitPriceBeforeDiscount,
+      subtotal: line.lineSubtotal,
+      discount: line.lineDiscount,
+      processDiscount: line.processDiscount,
+      total: line.lineTotal,
+      activeBulkTier: line.appliedTier,
+      activeComboDiscount: line.appliedCombo,
     }
-
-    const total = Math.max(0, subtotal - discount)
-    return { unitPrice, subtotal, discount, processDiscount, total, activeBulkTier, activeComboDiscount }
-  }, [product.base_price, product.bulk_discounts, process_pricing, combo_discounts, variants, options, state])
+  }, [product, state])
 
   const requiredOptions = options.filter((o) => o.is_required)
   const isValid =
@@ -269,7 +249,7 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
 
     const designDocument = buildDesignDocument(product.id, designElements)
 
-    const cartKey = buildCartKey(product.id, state.variantId, selectedOptions, state.selectedProcessKeys, designDocument?.design_id)
+    const cartKey = buildCartKey(product.id, state.variantId, selectedOptions, state.selectedProcessKeys, designDocument?.design_id, state.nfcEnabled ? state.nfcTargetData : undefined)
     addItem({
       key: cartKey, productId: product.id, productSlug: product.slug, categorySlug: product.category_slug,
       title: product.title, quantity: state.quantity, variantId: state.variantId,
@@ -277,7 +257,10 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
       unitPrice: pricing.unitPrice, lineSubtotal: pricing.subtotal, lineDiscount: pricing.discount, lineTotal: pricing.total,
       imageUrl: product.featured_media?.url ?? null, imageEmoji: product.featured_media?.emoji ?? product.category_emoji ?? null,
       designDocument,
-    })
+      nfc: state.nfcEnabled
+        ? { enabled: true, targetData: state.nfcTargetData, leaveUnlocked: state.leaveUnlocked }
+        : null,
+    }, product as unknown as PricingContext)
     setAddedToCart(true)
     setTimeout(() => setAddedToCart(false), 2000)
   }
@@ -459,12 +442,7 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
   )
 }
 
-function findMatchingBulkTier(tiers: DbProductBulkDiscount[], quantity: number): DbProductBulkDiscount | null {
-  const sorted = [...tiers].sort((a, b) => a.min_qty - b.min_qty)
-  return sorted.find((tier) => (tier.max_qty ?? Number.POSITIVE_INFINITY) >= quantity && quantity >= tier.min_qty) ?? null
-}
-
-function formatBulkTierLabel(tier: DbProductBulkDiscount): string {
+function formatBulkTierLabel(tier: PricingBulkTier): string {
   const range = tier.max_qty ? `${tier.min_qty}-${tier.max_qty}` : `${tier.min_qty}+`
   if (tier.label) return `${range}: ${tier.label}`
   if (tier.discount_type === 'percent') return `${range}: ${tier.discount_value}% off`
@@ -473,16 +451,10 @@ function formatBulkTierLabel(tier: DbProductBulkDiscount): string {
   return `${range}: $${tier.discount_value.toFixed(2)} each`
 }
 
-function buildCartKey(productId: string, variantId: string | null, options: Array<{ key: string; value: string }>, processKeys: string[], designId?: string): string {
+function buildCartKey(productId: string, variantId: string | null, options: Array<{ key: string; value: string }>, processKeys: string[], designId?: string, nfcTargetData?: string): string {
   const sorted = [...options].sort((a, b) => a.key.localeCompare(b.key))
   const sortedProcesses = [...processKeys].sort()
-  return `${productId}::${variantId ?? 'no_variant'}::${JSON.stringify(sorted)}::processes:${JSON.stringify(sortedProcesses)}::design:${designId ?? 'none'}`
-}
-
-function findMatchingComboDiscount(tiers: DbProductComboDiscount[], selectedCount: number): DbProductComboDiscount | null {
-  if (selectedCount < 2) return null
-  const sorted = [...tiers].sort((a, b) => b.min_processes - a.min_processes)
-  return sorted.find((tier) => selectedCount >= tier.min_processes) ?? null
+  return `${productId}::${variantId ?? 'no_variant'}::${JSON.stringify(sorted)}::processes:${JSON.stringify(sortedProcesses)}::design:${designId ?? 'none'}::nfc:${nfcTargetData ?? ''}`
 }
 
 function formatComboDiscountLabel(tier: DbProductComboDiscount): string {

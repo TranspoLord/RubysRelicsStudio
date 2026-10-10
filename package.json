@@ -2,6 +2,9 @@
   "name": "rubys-relics-studio",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.9 <25"
+  },
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
@@ -13,7 +16,7 @@
     "test:security:rls": "node ./scripts/test-rls-lockdown.mjs",
     "test:security": "npm run test:security:rls && npm run audit",
     "test:square": "node ./scripts/test-square-checkout.mjs",
-    "audit": "npm audit --audit-level=high",
+    "audit": "npm audit --omit=dev --audit-level=high",
     "db:types": "npx supabase gen types typescript --linked --schema public > src/types/database.ts",
     "admin:grant": "node ./scripts/grant-admin.mjs",
     "admin:revoke": "node ./scripts/revoke-admin.mjs",
@@ -29,7 +32,6 @@
     "@supabase/supabase-js": "^2.117.1",
     "@vercel/analytics": "^1.4.0",
     "@xmldom/xmldom": "^0.9.10",
-    "codegraph": "^1.0.0",
     "konva": "^10.3.0",
     "next": "^16.3.4",
     "pdf-lib": "^1.17.1",
@@ -37,8 +39,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-konva": "^19.2.5",
-    "resend": "^4.5.0",
-    "square": "^44.2.0"
+    "resend": "^4.5.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

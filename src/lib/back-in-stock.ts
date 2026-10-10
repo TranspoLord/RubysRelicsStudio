@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
 import { evaluateInventoryState, type InventoryAvailabilityOverride } from '@/lib/inventory/state'
-import { getEmailSenderAddress, getResend } from '@/lib/resend/client'
+import { sendEmail } from '@/lib/resend/send'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 
 interface BackInStockAlertRow {
@@ -9,6 +9,8 @@ interface BackInStockAlertRow {
   product_id: string
   email: string
   status: 'active' | 'notified' | 'unsubscribed'
+  /** OCT #14: failed send attempts, surfaced instead of failing silently. */
+  send_attempts?: number | null
 }
 
 interface ProductRow {
@@ -88,18 +90,19 @@ async function sendBackInStockEmail(input: {
   productUrl: string
   availableQty: number
 }) {
-  const resend = getResend()
-  const fromAddress = await getEmailSenderAddress()
   const unsubscribeUrl = buildUnsubscribeUrl(input.token)
   const availabilityHint =
     input.availableQty > 0
       ? `${input.availableQty} unit${input.availableQty === 1 ? '' : 's'} just restocked.`
       : 'Inventory has been refreshed.'
 
-  await resend.emails.send({
-    from: fromAddress,
-    to: [input.email],
+  // OCT #14: return the typed result so the caller only marks the alert
+  // `notified` when the email actually went out. The key comes from the alert's
+  // own token, so a retry (or a second processor run) is a no-op.
+  return sendEmail({
+    to: input.email,
     subject: `${input.productTitle} is back in stock`,
+    idempotencyKey: `back-in-stock:${input.token}`,
     html: `
       <h2>Good news - it's back in stock</h2>
       <p><strong>${input.productTitle}</strong> is available again.</p>
@@ -143,7 +146,7 @@ export async function processBackInStockAlerts(options?: {
 
   let alertQuery = supabase
     .from('exp_back_in_stock_alerts')
-    .select('id, product_id, email, status')
+    .select('id, product_id, email, status, send_attempts')
     .eq('status', 'active')
     .order('created_at', { ascending: true })
     .limit(limit)
@@ -234,16 +237,54 @@ export async function processBackInStockAlerts(options?: {
       continue
     }
 
+    // OCT #14: claim the alert before sending, so two concurrent processor runs
+    // cannot both send it. A claim left behind by a crash is reclaimable after
+    // 15 minutes.
+    const claimCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString()
+    const { data: claimed } = await supabase
+      .from('exp_back_in_stock_alerts')
+      .update({ claimed_at: new Date().toISOString() })
+      .eq('id', alert.id)
+      .eq('status', 'active')
+      .or(`claimed_at.is.null,claimed_at.lt.${claimCutoff}`)
+      .select('id')
+      .maybeSingle()
+
+    if (!claimed) {
+      skipped += 1
+      continue
+    }
+
     try {
       const token = createBackInStockUnsubscribeToken(alert.product_id, alert.email)
       const categorySlug = categorySlugByKey.get(product?.category_key ?? '') ?? null
-      await sendBackInStockEmail({
+      const sendResult = await sendBackInStockEmail({
         email: alert.email,
         productTitle: product?.title ?? 'Your product',
         token,
         productUrl: buildProductUrl(product?.slug ?? '', categorySlug),
         availableQty: Number(inventory?.available_qty ?? 0),
       })
+
+      // OCT #14: a rejected send (Resend 429/5xx) used to still mark the alert
+      // `notified`, so the subscriber never heard back and the alert was gone.
+      // Leave it active so the next run retries.
+      if (!sendResult.ok) {
+        failed += 1
+        console.error('[back-in-stock:process:send]', sendResult.error)
+        // OCT #14: release the claim and record why, so the next run retries and a
+        // permanently failing address becomes visible instead of silent.
+        await supabase
+          .from('exp_back_in_stock_alerts')
+          .update({
+            claimed_at: null,
+            send_attempts: Number(alert.send_attempts ?? 0) + 1,
+            last_send_error: sendResult.error,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', alert.id)
+        continue
+      }
 
       const now = new Date().toISOString()
       const { error: markError } = await supabase

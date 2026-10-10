@@ -30,13 +30,34 @@ function sanitize(message: string): string {
 }
 
 /**
+ * Renders an error for logging. PostgREST/Postgres errors are plain objects
+ * (`{ message, code, details, hint }`) — `String(error)` would log
+ * `[object Object]` and drop the diagnostic fields, so those are surfaced
+ * explicitly. (OCT #16: observability.)
+ */
+function describeError(error: unknown): string {
+  if (error instanceof Error) {
+    const pg = error as Error & { code?: unknown; details?: unknown; hint?: unknown }
+    const extras: string[] = []
+    if (pg.code != null) extras.push(`code=${String(pg.code)}`)
+    if (pg.details != null) extras.push(`details=${String(pg.details)}`)
+    if (pg.hint != null) extras.push(`hint=${String(pg.hint)}`)
+    return extras.length > 0 ? `${error.message} (${extras.join(', ')})` : error.message
+  }
+  if (typeof error === 'string') return error
+  try {
+    return JSON.stringify(error) ?? String(error)
+  } catch {
+    return String(error)
+  }
+}
+
+/**
  * Log an error with sensitive patterns stripped.
  * Use this instead of `console.error` in all API routes.
  */
 export function safeLogError(prefix: string, error: unknown): void {
-  const rawMessage = error instanceof Error ? error.message : String(error)
-  const sanitized = sanitize(rawMessage)
-  console.error(prefix, sanitized)
+  console.error(prefix, sanitize(describeError(error)))
 }
 
 /**

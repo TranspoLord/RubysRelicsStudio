@@ -1,4 +1,4 @@
-import { getEmailSenderAddress, getResend } from '@/lib/resend/client'
+import { sendEmail } from '@/lib/resend/send'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 
 // ---------------------------------------------------------------------------
@@ -113,20 +113,17 @@ function buildAbandonedCartEmailHtml(input: SendAbandonedCartEmailInput): string
  * Call this ONLY after confirming the customer has not paid.
  */
 export async function sendAbandonedCartEmail(input: SendAbandonedCartEmailInput): Promise<boolean> {
-  if (!process.env.RESEND_API_KEY) return false
-
-  const resend = getResend()
-  const fromAddress = await getEmailSenderAddress()
-
-  const { error } = await resend.emails.send({
-    from: fromAddress,
-    to: [input.to],
+  // OCT #14: routed through the shared wrapper. The key is the order when there is
+  // one — so a replay cannot re-send — and the address otherwise.
+  const result = await sendEmail({
+    to: input.to,
     subject: "You left something in your cart — Ruby's Relics Studio",
+    idempotencyKey: `abandoned-cart:${input.orderId ?? input.to}`,
     html: buildAbandonedCartEmailHtml(input),
   })
 
-  if (error) {
-    console.error('[abandoned-cart:email]', error)
+  if (!result.ok) {
+    console.error('[abandoned-cart:email]', result.error)
     return false
   }
 

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { branch, getSupabaseAdmin } from '@/lib/supabase/client'
-import { getEmailSenderAddress, getResend } from '@/lib/resend/client'
+import { sendEmail } from '@/lib/resend/send'
 import { randomBytes } from 'node:crypto'
 import { rateLimit, rateLimitResponse, getClientIp } from '@/lib/rate-limit'
 import { requireCsrfOriginOnly } from '@/lib/security/csrf'
@@ -147,19 +147,14 @@ async function sendAdminNotificationEmail(input: {
   quantity: number
   description: string
 }) {
-  const resendKey = process.env.RESEND_API_KEY
-
-  if (!resendKey) return
-
   const notifications = await getOperationalNotificationSettings()
   const notifyTo = notifications.custom_request_notify_email
-  const resend = getResend()
-  const fromAddress = await getEmailSenderAddress()
 
-  await resend.emails.send({
-    from: fromAddress,
-    to: [notifyTo],
+  // OCT #14: typed result, deterministic key.
+  return sendEmail({
+    to: notifyTo,
     subject: `New custom request: ${input.itemType} (${input.requestId.slice(0, 8)})`,
+    idempotencyKey: `admin-new-request:${input.requestId}`,
     html: `
       <h2>New Custom Request</h2>
       <p><strong>ID:</strong> ${safeHtmlEscape(input.requestId)}</p>
@@ -185,15 +180,11 @@ async function sendCustomerConfirmationEmail(input: {
   quantity: number
   statusUrl: string
 }) {
-  if (!process.env.RESEND_API_KEY) return
-
-  const resend = getResend()
-  const fromAddress = await getEmailSenderAddress()
-
-  await resend.emails.send({
-    from: fromAddress,
-    to: [input.customerEmail],
+  // OCT #14: typed result, deterministic key.
+  return sendEmail({
+    to: input.customerEmail,
     subject: `We received your custom request (${input.requestId.slice(0, 8)})`,
+    idempotencyKey: `request-received:${input.requestId}`,
     html: `
       <h2>Thank You for Your Request!</h2>
       <p>Hi ${safeHtmlEscape(input.customerName)},</p>

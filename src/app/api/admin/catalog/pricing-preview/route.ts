@@ -14,6 +14,8 @@ interface PricingPreviewBody {
   quantity?: unknown
   variantId?: unknown
   options?: unknown
+  /** OCT #5: process add-on keys to price. */
+  processKeys?: unknown
 }
 
 function asString(value: unknown, maxLen: number): string {
@@ -39,7 +41,11 @@ export async function POST(request: Request) {
     const productId = asString(body.productId, 64)
     const variantId = asNullableString(body.variantId, 64)
     const quantityRaw = Number(body.quantity)
-    const quantity = Number.isFinite(quantityRaw) && quantityRaw > 0 ? Math.trunc(quantityRaw) : 1
+    // OCT #5: the engine now rejects a quantity outside 1–999, so clamp here.
+    const quantity =
+      Number.isFinite(quantityRaw) && quantityRaw > 0
+        ? Math.min(999, Math.max(1, Math.trunc(quantityRaw)))
+        : 1
 
     const rawOptions = Array.isArray(body.options)
       ? (body.options as Array<{ key?: unknown; value?: unknown }>)
@@ -56,7 +62,7 @@ export async function POST(request: Request) {
 
     const supabase = getSupabaseAdmin()
 
-    const [productResult, variantResult, optionResult, bulkResult] = await Promise.all([
+    const [productResult, variantResult, optionResult, bulkResult, processResult, comboResult] = await Promise.all([
       supabase
         .from('exp_products')
         .select('id, title, is_active, is_archived, base_price')
@@ -80,6 +86,18 @@ export async function POST(request: Request) {
         .from('exp_product_bulk_discounts')
         .select('min_qty, max_qty, discount_type, discount_value, step_qty, label, description, sort_order, is_enabled')
         .eq('product_id', productId),
+
+      // OCT #5: the preview must price processes and combos exactly as checkout
+      // does, or the admin tool reports a price the customer will not be charged.
+      supabase
+        .from('exp_product_process_pricing')
+        .select('id, product_id, process_type_key, price_delta, is_enabled')
+        .eq('product_id', productId),
+
+      supabase
+        .from('exp_product_combo_discounts')
+        .select('id, product_id, min_processes, discount_type, discount_value, label, is_enabled')
+        .eq('product_id', productId),
     ])
 
     if (productResult.error || !productResult.data) {
@@ -94,9 +112,23 @@ export async function POST(request: Request) {
         values: (opt.values ?? []).filter((v) => v.is_enabled),
       })),
       bulk_discounts: bulkResult.data ?? [],
+      process_pricing: (processResult.data ?? []).map((p) => ({
+        ...p,
+        price_delta: Number(p.price_delta),
+      })),
+      combo_discounts: (comboResult.data ?? []).map((c) => ({
+        ...c,
+        min_processes: Number(c.min_processes),
+        discount_value: c.discount_value === null ? null : Number(c.discount_value),
+      })),
     }
 
-    const result = computeCanonicalLine(context, quantity, variantId, rawOptions)
+    // OCT #5: price the same process add-ons the storefront shows.
+    const processKeys = Array.isArray(body.processKeys)
+      ? (body.processKeys as unknown[]).map((key) => asString(key, 80)).filter((key) => key.length > 0)
+      : []
+
+    const result = computeCanonicalLine(context, quantity, variantId, rawOptions, processKeys)
 
     if (!result) {
       return NextResponse.json(

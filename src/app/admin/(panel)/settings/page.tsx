@@ -179,7 +179,7 @@ export default function AdminSettingsPage() {
         />
 
         <Typography variant="caption" sx={{ color: alpha(brandTokens.parchment, 0.65) }}>
-          When disabled, customers won't receive tracking links via email. Instead, a notification will be sent to the specified email address so you can provide manual updates.
+          When disabled, customers won&apos;t receive tracking links via email. Instead, a notification will be sent to the specified email address so you can provide manual updates.
         </Typography>
       </Box>
 

@@ -27,6 +27,9 @@ interface OrderConfirmation {
   production_estimate_band: string
   subtotal: number
   discount_amount: number
+  shipping_cost: number
+  shipping_discount: number
+  tax_amount: number
   order_total: number
   created_at: string
   guest_tracking_token: string | null
@@ -40,7 +43,7 @@ async function getOrderConfirmation(sessionId: string): Promise<OrderConfirmatio
 
   const { data: order, error: orderError } = await supabase
     .from('exp_orders')
-    .select('id, payment_status, status, production_estimate_band, subtotal, discount_amount, order_total, created_at, guest_tracking_token')
+    .select('id, payment_status, status, production_estimate_band, subtotal, discount_amount, shipping_cost, shipping_discount, tax_amount, order_total, created_at, guest_tracking_token')
     .eq('stripe_session_id', sessionId)
     .single()
 
@@ -199,6 +202,17 @@ export default async function CheckoutSuccessPage({
                 <Box sx={{ display: 'grid', gap: 0.45, pt: 0.4 }}>
                   <SummaryRow label="Subtotal" value={Number(order.subtotal)} />
                   <SummaryRow label="Discounts" value={-Number(order.discount_amount)} />
+                  {/* OCT #35: shipping was missing entirely, and the row only
+                      appears when there is something to show. */}
+                  {Number(order.shipping_cost) > 0 && (
+                    <SummaryRow label="Shipping" value={Number(order.shipping_cost)} />
+                  )}
+                  {Number(order.shipping_discount) > 0 && (
+                    <SummaryRow label="Shipping discount" value={-Number(order.shipping_discount)} />
+                  )}
+                  {Number(order.tax_amount) > 0 && (
+                    <SummaryRow label="Tax" value={Number(order.tax_amount)} />
+                  )}
                   <SummaryRow label="Total" value={Number(order.order_total)} emph />
                 </Box>
               </Box>

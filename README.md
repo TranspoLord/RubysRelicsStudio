@@ -49,8 +49,8 @@ gate reads. Remove access with `npm run admin:revoke -- <google-email>`.
 
 - `docs/Database.md` — canonical schema reference
 - `docs/GOOGLE_AUTH_SUPABASE.md` — Google OAuth via Supabase Auth (setup, flow, env vars)
-- `SECURITY_AUDIT.md` — current security audit
-- `docs/archive/SEPT_IMPLEMENTATION_PLAN.md` — remaining / unimplemented work
+- `OCT_IMPLEMENTATION_PLAN.md` — **the living plan for open work**: issues, the batch plan (§5), the remediation cross-reference (§4) and the Product Design Studio epic (§6)
+- `POTENTIAL_FUTURE.md` — design notes for unbuilt work (bulk product import, DB backup, PBR materials)
 - `UI_AUDIT.md` — how the storefront UI audit is run (method + evidence locations)
-- `docs/archive/` — historical planning and audit docs
+- `docs/archive/` — historical planning and audit docs (e.g. `SEPT_IMPLEMENTATION_PLAN.md`, `REMEDIATION_PLAN_2026-10-06.md`, `SECURITY_AUDIT.md`)
 

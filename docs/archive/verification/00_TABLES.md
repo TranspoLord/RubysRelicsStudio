@@ -1009,8 +1009,15 @@
 
 ## 11. Views
 
-### `exp_commission_queue` (VIEW)
-Anonymized production queue view. Contains only masked order IDs, character names (if provided), and fabrication status. No PII exposed.
+### `exp_commission_queue` (VIEW) — **DROPPED (OCT #3, migration `068`)**
+
+> **Correction (2026-10-08):** this view was described as "anonymized … No PII
+> exposed", which was **wrong**. It had no `security_invoker`, so it ran as the
+> owner and **bypassed RLS**, and it was granted to `authenticated` — every Google
+> account that signed in could read it. It exposed real order/item UUIDs,
+> `nfc_target_data` and `leave_unlocked`. Migration `068` drops it; the admin
+> production queue reads the underlying tables through the service role instead.
+> (`CommissionQueueTracker.tsx`, the dead consumer, was deleted in the same pass.)
 
 | Column | Source |
 |--------|--------|
