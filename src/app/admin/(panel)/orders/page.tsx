@@ -14,6 +14,7 @@ import { alpha } from '@mui/material/styles'
 
 import { brandTokens } from '@/theme/theme'
 import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
+import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 
 type OrderStatus =
   | 'awaiting_payment'
@@ -130,13 +131,15 @@ function asMoney(value: number): string {
   return `$${Number(value ?? 0).toFixed(2)}`
 }
 
+/** OCT #23: `cancelled` is not a transition — it goes through the Cancel action,
+ *  which releases reserved inventory. */
 function nextStatusOptions(status: OrderStatus): OrderStatus[] {
   const map: Record<OrderStatus, OrderStatus[]> = {
-    awaiting_payment: ['paid', 'cancelled'],
-    paid: ['in_production', 'cancelled'],
-    in_production: ['ready_to_ship', 'cancelled'],
-    ready_to_ship: ['shipped', 'cancelled'],
-    shipped: ['delivered', 'cancelled'],
+    awaiting_payment: ['paid'],
+    paid: ['in_production'],
+    in_production: ['ready_to_ship'],
+    ready_to_ship: ['shipped'],
+    shipped: ['delivered'],
     delivered: [],
     cancelled: [],
   }
@@ -160,6 +163,10 @@ export default function AdminOrdersPage() {
   const [detail, setDetail] = useState<OrderDetail | null>(null)
   const [nextStatus, setNextStatus] = useState<OrderStatus | ''>('')
   const [actionNote, setActionNote] = useState('')
+  // OCT #23: Cancel and Mark Refunded are irreversible, so they go through a
+  // confirmation dialog that requires a reason.
+  const [confirmDestructive, setConfirmDestructive] = useState<'cancel' | 'mark_refunded' | null>(null)
+  const [confirmReason, setConfirmReason] = useState('')
   const [newNote, setNewNote] = useState('')
   const [hookStage, setHookStage] = useState<OrderHookRow['stage']>('design')
   const [hookScheduledFor, setHookScheduledFor] = useState('')
@@ -244,6 +251,25 @@ export default function AdminOrdersPage() {
   useEffect(() => {
     void loadOrders(query, status, payment)
   }, [query, status, payment])
+
+  /**
+   * OCT #23: cancel / mark-refunded only run from the confirmation dialog, and
+   * only with a reason of at least three characters.
+   */
+  async function confirmDestructiveAction() {
+    if (!confirmDestructive) return
+    const reason = confirmReason.trim()
+    if (reason.length < 3) return
+
+    const action = confirmDestructive
+    setConfirmDestructive(null)
+    setConfirmReason('')
+
+    await runAction(
+      { action, note: reason },
+      action === 'mark_refunded' ? 'Order marked refunded.' : 'Order cancelled.',
+    )
+  }
 
   async function runAction(body: Record<string, unknown>, success: string) {
     if (!selectedOrderId) return
@@ -426,7 +452,10 @@ export default function AdminOrdersPage() {
               variant="outlined"
               color="error"
               disabled={actionLoading || selectedRow.status === 'cancelled' || selectedRow.status === 'delivered'}
-              onClick={() => void runAction({ action: 'cancel', note: actionNote }, 'Order cancelled.')}
+              onClick={() => {
+                setConfirmReason('')
+                setConfirmDestructive('cancel')
+              }}
             >
               Cancel Order
             </Button>
@@ -434,7 +463,10 @@ export default function AdminOrdersPage() {
               variant="outlined"
               color="error"
               disabled={actionLoading || selectedRow.payment_status !== 'paid'}
-              onClick={() => void runAction({ action: 'mark_refunded', note: actionNote }, 'Order marked refunded.')}
+              onClick={() => {
+                setConfirmReason('')
+                setConfirmDestructive('mark_refunded')
+              }}
             >
               Mark Refunded
             </Button>
@@ -654,6 +686,49 @@ export default function AdminOrdersPage() {
           </Box>
         </Box>
       )}
+
+      {/* OCT #23: Cancel and Mark Refunded cannot be undone, so they ask first —
+          and say plainly that "Mark Refunded" only records the refund. */}
+      <ConfirmDialog
+        open={confirmDestructive !== null}
+        title={
+          confirmDestructive === 'mark_refunded' ? 'Mark this order refunded?' : 'Cancel this order?'
+        }
+        tone="danger"
+        confirmLabel={confirmDestructive === 'mark_refunded' ? 'Mark refunded' : 'Cancel order'}
+        busy={actionLoading}
+        confirmDisabled={confirmReason.trim().length < 3}
+        onClose={() => {
+          setConfirmDestructive(null)
+          setConfirmReason('')
+        }}
+        onConfirm={() => void confirmDestructiveAction()}
+        body={
+          selectedRow
+            ? confirmDestructive === 'mark_refunded'
+              ? `Mark order ${selectedRow.id.slice(0, 8).toUpperCase()} as refunded? This only records the refund — issue the actual refund in Square first. Total ${asMoney(selectedRow.order_total)}, payment ${selectedRow.payment_status}, paid ${selectedRow.paid_at ? new Date(selectedRow.paid_at).toLocaleDateString() : 'n/a'}.`
+              : `Cancel order ${selectedRow.id.slice(0, 8).toUpperCase()}? Reserved stock is released and this cannot be undone. Total ${asMoney(selectedRow.order_total)}, payment ${selectedRow.payment_status}.`
+            : ''
+        }
+      >
+        <TextField
+          label="Reason (required)"
+          value={confirmReason}
+          onChange={(event) => setConfirmReason(event.target.value)}
+          multiline
+          rows={2}
+          fullWidth
+          helperText="At least 3 characters — recorded in the order's internal notes."
+        />
+        {confirmDestructive === 'mark_refunded' && selectedRow?.payment_mode?.startsWith('square') && (
+          <Typography sx={{ fontSize: '0.8rem', mt: 1 }}>
+            <a href="https://squareup.com/dashboard/" target="_blank" rel="noopener noreferrer">
+              Open the Square dashboard
+            </a>{' '}
+            to issue the refund.
+          </Typography>
+        )}
+      </ConfirmDialog>
     </Box>
   )
 }

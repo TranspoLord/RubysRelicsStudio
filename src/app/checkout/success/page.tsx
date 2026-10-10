@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Container from '@mui/material/Container'
@@ -8,8 +9,26 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { Breadcrumb } from '@/components/layout/Breadcrumb'
 import { ClearCartOnSuccess } from '@/components/checkout/ClearCartOnSuccess'
+import { OrderStatusPoller } from '@/components/checkout/OrderStatusPoller'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
+import {
+  describeOrderStatus,
+  describePaymentStatus,
+  isPaymentSettled,
+} from '@/lib/orders/customer-status'
+import { reconcileSquarePayment } from '@/lib/orders/reconcile-square-payment'
+import { formatShopDateTime } from '@/lib/time/shop-time'
 import { brandTokens } from '@/theme/theme'
+
+/**
+ * OCT #13: a real post-payment page, not a redirect notice. It is never indexed,
+ * and it is only reachable with both the order id and the guest access token
+ * Square was told to send the buyer back with.
+ */
+export const metadata: Metadata = {
+  title: 'Order received',
+  robots: { index: false, follow: false },
+}
 
 interface OrderConfirmationItem {
   id: string
@@ -36,23 +55,31 @@ interface OrderConfirmation {
   items: OrderConfirmationItem[]
 }
 
-async function getOrderConfirmation(sessionId: string): Promise<OrderConfirmation | null> {
-  if (!sessionId) return null
+/**
+ * OCT #13: look the order up by id **and** guest token — a guessed id alone must
+ * never reveal a customer's order.
+ */
+async function getOrderConfirmation(
+  orderId: string,
+  accessToken: string,
+): Promise<OrderConfirmation | null> {
+  if (!orderId || !accessToken) return null
 
   const supabase = getSupabaseAdmin()
 
   const { data: order, error: orderError } = await supabase
     .from('exp_orders')
-    .select('id, payment_status, status, production_estimate_band, subtotal, discount_amount, shipping_cost, shipping_discount, tax_amount, order_total, created_at, guest_tracking_token')
-    .eq('stripe_session_id', sessionId)
-    .single()
+    .select('id, payment_status, status, production_estimate_band, subtotal, discount_amount, shipping_cost, shipping_discount, tax_amount, order_total, created_at, guest_tracking_token, shipping_method')
+    .eq('id', orderId)
+    .eq('guest_tracking_token', accessToken)
+    .maybeSingle()
 
-  if (orderError || !order) {
-    if (orderError?.code !== 'PGRST116') {
-      console.error('[checkout:success:order]', orderError?.message)
-    }
+  if (orderError) {
+    console.error('[checkout:success:order]', orderError.message)
     return null
   }
+
+  if (!order) return null
 
   const { data: items, error: itemsError } = await supabase
     .from('exp_order_items')
@@ -69,32 +96,37 @@ async function getOrderConfirmation(sessionId: string): Promise<OrderConfirmatio
   }
 }
 
-function formatTimestamp(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(date)
-}
-
 export default async function CheckoutSuccessPage({
   searchParams,
 }: {
-  searchParams: Promise<{ session_id?: string }>
+  searchParams: Promise<{ order?: string; access?: string }>
 }) {
   const params = await searchParams
-  const sessionId = typeof params.session_id === 'string' ? params.session_id : ''
-  const order = await getOrderConfirmation(sessionId)
-  const paymentSettled = order?.payment_status === 'paid'
+  const orderId = typeof params.order === 'string' ? params.order : ''
+  const accessToken = typeof params.access === 'string' ? params.access : ''
+
+  let order = await getOrderConfirmation(orderId, accessToken)
+
+  // OCT #13: the webhook is the authority, but if it has not landed yet this
+  // page reconciles with Square itself, so a paying customer is never stuck on
+  // "awaiting payment". `reconcileSquarePayment` refuses any amount mismatch.
+  if (order && !isPaymentSettled(order.payment_status)) {
+    const outcome = await reconcileSquarePayment(order.id)
+    if (outcome === 'marked_paid') {
+      order = await getOrderConfirmation(orderId, accessToken)
+    }
+  }
+
+  const paymentSettled = isPaymentSettled(order?.payment_status)
+  const statusView = describeOrderStatus(order?.status)
+  const paymentView = describePaymentStatus(order?.payment_status)
 
   return (
     <>
-      <ClearCartOnSuccess />
+      {/* OCT #13: the cart is only emptied when the order was actually found. */}
+      <ClearCartOnSuccess enabled={Boolean(order)} />
+      {/* Keep refreshing while Square confirms the payment. */}
+      <OrderStatusPoller active={Boolean(order) && !paymentSettled} />
       <Header currentPath="/checkout" />
       <Breadcrumb
         items={[
@@ -120,9 +152,11 @@ export default async function CheckoutSuccessPage({
                 {paymentSettled ? 'Payment Received' : 'Order Received'}
               </Typography>
               <Typography sx={{ color: alpha(brandTokens.parchment, 0.72), maxWidth: 620, mx: 'auto', mb: 2 }}>
-                {paymentSettled
-                  ? 'Your order is now in our forge queue. You will receive updates as it moves into production and shipping.'
-                  : 'Stripe redirected successfully. Your payment is still syncing, but your order record has been created.'}
+                {order
+                  ? paymentSettled
+                    ? 'Your order is in our forge queue. We will email you as it moves into production and shipping.'
+                    : 'Thanks! We are confirming your payment with Square — this page updates itself as soon as it clears.'
+                  : 'Thanks for stopping by. If you just paid, your confirmation email is on its way — the link in it reopens this page.'}
               </Typography>
             </Box>
 
@@ -140,21 +174,25 @@ export default async function CheckoutSuccessPage({
               >
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
                   <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.62) }}>
-                    Order ID: {order.id}
+                    Order: {order.id.slice(0, 8).toUpperCase()}
                   </Typography>
                   <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.62) }}>
-                    Created: {formatTimestamp(order.created_at)}
+                    Placed: {formatShopDateTime(order.created_at)}
                   </Typography>
                 </Box>
 
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
                   <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.62) }}>
-                    Payment: {order.payment_status}
+                    Payment: {paymentView.label}
                   </Typography>
                   <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.62) }}>
-                    Status: {order.status}
+                    Status: {statusView.label}
                   </Typography>
                 </Box>
+
+                <Typography sx={{ fontSize: '0.84rem', color: alpha(brandTokens.parchment, 0.72) }}>
+                  {statusView.detail}
+                </Typography>
 
                 <Typography sx={{ fontSize: '0.84rem', color: alpha(brandTokens.parchment, 0.72) }}>
                   Production estimate: {order.production_estimate_band}
@@ -216,13 +254,7 @@ export default async function CheckoutSuccessPage({
                   <SummaryRow label="Total" value={Number(order.order_total)} emph />
                 </Box>
               </Box>
-            ) : (
-              sessionId && (
-                <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), mb: 2, textAlign: 'center' }}>
-                  Session: {sessionId}
-                </Typography>
-              )
-            )}
+            ) : null}
 
             <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 1 }}>
               <Button component="a" href="/shop" variant="contained">

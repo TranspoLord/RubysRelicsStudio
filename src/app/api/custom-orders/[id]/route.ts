@@ -4,7 +4,8 @@ import { requireAdminApiSession } from '@/lib/admin/auth'
 import { writeAdminAuditLog } from '@/lib/admin/audit'
 import { getSupabaseAdmin, branch } from '@/lib/supabase/client'
 import { sendEmail } from '@/lib/resend/send'
-import { createSquareCheckout } from '@/lib/square/client'
+import { createSquareCheckout, deleteSquarePaymentLink } from '@/lib/square/client'
+import { safeLogError } from '@/lib/security/logger'
 import { safeHtmlEscape } from '@/lib/validate'
 import { parseJsonBodyOrError } from '@/lib/security/body'
 
@@ -15,6 +16,10 @@ interface RequestContext {
 interface QuoteActionBody {
   action?: unknown
   quoteAmount?: unknown
+  /** OCT #28: the only note that reaches the customer. */
+  customerMessage?: unknown
+  /** OCT #28: studio-only, append-only history. */
+  internalNote?: unknown
   note?: unknown
   confirmAction?: unknown
   extendDays?: unknown
@@ -39,6 +44,66 @@ function asPositiveInt(value: unknown): number | null {
 
 const QUOTE_EXPIRY_DAYS = 7
 
+/**
+ * OCT #28: internal notes are append-only and never emailed.
+ *
+ * `admin_notes` is left untouched by these actions — the old code wrote the
+ * draft straight into it, so an empty box erased the previous rejection reason.
+ */
+function appendInternalNote(existing: string | null | undefined, note: string): string {
+  const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ')
+  const entry = `[${stamp}] ${note}`
+  const current = (existing ?? '').trim()
+  return current ? `${current}\n\n${entry}` : entry
+}
+
+/**
+ * OCT #15: a re-quote supersedes the previous one. The old Square link is
+ * deleted and the pending order it created is cancelled (with a status event),
+ * so exactly one link is payable and the Orders list does not fill up with
+ * abandoned awaiting-payment rows.
+ */
+async function supersedePreviousQuote(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  request: {
+    id: string
+    square_payment_link_id?: string | null
+  },
+): Promise<void> {
+  if (request.square_payment_link_id) {
+    try {
+      await deleteSquarePaymentLink(request.square_payment_link_id)
+    } catch (deleteError) {
+      // A 404 means it is already gone; anything else is worth a log line but
+      // must not block the re-quote.
+      safeLogError('[custom-orders:supersede-link]', deleteError)
+    }
+  }
+
+  const { data: cancelled, error } = await supabase
+    .from('exp_orders')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('custom_request_id', request.id)
+    .eq('payment_status', 'pending')
+    .select('id')
+
+  if (error) {
+    safeLogError('[custom-orders:supersede-orders]', error)
+    return
+  }
+
+  for (const row of (cancelled ?? []) as Array<{ id: string }>) {
+    await supabase.from('exp_order_status_events').insert({
+      order_id: row.id,
+      action_type: 'cancel',
+      previous_status: 'awaiting_payment',
+      next_status: 'cancelled',
+      note: 'Superseded by re-quote',
+      created_by: 'admin',
+    })
+  }
+}
+
 async function sendQuoteEmail(input: {
   customerEmail: string
   itemType: string
@@ -46,7 +111,11 @@ async function sendQuoteEmail(input: {
   quoteAmount: number
   paymentLinkUrl: string
   statusUrl: string
-  note: string | null
+  /**
+   * OCT #28: only ever the customer-facing message. Internal notes are never
+   * passed here.
+   */
+  customerMessage: string | null
 }) {
   // OCT #14: return the typed result so `send_quote` can report
   // `warnings: ['email_not_sent']` instead of claiming success.
@@ -65,7 +134,8 @@ async function sendQuoteEmail(input: {
       <p>
         Track your request status: <a href="${safeHtmlEscape(input.statusUrl)}">${safeHtmlEscape(input.statusUrl)}</a>
       </p>
-      ${input.note ? `<p><strong>Note from the studio:</strong> ${safeHtmlEscape(input.note)}</p>` : ''}
+      ${input.customerMessage ? `<p><strong>Note from the studio:</strong> ${safeHtmlEscape(input.customerMessage)}</p>` : ''}
+      <p style="color:#666">This link replaces any earlier quote link for this request.</p>
     `,
   })
 }
@@ -121,7 +191,7 @@ export async function GET(request: Request, context: RequestContext) {
     const supabase = getSupabaseAdmin()
     const { data, error } = await supabase
       .from('exp_custom_requests')
-      .select('id, status, item_type, quantity, description, design_id, design_document, quote_amount, square_payment_link_url, admin_notes, created_at, updated_at, customer_access_expires_at, quote_expires_at')
+      .select('id, status, item_type, quantity, description, design_id, design_document, quote_amount, square_payment_link_id, square_payment_link_url, admin_notes, internal_notes, created_at, updated_at, customer_access_expires_at, quote_expires_at')
       .eq('id', requestId)
       .eq('customer_access_token', accessToken)
       .single()
@@ -179,7 +249,7 @@ export async function GET(request: Request, context: RequestContext) {
 
     return NextResponse.json({ request: data, exports }, { status: 200 })
   } catch (error) {
-    console.error('[custom-orders:id:get]', error)
+    safeLogError('[custom-orders:id:get]', error)
     return NextResponse.json({ error: 'Could not load request status.' }, { status: 500 })
   }
 }
@@ -212,7 +282,7 @@ export async function PATCH(request: Request, context: RequestContext) {
 
     const { data: requestRow, error: requestError } = await supabase
       .from('exp_custom_requests')
-      .select('id, status, customer_email, item_type, customer_access_token, quote_amount, quote_expires_at, square_payment_link_url, quote_resend_count')
+      .select('id, status, customer_email, item_type, customer_access_token, quote_amount, quote_expires_at, square_payment_link_id, square_payment_link_url, quote_resend_count, internal_notes')
       .eq('id', requestId)
       .single()
 
@@ -223,11 +293,37 @@ export async function PATCH(request: Request, context: RequestContext) {
 
     if (action === 'send_quote') {
       const quoteAmount = asMoney(body.quoteAmount)
-      const note = asString(body.note, 2000) || null
+      // OCT #28: two separate fields. `customerMessage` is the only one that
+      // reaches the customer; `internalNote` stays in the studio. `note` is the
+      // old single field and is still read as the customer message.
+      const customerMessage =
+        asString(body.customerMessage, 2000) || asString(body.note, 2000) || null
+      const internalNote = asString(body.internalNote, 2000) || null
 
       if (!quoteAmount) {
         await writeAdminAuditLog({ action: 'custom_request.send_quote', entityType: 'custom_request', entityId: requestRow.id, route: `/api/custom-orders/${requestRow.id}`, request, status: 'failure', details: { reason: 'invalid_quote_amount' } })
         return NextResponse.json({ error: 'Quote amount must be greater than zero.' }, { status: 400 })
+      }
+
+      // OCT #15/#28: the status is checked BEFORE a payable link exists. The old
+      // order of operations created the link first, so sending on a paid request
+      // left an orphaned live payment link and then failed the status-guarded
+      // update.
+      const isRequote = requestRow.status === 'quote_sent' || requestRow.status === 'expired'
+      if (requestRow.status !== 'awaiting_quote' && !isRequote) {
+        await writeAdminAuditLog({ action: 'custom_request.send_quote', entityType: 'custom_request', entityId: requestRow.id, route: `/api/custom-orders/${requestRow.id}`, request, status: 'failure', details: { reason: 'invalid_status', status: requestRow.status } })
+        return NextResponse.json(
+          {
+            error: `A quote can only be sent for awaiting_quote, quote_sent or expired requests (this one is ${requestRow.status}).`,
+          },
+          { status: 400 },
+        )
+      }
+
+      // OCT #15: a re-quote supersedes the previous link and its pending order,
+      // so the customer never holds two payable links for one request.
+      if (isRequote) {
+        await supersedePreviousQuote(supabase, requestRow)
       }
 
       const origin = new URL(request.url).origin
@@ -242,7 +338,7 @@ export async function PATCH(request: Request, context: RequestContext) {
           quoteAmount,
         })
       } catch (squareError) {
-        console.error('[custom-orders:id:send-quote:square]', squareError)
+        safeLogError('[custom-orders:id:send-quote:square]', squareError)
         await writeAdminAuditLog({ action: 'custom_request.send_quote', entityType: 'custom_request', entityId: requestRow.id, route: `/api/custom-orders/${requestRow.id}`, request, status: 'failure', details: { reason: 'square_link_creation_failed' } })
         return NextResponse.json({ error: 'Could not create payment link. Please try again.' }, { status: 500 })
       }
@@ -262,16 +358,27 @@ export async function PATCH(request: Request, context: RequestContext) {
           quote_last_resent_at: null,
           quote_resend_count: 0,
           production_handoff_at: null,
-          admin_notes: note,
+          // OCT #28: `admin_notes` is never overwritten and an internal note is
+          // appended, never sent to the customer.
+          ...(internalNote
+            ? { internal_notes: appendInternalNote(requestRow.internal_notes, internalNote) }
+            : {}),
           updated_at: new Date().toISOString(),
         })
         .eq('id', requestRow.id)
-        .in('status', ['awaiting_quote', 'quote_sent'])
+        .in('status', ['awaiting_quote', 'quote_sent', 'expired'])
         .select('id, status, quote_amount, square_payment_link_url, updated_at')
         .single()
 
       if (updateError || !updated) {
-        console.error('[custom-orders:id:send-quote:update]', updateError?.message)
+        safeLogError('[custom-orders:id:send-quote:update]', updateError)
+        // The link exists but no request points at it — delete it rather than
+        // leave a payable orphan.
+        try {
+          await deleteSquarePaymentLink(paymentLink.paymentLinkId)
+        } catch (deleteError) {
+          safeLogError('[custom-orders:id:send-quote:update-cleanup]', deleteError)
+        }
         await writeAdminAuditLog({ action: 'custom_request.send_quote', entityType: 'custom_request', entityId: requestRow.id, route: `/api/custom-orders/${requestRow.id}`, request, status: 'failure', details: { reason: 'update_failed', message: updateError?.message ?? null } })
         return NextResponse.json({ error: 'Could not save quote details.' }, { status: 500 })
       }
@@ -308,29 +415,46 @@ export async function PATCH(request: Request, context: RequestContext) {
         })
 
       if (orderInsertError) {
-        console.error('[custom-orders:id:send-quote:order-insert]', orderInsertError.message)
-        // Non-fatal — the quote is already saved and the email will be sent.
-        // The webhook may not match this payment, but the admin can manually
-        // update the status. Log for investigation.
+        // OCT #15: this row is how the webhook matches the payment, so a failed
+        // insert is fatal — delete the link we just made and fail, rather than
+        // email the customer a payable link we cannot reconcile.
+        safeLogError('[custom-orders:id:send-quote:order-insert]', orderInsertError)
+        try {
+          await deleteSquarePaymentLink(paymentLink.paymentLinkId)
+        } catch (deleteError) {
+          safeLogError('[custom-orders:id:send-quote:order-cleanup]', deleteError)
+        }
+        await writeAdminAuditLog({ action: 'custom_request.send_quote', entityType: 'custom_request', entityId: requestRow.id, route: `/api/custom-orders/${requestRow.id}`, request, status: 'failure', details: { reason: 'order_insert_failed', message: orderInsertError.message ?? null } })
+        return NextResponse.json(
+          { error: 'Could not record the quote order. Please try again.' },
+          { status: 500 },
+        )
       }
 
-      try {
-        await sendQuoteEmail({
-          customerEmail: requestRow.customer_email,
-          itemType: requestRow.item_type,
-          requestId: requestRow.id,
-          quoteAmount,
-          paymentLinkUrl: paymentLink.paymentLinkUrl,
-          statusUrl,
-          note,
-        })
-      } catch (mailError) {
-        console.error('[custom-orders:id:send-quote:email]', mailError)
+      // OCT #28: the send result is reported instead of swallowed, so the panel
+      // can say "quote saved, email not sent — copy the link".
+      const warnings: string[] = []
+      const quoteEmail = await sendQuoteEmail({
+        customerEmail: requestRow.customer_email,
+        itemType: requestRow.item_type,
+        requestId: requestRow.id,
+        quoteAmount,
+        paymentLinkUrl: paymentLink.paymentLinkUrl,
+        statusUrl,
+        customerMessage,
+      })
+
+      if (!quoteEmail.ok) {
+        safeLogError('[custom-orders:id:send-quote:email]', quoteEmail.error)
+        warnings.push('email_not_sent')
       }
 
-      await writeAdminAuditLog({ action: 'custom_request.send_quote', entityType: 'custom_request', entityId: requestRow.id, route: `/api/custom-orders/${requestRow.id}`, request, status: 'success', details: { quoteAmount, status: 'quote_sent' } })
+      await writeAdminAuditLog({ action: 'custom_request.send_quote', entityType: 'custom_request', entityId: requestRow.id, route: `/api/custom-orders/${requestRow.id}`, request, status: 'success', details: { quoteAmount, status: 'quote_sent', warnings } })
 
-      return NextResponse.json({ request: updated }, { status: 200 })
+      return NextResponse.json(
+        { request: updated, warnings, paymentLinkUrl: paymentLink.paymentLinkUrl },
+        { status: 200 },
+      )
     }
 
     if (action === 'resend_quote') {
@@ -353,24 +477,28 @@ export async function PATCH(request: Request, context: RequestContext) {
         }
       }
 
-      const note = asString(body.note, 2000) || null
+      const customerMessage =
+        asString(body.customerMessage, 2000) || asString(body.note, 2000) || null
       const origin = new URL(request.url).origin
       const statusUrl = requestRow.customer_access_token
         ? `${origin}/custom-orders/${requestRow.id}?access=${encodeURIComponent(requestRow.customer_access_token)}`
         : `${origin}/custom-orders`
 
-      try {
-        await sendQuoteEmail({
-          customerEmail: requestRow.customer_email,
-          itemType: requestRow.item_type,
-          requestId: requestRow.id,
-          quoteAmount: Number(requestRow.quote_amount),
-          paymentLinkUrl: requestRow.square_payment_link_url,
-          statusUrl,
-          note,
-        })
-      } catch (mailError) {
-        console.error('[custom-orders:id:resend-quote:email]', mailError)
+      // OCT #28: the result is reported, not swallowed.
+      const warnings: string[] = []
+      const quoteEmail = await sendQuoteEmail({
+        customerEmail: requestRow.customer_email,
+        itemType: requestRow.item_type,
+        requestId: requestRow.id,
+        quoteAmount: Number(requestRow.quote_amount),
+        paymentLinkUrl: requestRow.square_payment_link_url,
+        statusUrl,
+        customerMessage,
+      })
+
+      if (!quoteEmail.ok) {
+        safeLogError('[custom-orders:id:resend-quote:email]', quoteEmail.error)
+        warnings.push('email_not_sent')
       }
 
       const { data: updated, error: updateError } = await supabase
@@ -388,9 +516,12 @@ export async function PATCH(request: Request, context: RequestContext) {
         return NextResponse.json({ error: 'Could not record quote resend.' }, { status: 500 })
       }
 
-      await writeAdminAuditLog({ action: 'custom_request.resend_quote', entityType: 'custom_request', entityId: requestRow.id, route: `/api/custom-orders/${requestRow.id}`, request, status: 'success', details: { resendCount: updated.quote_resend_count } })
+      await writeAdminAuditLog({ action: 'custom_request.resend_quote', entityType: 'custom_request', entityId: requestRow.id, route: `/api/custom-orders/${requestRow.id}`, request, status: 'success', details: { resendCount: updated.quote_resend_count, warnings } })
 
-      return NextResponse.json({ request: updated }, { status: 200 })
+      return NextResponse.json(
+        { request: updated, warnings, paymentLinkUrl: requestRow.square_payment_link_url },
+        { status: 200 },
+      )
     }
 
     if (action === 'extend_quote_expiry') {
@@ -430,22 +561,22 @@ export async function PATCH(request: Request, context: RequestContext) {
         return NextResponse.json({ error: 'Only paid custom requests can be handed off to production.' }, { status: 400 })
       }
 
-      const note = asString(body.note, 2000) || null
+      const note = asString(body.internalNote, 2000) || asString(body.note, 2000) || null
 
+      // OCT #15: pick the *paid* linked order, not the newest one. After a
+      // re-quote the newest row is the superseded quote, which made this handoff
+      // fail with "Linked order is not paid yet."
       const { data: orderRow, error: orderError } = await supabase
         .from('exp_orders')
         .select('id, status, payment_status')
         .eq('custom_request_id', requestRow.id)
+        .eq('payment_status', 'paid')
         .order('created_at', { ascending: false })
         .limit(1)
-        .single()
+        .maybeSingle()
 
       if (orderError || !orderRow) {
         return NextResponse.json({ error: 'No linked paid order found for this request.' }, { status: 404 })
-      }
-
-      if (orderRow.payment_status !== 'paid') {
-        return NextResponse.json({ error: 'Linked order is not paid yet.' }, { status: 400 })
       }
 
       const { error: orderUpdateError } = await supabase
@@ -461,7 +592,8 @@ export async function PATCH(request: Request, context: RequestContext) {
         .from('exp_custom_requests')
         .update({
           production_handoff_at: new Date().toISOString(),
-          admin_notes: note,
+          // OCT #28: `admin_notes` is never overwritten; internal notes append.
+          ...(note ? { internal_notes: appendInternalNote(requestRow.internal_notes, note) } : {}),
           updated_at: new Date().toISOString(),
         })
         .eq('id', requestRow.id)
@@ -483,13 +615,15 @@ export async function PATCH(request: Request, context: RequestContext) {
         return NextResponse.json({ error: 'Missing destructive action confirmation.' }, { status: 400 })
       }
 
-      const note = asString(body.note, 2000) || 'Request rejected by admin review.'
+      const note = asString(body.internalNote, 2000) || asString(body.note, 2000) || 'Request rejected by admin review.'
 
       const { data: updated, error: updateError } = await supabase
         .from('exp_custom_requests')
         .update({
           status: 'cancelled',
-          admin_notes: note,
+          // OCT #28: append, never overwrite — the old code wrote the draft into
+          // `admin_notes`, so an empty box erased the previous reason.
+          internal_notes: appendInternalNote(requestRow.internal_notes, note),
           updated_at: new Date().toISOString(),
         })
         .eq('id', requestRow.id)
@@ -497,7 +631,7 @@ export async function PATCH(request: Request, context: RequestContext) {
         .single()
 
       if (updateError || !updated) {
-        console.error('[custom-orders:id:mark-rejected:update]', updateError?.message)
+        safeLogError('[custom-orders:id:mark-rejected:update]', updateError?.message)
         await writeAdminAuditLog({ action: 'custom_request.reject', entityType: 'custom_request', entityId: requestRow.id, route: `/api/custom-orders/${requestRow.id}`, request, status: 'failure', details: { reason: 'update_failed', message: updateError?.message ?? null } })
         return NextResponse.json({ error: 'Could not update request status.' }, { status: 500 })
       }
@@ -512,13 +646,14 @@ export async function PATCH(request: Request, context: RequestContext) {
         return NextResponse.json({ error: 'Only cancelled requests can be reopened.' }, { status: 400 })
       }
 
-      const note = asString(body.note, 2000) || null
+      const note = asString(body.internalNote, 2000) || asString(body.note, 2000) || null
 
       const { data: updated, error: updateError } = await supabase
         .from('exp_custom_requests')
         .update({
           status: 'awaiting_quote',
-          admin_notes: note,
+          // OCT #28: append, never overwrite (see `mark_rejected`).
+          ...(note ? { internal_notes: appendInternalNote(requestRow.internal_notes, note) } : {}),
           updated_at: new Date().toISOString(),
         })
         .eq('id', requestRow.id)
@@ -526,7 +661,7 @@ export async function PATCH(request: Request, context: RequestContext) {
         .single()
 
       if (updateError || !updated) {
-        console.error('[custom-orders:id:reopen:update]', updateError?.message)
+        safeLogError('[custom-orders:id:reopen:update]', updateError?.message)
         await writeAdminAuditLog({ action: 'custom_request.reopen', entityType: 'custom_request', entityId: requestRow.id, route: `/api/custom-orders/${requestRow.id}`, request, status: 'failure', details: { reason: 'update_failed', message: updateError?.message ?? null } })
         return NextResponse.json({ error: 'Could not reopen request.' }, { status: 500 })
       }
@@ -539,7 +674,7 @@ export async function PATCH(request: Request, context: RequestContext) {
     await writeAdminAuditLog({ action: 'custom_request.update', entityType: 'custom_request', entityId: requestRow.id, route: `/api/custom-orders/${requestRow.id}`, request, status: 'failure', details: { reason: 'unsupported_action', action } })
     return NextResponse.json({ error: 'Unsupported action.' }, { status: 400 })
   } catch (error) {
-    console.error('[custom-orders:id:patch]', error)
+    safeLogError('[custom-orders:id:patch]', error)
     const params = await context.params.catch(() => ({ id: '' }))
     await writeAdminAuditLog({ action: 'custom_request.update', entityType: 'custom_request', entityId: params.id || null, route: `/api/custom-orders/${params.id || '[unknown]'}`, request, status: 'failure', details: { reason: 'unexpected_error' } })
     return NextResponse.json({ error: 'Could not process admin action.' }, { status: 500 })

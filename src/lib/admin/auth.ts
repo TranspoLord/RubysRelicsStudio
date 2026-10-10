@@ -25,6 +25,7 @@ import { requireCsrf } from '@/lib/security/csrf'
 import { safeLogError } from '@/lib/security/logger'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { getAdminSessionSettings } from '@/lib/storefront-settings'
 
 /** Allow-list table created by migration `066`. */
 const ADMIN_ALLOWLIST_TABLE = 'exp_admin_users'
@@ -58,6 +59,86 @@ function unauthorizedResponse(): Response {
 /** §10.16 — a signed-in admin who has not completed the MFA challenge. */
 function mfaRequiredResponse(): Response {
   return NextResponse.json({ error: 'MFA required.', code: 'mfa_required' }, { status: 401 })
+}
+
+/**
+ * OCT #34 — the session outlived `admin_session.ttl_hours`.
+ *
+ * A distinct `code` lets the panel tell "sign in again" apart from "you are not
+ * an admin" (which is what the plain 401 above means).
+ */
+function adminSessionExpiredResponse(): Response {
+  return NextResponse.json(
+    { error: 'Admin session expired. Sign in again.', code: 'admin_session_expired' },
+    { status: 401 }
+  )
+}
+
+/** How long a TTL read is reused. Long enough to be free, short enough to feel live. */
+const ADMIN_SESSION_TTL_CACHE_MS = 60_000
+
+let adminSessionTtlCache: { ttlHours: number; expiresAt: number } | null = null
+
+/**
+ * Test seam (OCT #34): drops the memoised TTL so a test can change the setting
+ * between cases without waiting for the 60 s window.
+ */
+export function resetAdminSessionTtlCache(): void {
+  adminSessionTtlCache = null
+}
+
+/**
+ * Reads `admin_session.ttl_hours`, memoised for 60 s.
+ *
+ * `getAdminSessionSettings()` already falls back to the 12 h default when the
+ * row is missing or unreadable, so a settings outage cannot lock the panel out —
+ * the TTL is a freshness bound, not a revocation control.
+ */
+async function readAdminSessionTtlHours(): Promise<number> {
+  const now = Date.now()
+  if (adminSessionTtlCache && adminSessionTtlCache.expiresAt > now) {
+    return adminSessionTtlCache.ttlHours
+  }
+
+  const { ttl_hours: ttlHours } = await getAdminSessionSettings()
+  adminSessionTtlCache = { ttlHours, expiresAt: now + ADMIN_SESSION_TTL_CACHE_MS }
+  return ttlHours
+}
+
+/**
+ * OCT #34 — is this admin session still inside the configured TTL?
+ *
+ * The Settings page has always advertised `admin_session.ttl_hours` ("Controls
+ * how long an admin login remains valid before re-authentication is required")
+ * and **nothing read it**: `@supabase/ssr` rotates the cookies with a 400-day
+ * `maxAge`, and a refresh token keeps its `aal2` level, so a stolen token stayed
+ * a permanent MFA-satisfied admin credential while the owner believed the limit
+ * was 12 hours.
+ *
+ * Measured from `claims.authenticatedAt` — the `totp` entry when the token has
+ * one — so re-authenticating means re-doing the second factor, not just letting
+ * the access token rotate.
+ *
+ * **Fails closed**: a token with no usable `amr` has no provable authentication
+ * time, so it is treated as expired. The reason is logged, because the symptom
+ * (every admin bounced to `/admin/login?reason=expired`) is otherwise opaque.
+ */
+export async function isAdminSessionFresh(
+  claims: AuthClaims,
+  nowMs: number = Date.now()
+): Promise<boolean> {
+  if (claims.authenticatedAt === null) {
+    safeLogError(
+      '[admin:auth] session has no usable amr claim',
+      `user=${claims.sub} — treated as expired (OCT #34)`
+    )
+    return false
+  }
+
+  const ttlHours = await readAdminSessionTtlHours()
+  const ageSeconds = nowMs / 1000 - claims.authenticatedAt
+
+  return ageSeconds < ttlHours * 60 * 60
 }
 
 /**
@@ -170,6 +251,13 @@ export async function requireAdminApiSession(
       return { ok: false, response: unauthorizedResponse() }
     }
 
+    // OCT #34: the configured session TTL. Checked before the MFA level so an
+    // expired aal2 session is told to sign in again rather than to re-run the
+    // challenge on a stale session.
+    if (!(await isAdminSessionFresh(claims))) {
+      return { ok: false, response: adminSessionExpiredResponse() }
+    }
+
     // §10.16: mandatory second factor. `aal1` = signed in with Google but the
     // MFA challenge was not completed, so the request is refused at the door.
     if (!hasAal2(claims)) {
@@ -243,6 +331,14 @@ export async function requireAdminPageSessionOrRedirect(nextPath = '/admin') {
     redirect('/admin/not-authorized')
   }
 
+  // OCT #34: a session older than `admin_session.ttl_hours` must re-authenticate
+  // before the panel renders anything. `reason=expired` is what tells
+  // AdminLoginView to sign the stale session out first, so the next Google hop
+  // mints a fresh `amr`.
+  if (!(await isAdminSessionFresh(claims))) {
+    redirect(`/admin/login?reason=expired&next=${encodeURIComponent(target)}`)
+  }
+
   // §10.16: mandatory second factor — an admin at `aal1` has signed in but not
   // completed the MFA challenge, so the panel redirects to the challenge page.
   if (!hasAal2(claims)) {
@@ -264,6 +360,13 @@ export async function requireAdminPageSessionOrRedirect(nextPath = '/admin') {
  * page is the path *to* `aal2`, so an admin at `aal1` must be able to reach it.
  * The role and allow-list checks still apply, so a non-admin never sees the
  * challenge page (and an admin without a session goes to `/admin/login`).
+ *
+ * OCT #34: the session-TTL check is deliberately **not** applied here. Verifying
+ * the second factor *is* a re-authentication — it mints a fresh `totp` entry in
+ * `amr`, which is exactly what the TTL measures from — so sending a stale
+ * session to the challenge is the same demand as sending it to `/admin/login`,
+ * minus a full Google round trip. Everything that reads data goes through
+ * `requireAdminPageSessionOrRedirect()`, which does enforce the TTL.
  */
 export async function requireAdminPageMfaSessionOrRedirect() {
   const claims = await readVerifiedClaims()

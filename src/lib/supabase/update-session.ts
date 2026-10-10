@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 import { readAuthClaims, type AuthClaims } from '@/lib/auth/claims'
+import { isHttpsDeployment } from '@/lib/security/env'
 import { getSupabasePublishableKey, getSupabaseUrl } from '@/lib/supabase/env'
 import type { Database } from '@/types/database'
 
@@ -32,6 +33,13 @@ export async function refreshSupabaseSession(request: NextRequest): Promise<Supa
     getSupabaseUrl(),
     getSupabasePublishableKey(),
     {
+      // OCT #69: rotated session cookies must carry the same `Secure` flag as the
+      // ones `server.ts` writes, or a refresh would downgrade the cookie.
+      cookieOptions: {
+        secure: isHttpsDeployment(),
+        sameSite: 'lax',
+        path: '/',
+      },
       cookies: {
         getAll() {
           return request.cookies.getAll()

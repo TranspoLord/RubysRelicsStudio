@@ -51,6 +51,10 @@ cd d:\RubysRelicsStudio
 npm run dev -- -p 3210 *> (Join-Path $env:TEMP 'rrs-dev.out.log')
 ```
 
+> **OCT #10:** for the authenticated `/admin` pass, start the server with the flag, the token and (for this
+> project) the hosted-project override as **process environment variables** — never in `.env`. The helper
+> route 404s without the token. See §15.3.
+
 Then wait for the port to answer before capturing:
 
 ```powershell
@@ -464,17 +468,50 @@ creation stays where it belongs, in `npm run admin:grant`.
 
 | Check | Why it matters |
 |---|---|
-| `ADMIN_DEV_SIGNIN_ENABLED=true` in `.env` | The opt-in flag. Absent → the route 404s, so the harness must fail the run rather than capture a login screen. |
-| `NODE_ENV !== 'production'`, **not on Vercel** | Two of the three gates. Preview deployments are publicly reachable, so `VERCEL`/`VERCEL_ENV` must refuse even with the flag set. |
-| Origin is `http://localhost:<port>` | Third gate: off-loopback hosts are refused, so a non-Vercel staging box is refused too. |
+| `ADMIN_DEV_SIGNIN_ENABLED=true` **as a process env var for one run** | The opt-in flag. Absent → the route 404s, so the harness must fail the run rather than capture a login screen. **Never put this in `.env`** (OCT #10): `.env` points at the only, production Supabase project. |
+| `ADMIN_DEV_SIGNIN_TOKEN=<≥ 32 characters>` **as a process env var for one run** | OCT #10: `npm run dev` binds every interface, so the flag alone let a peer on the same Wi-Fi mint a production admin session. The route 404s unless the request carries this token in `x-dev-signin-token`. |
+| `NODE_ENV !== 'production'`, **not on Vercel** | Two of the gates. Preview deployments are publicly reachable, so `VERCEL`/`VERCEL_ENV` must refuse even with the flag set. |
+| The request's **`Host` header** is `localhost` / `127.0.0.1` / `[::1]` | OCT #10: the gate reads the raw Host header, not `nextUrl.hostname` — which is the server's *bind* hostname (`localhost`) and therefore always passed. This is also what blocks DNS rebinding. |
+| `NEXT_PUBLIC_SUPABASE_URL` is local, or `ADMIN_DEV_SIGNIN_ALLOW_HOSTED=true` | OCT #10: this project's dev environment uses the production project, so minting a session against it needs a second, explicit opt-in. |
 | At least one active, un-revoked `exp_admin_users` row | The helper signs in *that* account. Empty allow-list → `409` telling you to run `npm run admin:grant`. |
 | Service-role key present (`SUPABASE_SERVICE_ROLE_KEY`) | `generateLink` needs it. Missing → `502`. |
+| The minted session carries an `amr` claim | OCT #34: the panel now enforces `admin_session.ttl_hours` (default 12 h) measured from the `totp` entry in `amr`, and **fails closed** when `amr` is missing. `verifyOtp` + the TOTP escalation below mint fresh `amr` timestamps, so a harness run is fresh by construction. If a run lands on `/admin/login?reason=expired` immediately, the `amr` claim is the thing to inspect — not the TTL. |
 
-To confirm the gates are live before a run — one command, no browser:
+Flag and token live in the environment for the run only — never in `.env`:
 
 ```powershell
-curl.exe -s -D - http://localhost:3210/api/dev/session     # 404 = disabled (expected in any hosted env)
+$env:ADMIN_DEV_SIGNIN_ENABLED = 'true'
+$env:ADMIN_DEV_SIGNIN_ALLOW_HOSTED = 'true'                       # .env points at the hosted project
+$env:ADMIN_DEV_SIGNIN_TOKEN = "$(New-Guid)$(New-Guid)"           # ≥ 32 characters
+npm run dev -- -p 3210 *> (Join-Path $env:TEMP 'rrs-dev.out.log')
 ```
+
+To confirm the gates are live before a run — one command each, no browser:
+
+```powershell
+# no token            → 404, as if the route did not exist
+curl.exe -s -o NUL -w "%{http_code}`n" http://localhost:3210/api/dev/session
+# wrong Host header   → 404 (the DNS-rebinding guard)
+curl.exe -s -o NUL -w "%{http_code}`n" -H "Host: evil.example" http://127.0.0.1:3210/api/dev/session
+# correct token       → 200, and the session lands in the jar
+curl.exe -s -D - -H "x-dev-signin-token: $env:ADMIN_DEV_SIGNIN_TOKEN" http://localhost:3210/api/dev/session
+```
+
+The CDP harness has to send the token too: set
+`Network.setExtraHTTPHeaders: { 'x-dev-signin-token': <token> }` before navigating to `/api/dev/session`
+(same place §15.4 already sends `Accept`).
+
+**Owner one-off (OCT #10).** An earlier build wrote the harness TOTP secret in **plaintext** to
+`%TEMP%\rrs-dev-mfa-factor.json` and left that factor enrolled on the production admin. Delete the file on
+every machine that ran the helper, and remove the factor it names (service role):
+
+```js
+await supabase.auth.admin.mfa.deleteFactor({ userId, id: '<factorId from that file>' })
+```
+
+Prefer that targeted delete to `npm run admin:reset-mfa`, which removes **every** factor — including the
+owner's real authenticator. New runs never persist a secret, name each factor `dev-harness-<timestamp>`, and
+unenroll the previous one (by remembered id, and by name) before enrolling a fresh one.
 
 ### 15.4 Use it in the harness — two lines
 

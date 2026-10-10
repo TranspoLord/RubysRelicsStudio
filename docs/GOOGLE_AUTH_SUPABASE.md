@@ -33,10 +33,12 @@ storefront, gated twice:
   row is the revocation authority, so removing an account takes effect on the
   next request rather than at the next token expiry.
 
-Only allow-listed accounts get in: `npm run admin:grant -- <google-email>` /
-`npm run admin:revoke -- <google-email>`, keyed by `auth.users.id` — never by
-email. The former `ADMIN_LOGIN_KEY` + emailed-MFA flow is no longer on any
-request path; its files and tables are removed by
+Only allow-listed accounts get in: `npm run admin:grant -- <google-email>
+--confirm-user-id <uuid>` / `npm run admin:revoke -- <google-email>`, keyed by
+`auth.users.id` — never by email alone (the grant command requires you to confirm
+the resolved `user_id`, and refuses an unconfirmed address or a non-Google
+identity — OCT #11). The former `ADMIN_LOGIN_KEY` + emailed-MFA flow is no longer
+on any request path; its files and tables are removed by
 `docs/archive/SEPT_IMPLEMENTATION_PLAN.md` §10.8–§10.12.
 
 Authorization reads `app_metadata` only. `user_metadata` is writable by the
@@ -103,14 +105,33 @@ Project: `RubysRelics` (`cvkhrpejzsnzsjffrvnr`).
 
 1. **Authentication → Providers → Google** — enable it, then paste the
    *Client ID* and *Client Secret* from §5.
-2. **Authentication → URL Configuration**
-   - *Site URL*: `https://<your-domain>` (production)
-   - *Redirect URLs* — add each environment:
+2. **Authentication → Providers → Email / Phone / Anonymous** — **disable them**
+   unless they are genuinely needed. Admin access is granted by matching an email
+   address in `auth.users` (see §9 and OCT #11), so any provider that can create an
+   account without Google widens that path. If Email has to stay, require
+   confirmation — the grant script refuses an unconfirmed address either way.
+3. **Authentication → URL Configuration** — **exact** URLs only (OCT #11):
+   - *Site URL*: `https://<your-domain>`
+   - *Redirect URLs*:
      - `https://<your-domain>/auth/callback`
-     - `https://<your-domain>/**` (lets the `?next=` destination match, and covers preview hosts)
-     - `http://localhost:3000/auth/callback`
-     - `http://localhost:3000/**`
-     - `https://*-<team-slug>.vercel.app/**` (preview deployments)
+     - `http://localhost:3000/auth/callback` — only if you run the app locally
+   - **Do not add `https://<your-domain>/**`,
+     `https://*-<team-slug>.vercel.app/**` or `http://localhost:3000/**`.**
+     Supabase honours any allow-listed `redirect_to` for a flow the *attacker*
+     starts: they send the admin a crafted
+     `/auth/v1/authorize?provider=google&redirect_to=<their-url>` link, Google
+     skips the account chooser, and the admin's one-time `code` lands on the
+     attacker's origin — where they exchange it with their own PKCE verifier for an
+     admin session. The app's PKCE does not help, because the attacker owns the
+     flow.
+   - The `/**` entry exists to let the `?next=` destination match. The callback
+     carries `next` as a **sanitized same-origin path** (`sanitizeAuthNextPath`),
+     so the exact `/auth/callback` entry is sufficient; if the dashboard rejects a
+     `redirect_to` that carries `?next=`, keep the exact entry and pass `next`
+     through a short-lived first-party cookie set before `signInWithOAuth()`.
+   - Preview deployments therefore sign in through production, or get their **own**
+     Supabase project — which is also what removes the production project from
+     local development (see §11).
 
 A `redirectTo` that is not covered by the allow-list produces the
 `redirect_uri_mismatch` / "requested path is invalid" error on

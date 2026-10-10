@@ -26,6 +26,13 @@ interface ProductPricing {
   description: string
   is_ready_made: boolean
   is_customizable: boolean
+  /**
+   * OCT #7: these two are part of the row the PUT replaces. Leaving them out of
+   * the body silently switched the embedded designer off and nulled the mockup
+   * URL every time a price was saved here.
+   */
+  has_designer: boolean
+  designer_mockup_url: string | null
 }
 
 interface BulkDiscountRow {
@@ -149,6 +156,11 @@ export default function ProductPricingEditorPage({ params }: { params: Promise<{
           description: product.description,
           is_ready_made: product.is_ready_made,
           is_customizable: product.is_customizable,
+          // OCT #7: the PUT replaces the whole row, so these must ride along —
+          // omitting them switched the embedded designer off and nulled the
+          // mockup URL on every price save.
+          has_designer: product.has_designer,
+          designer_mockup_url: product.designer_mockup_url,
         }),
       })
 

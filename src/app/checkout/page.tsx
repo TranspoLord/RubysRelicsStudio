@@ -12,7 +12,7 @@ import { brandTokens } from '@/theme/theme'
 
 export const metadata: Metadata = {
   title: 'Checkout',
-  description: 'Review order totals and continue to secure Stripe checkout.',
+  description: 'Review order totals and continue to secure checkout.',
 }
 
 export default function CheckoutPage() {

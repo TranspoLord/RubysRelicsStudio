@@ -16,8 +16,8 @@ import { ShippingRate } from '@/lib/shippo/client'
 import { brandTokens } from '@/theme/theme'
 
 interface StorefrontConfig {
-  stripeCheckoutEnabled: boolean
-  stripeDisabledMessage: string
+  checkoutEnabled: boolean
+  checkoutDisabledMessage: string
 }
 
 interface SummaryRow {
@@ -46,8 +46,8 @@ interface ShippingAddress {
 export function CheckoutPageView() {
   const { items, subtotal, discountTotal, total, removeItem, updateQuantity } = useCart()
   const [config, setConfig] = useState<StorefrontConfig>({
-    stripeCheckoutEnabled: true,
-    stripeDisabledMessage: 'Checkout is temporarily unavailable. Please submit a custom request.',
+    checkoutEnabled: true,
+    checkoutDisabledMessage: 'Checkout is temporarily unavailable. Please submit a custom request.',
   })
   const [loadingConfig, setLoadingConfig] = useState(true)
   const [creatingSession, setCreatingSession] = useState(false)
@@ -73,10 +73,10 @@ export function CheckoutPageView() {
         if (!active) return
 
         setConfig({
-          stripeCheckoutEnabled: Boolean(json?.stripeCheckoutEnabled ?? true),
-          stripeDisabledMessage:
-            typeof json?.stripeDisabledMessage === 'string'
-              ? json.stripeDisabledMessage
+          checkoutEnabled: Boolean(json?.checkoutEnabled ?? true),
+          checkoutDisabledMessage:
+            typeof json?.checkoutDisabledMessage === 'string'
+              ? json.checkoutDisabledMessage
               : 'Checkout is temporarily unavailable. Please submit a custom request.',
         })
       } catch {
@@ -101,7 +101,7 @@ export function CheckoutPageView() {
 
   const hasItems = items.length > 0
   const hasShipping = Boolean(shippingAddress && selectedRate)
-  const canCheckout = hasItems && config.stripeCheckoutEnabled && !creatingSession && !loadingConfig && hasShipping
+  const canCheckout = hasItems && config.checkoutEnabled && !creatingSession && !loadingConfig && hasShipping
 
   const summaryRows = useMemo<SummaryRow[]>(() => {
     const rows: SummaryRow[] = [
@@ -419,7 +419,7 @@ export function CheckoutPageView() {
           </Box>
         ) : (
           <>
-            {!config.stripeCheckoutEnabled && (
+            {!config.checkoutEnabled && (
               <Box
                 sx={{
                   mb: 1.1,
@@ -430,7 +430,7 @@ export function CheckoutPageView() {
                 }}
               >
                 <Typography sx={{ fontSize: '0.78rem', color: '#F1B4B4' }}>
-                  {config.stripeDisabledMessage}
+                  {config.checkoutDisabledMessage}
                 </Typography>
               </Box>
             )}

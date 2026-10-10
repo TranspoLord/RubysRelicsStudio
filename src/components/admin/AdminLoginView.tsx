@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
@@ -24,6 +24,8 @@ export interface AdminLoginViewProps {
   nextPath: string
   /** Set when the page gate turned the visitor away (`?error=not_authorized`). */
   notAuthorizedNotice: boolean
+  /** OCT #34 — the page gate found a session older than the configured TTL. */
+  sessionExpiredNotice?: boolean
 }
 
 /**
@@ -36,12 +38,33 @@ export interface AdminLoginViewProps {
  * offer a "use a different account" action. Authorization is decided server
  * side by the Edge gate (§10.5) and the allow-list re-check (§10.3).
  */
-export function AdminLoginView({ nextPath, notAuthorizedNotice }: AdminLoginViewProps) {
+export function AdminLoginView({
+  nextPath,
+  notAuthorizedNotice,
+  sessionExpiredNotice = false,
+}: AdminLoginViewProps) {
   const { user, isSignedIn, signOut } = useAuth()
   const router = useRouter()
   const [switching, setSwitching] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const expiredSignOutDone = useRef(false)
+
+  /**
+   * OCT #34: a session that outlived `admin_session.ttl_hours` must not be
+   * reused. A refresh token keeps its `aal2` level, so signing in "again" on top
+   * of the stale session would carry the old authentication forward. Signing out
+   * first is what makes the next Google hop mint a fresh `amr` — and therefore a
+   * fresh `authenticatedAt` for the TTL to measure from.
+   */
+  useEffect(() => {
+    if (!sessionExpiredNotice || expiredSignOutDone.current) return
+    expiredSignOutDone.current = true
+
+    // Best effort: if the sign-out fails, the next OAuth hop still mints a new
+    // session and the gate will simply reject the stale one again.
+    void signOut().catch(() => undefined)
+  }, [sessionExpiredNotice, signOut])
 
   const accountLabel = user?.email ?? user?.id ?? 'This Google account'
 
@@ -116,6 +139,13 @@ export function AdminLoginView({ nextPath, notAuthorizedNotice }: AdminLoginView
         sx={{ minHeight: '100vh', backgroundColor: brandTokens.bgVoid, py: { xs: 6, md: 8 } }}
       >
         <Container maxWidth="sm">
+          {sessionExpiredNotice && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Your admin session expired, so the panel signed you out. Sign in again with Google to
+              continue — that re-runs the second factor as well.
+            </Alert>
+          )}
+
           {showNotAuthorized && (
             <Alert severity="warning" sx={{ mb: 2 }}>
               <strong>{accountLabel}</strong> is not authorised for the admin panel. Only

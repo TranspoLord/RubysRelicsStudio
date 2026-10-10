@@ -33,6 +33,7 @@ const plan = vi.hoisted(() => ({
   claimResults: [] as boolean[],
   claimCalls: [] as Array<{ name: string; id: string }>,
   releaseCalls: [] as Array<{ name: string; id: string }>,
+  orderItemDeletes: [] as Array<{ column: string; value: unknown }>,
 }))
 
 const mocks = vi.hoisted(() => ({
@@ -126,10 +127,19 @@ function resolveAwaited(table: string) {
 function makeSupabase() {
   const from = (table: string) => {
     const builder: Record<string, unknown> = {}
+    // `.delete().eq(...)` is how a retried checkout clears stale item rows.
+    let deleting = false
     builder.select = vi.fn(() => builder)
-    builder.eq = vi.fn(() => builder)
+    builder.eq = vi.fn((column: string, value: unknown) => {
+      if (deleting && table === 'exp_order_items') plan.orderItemDeletes.push({ column, value })
+      return builder
+    })
     builder.in = vi.fn(() => builder)
     builder.limit = vi.fn(async () => ({ data: [], error: null }))
+    builder.delete = vi.fn(() => {
+      deleting = true
+      return builder
+    })
     builder.insert = vi.fn((values: Record<string, unknown>) => {
       if (table === 'exp_orders') plan.orderInserts.push(values)
       if (table === 'exp_order_items' && Array.isArray(values)) {
@@ -204,6 +214,7 @@ beforeEach(() => {
   plan.claimResults = []
   plan.claimCalls = []
   plan.releaseCalls = []
+  plan.orderItemDeletes = []
 
   state.body = {
     items: [{ productId: 'prod-1', quantity: 1, selectedOptions: [] }],
@@ -276,6 +287,17 @@ describe('POST /api/square/checkout (OCT #2)', () => {
     expect(mocks.deleteSquarePaymentLink).not.toHaveBeenCalled()
   })
 
+  it('sends the buyer back to their own order after paying', async () => {
+    const response = await POST(makeRequest())
+    expect(response.status).toBe(200)
+
+    // OCT #13: the Square redirect carries the order id and the guest token, so
+    // the success page can load the order instead of showing a bare "thanks".
+    const call = mocks.createSquareCheckout.mock.calls[0][0] as { redirectUrl?: string }
+    expect(call.redirectUrl).toContain('/checkout/success?order=')
+    expect(call.redirectUrl).toContain('access=')
+  })
+
   it('is idempotent: a repeated checkoutAttemptId returns the stored link', async () => {
     plan.existingOrder = {
       id: ORDER_ID,
@@ -291,6 +313,72 @@ describe('POST /api/square/checkout (OCT #2)', () => {
     expect(payload.checkoutUrl).toBe(LINK_URL)
     expect(payload.guestTrackingToken).toBe('stored-token')
     expect(mocks.createSquareCheckout).not.toHaveBeenCalled()
+  })
+
+  it('reuses the half-finished order row instead of inserting a duplicate', async () => {
+    // The first attempt wrote the row and then failed before a link existed
+    // (items, stock, promo or Square), so the row holds the attempt id but no
+    // link. Inserting again would violate exp_orders_checkout_attempt_uidx
+    // (23505) and 500 on every retry, so the row is reused.
+    plan.existingOrder = {
+      id: ORDER_ID,
+      guest_tracking_token: 'stored-token',
+      claimed_at: null,
+      square_payment_link_id: null,
+      square_payment_link_url: null,
+    }
+
+    const response = await POST(makeRequest())
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(payload.checkoutUrl).toBe(LINK_URL)
+    expect(payload.guestTrackingToken).toBe('stored-token')
+    // No second order row, and the attempt id is left untouched on the update.
+    expect(plan.orderInserts).toEqual([])
+    const reuse = plan.orderUpdates.find((update) => 'cart_snapshot' in update)
+    expect(reuse).toMatchObject({
+      status: 'awaiting_payment',
+      guest_tracking_token: 'stored-token',
+    })
+    expect(reuse).not.toHaveProperty('checkout_attempt_id')
+    // Stale items from the failed attempt are cleared before re-inserting.
+    expect(plan.orderItemDeletes).toEqual([{ column: 'order_id', value: ORDER_ID }])
+    expect(plan.orderItemRows).toHaveLength(1)
+    expect(mocks.createSquareCheckout).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not re-claim promo/deal usage for a reused order that already claimed it', async () => {
+    plan.existingOrder = {
+      id: ORDER_ID,
+      guest_tracking_token: 'stored-token',
+      claimed_at: '2026-10-10T00:00:00.000Z',
+      square_payment_link_id: null,
+      square_payment_link_url: null,
+    }
+    mocks.resolveEligibleDeals.mockReturnValue({
+      ok: true,
+      deals: [{ id: 'deal-auto', name: 'Free shipping', trigger_type: 'automatic' }],
+    })
+
+    const response = await POST(makeRequest())
+
+    expect(response.status).toBe(200)
+    expect(plan.claimCalls).toEqual([])
+    expect(plan.orderUpdates.some((update) => 'claimed_at' in update)).toBe(false)
+  })
+
+  it('claims once and records claimed_at on a first attempt', async () => {
+    mocks.resolveEligibleDeals.mockReturnValue({
+      ok: true,
+      deals: [{ id: 'deal-auto', name: 'Free shipping', trigger_type: 'automatic' }],
+    })
+
+    const response = await POST(makeRequest())
+
+    expect(response.status).toBe(200)
+    expect(plan.claimCalls).toEqual([{ name: 'exp_try_redeem_bundle_deal', id: 'deal-auto' }])
+    expect(plan.orderUpdates.some((update) => 'claimed_at' in update)).toBe(true)
   })
 
   it('fails with 500 and never calls Square when the order insert fails', async () => {

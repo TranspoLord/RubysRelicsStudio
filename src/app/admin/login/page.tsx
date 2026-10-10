@@ -21,14 +21,15 @@ export const metadata: Metadata = {
 export default async function AdminLoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; error?: string }>
+  searchParams: Promise<{ next?: string; error?: string; reason?: string }>
 }) {
-  const { next, error } = await searchParams
+  const { next, error, reason } = await searchParams
 
   return (
     <AdminLoginView
       nextPath={sanitizeAdminNextPath(next)}
       notAuthorizedNotice={error === 'not_authorized'}
+      sessionExpiredNotice={reason === 'expired'}
     />
   )
 }

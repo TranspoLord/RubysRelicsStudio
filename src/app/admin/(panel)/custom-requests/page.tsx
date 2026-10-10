@@ -4,10 +4,6 @@ import { useEffect, useMemo, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
-import Dialog from '@mui/material/Dialog'
-import DialogTitle from '@mui/material/DialogTitle'
-import DialogContent from '@mui/material/DialogContent'
-import DialogActions from '@mui/material/DialogActions'
 import MenuItem from '@mui/material/MenuItem'
 import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
@@ -17,6 +13,7 @@ import { alpha } from '@mui/material/styles'
 
 import { brandTokens } from '@/theme/theme'
 import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
+import { ConfirmDialog } from '@/components/admin/ConfirmDialog'
 
 interface CustomRequestRow {
   id: string
@@ -72,7 +69,14 @@ export default function AdminCustomRequestsPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [quoteDrafts, setQuoteDrafts] = useState<Record<string, string>>({})
   const [extendDrafts, setExtendDrafts] = useState<Record<string, string>>({})
-  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({})
+  // OCT #28: the note is split. Only `customerMessage` is emailed; `internalNote`
+  // is appended to the request's studio-only history.
+  const [customerMessageDrafts, setCustomerMessageDrafts] = useState<Record<string, string>>({})
+  const [internalNoteDrafts, setInternalNoteDrafts] = useState<Record<string, string>>({})
+  const [quoteWarning, setQuoteWarning] = useState<{ message: string; linkUrl: string | null } | null>(
+    null,
+  )
+  const [confirmQuoteRowId, setConfirmQuoteRowId] = useState<string | null>(null)
   const [queryDraft, setQueryDraft] = useState('')
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
@@ -119,17 +123,26 @@ export default function AdminCustomRequestsPage() {
   const pending = useMemo(() => rows.filter((row) => row.status === 'awaiting_quote'), [rows])
   const quoteSent = useMemo(() => rows.filter((row) => row.status === 'quote_sent'), [rows])
 
-  async function sendQuote(row: CustomRequestRow) {
-    const quoteAmountRaw = quoteDrafts[row.id]
-    const quoteAmount = Number(quoteAmountRaw)
+  /** OCT #28: validate first, then confirm in a dialog — the send is irreversible. */
+  function requestSendQuote(row: CustomRequestRow) {
+    const quoteAmount = Number(quoteDrafts[row.id])
     if (!Number.isFinite(quoteAmount) || quoteAmount <= 0) {
       setError('Quote amount must be greater than zero.')
       return
     }
+    setError(null)
+    setConfirmQuoteRowId(row.id)
+  }
 
+  async function confirmSendQuote() {
+    const row = rows.find((entry) => entry.id === confirmQuoteRowId)
+    if (!row) return
+
+    setConfirmQuoteRowId(null)
     setSubmittingId(row.id)
     setError(null)
     setSuccessMessage(null)
+    setQuoteWarning(null)
 
     try {
       const response = await fetch(`/api/custom-orders/${row.id}`, {
@@ -137,8 +150,9 @@ export default function AdminCustomRequestsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'send_quote',
-          quoteAmount,
-          note: noteDrafts[row.id] ?? '',
+          quoteAmount: Number(quoteDrafts[row.id]),
+          customerMessage: customerMessageDrafts[row.id] ?? '',
+          internalNote: internalNoteDrafts[row.id] ?? '',
         }),
       })
 
@@ -147,7 +161,18 @@ export default function AdminCustomRequestsPage() {
         throw new Error(typeof payload?.error === 'string' ? payload.error : 'Could not send quote.')
       }
 
-      setSuccessMessage('Quote sent successfully.')
+      // OCT #28: a failed email is a warning, not a success — the link is in the
+      // response so the owner can send it by hand.
+      const warnings: string[] = Array.isArray(payload?.warnings) ? payload.warnings : []
+      if (warnings.includes('email_not_sent')) {
+        setQuoteWarning({
+          message:
+            'Quote saved, but the email was not sent — copy the payment link and send it yourself.',
+          linkUrl: typeof payload?.paymentLinkUrl === 'string' ? payload.paymentLinkUrl : null,
+        })
+      } else {
+        setSuccessMessage('Quote sent successfully.')
+      }
       await loadRows()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not send quote.')
@@ -167,7 +192,8 @@ export default function AdminCustomRequestsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'resend_quote',
-          note: noteDrafts[row.id] ?? '',
+          customerMessage: customerMessageDrafts[row.id] ?? '',
+          internalNote: internalNoteDrafts[row.id] ?? '',
         }),
       })
 
@@ -176,7 +202,17 @@ export default function AdminCustomRequestsPage() {
         throw new Error(typeof payload?.error === 'string' ? payload.error : 'Could not resend quote.')
       }
 
-      setSuccessMessage('Quote email resent.')
+      // OCT #28: report a failed email instead of claiming success.
+      const warnings: string[] = Array.isArray(payload?.warnings) ? payload.warnings : []
+      if (warnings.includes('email_not_sent')) {
+        setQuoteWarning({
+          message:
+            'Quote saved, but the email was not sent — copy the payment link and send it yourself.',
+          linkUrl: typeof payload?.paymentLinkUrl === 'string' ? payload.paymentLinkUrl : null,
+        })
+      } else {
+        setSuccessMessage('Quote email resent.')
+      }
       await loadRows()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not resend quote.')
@@ -231,7 +267,7 @@ export default function AdminCustomRequestsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'handoff_to_production',
-          note: noteDrafts[row.id] ?? '',
+          internalNote: internalNoteDrafts[row.id] ?? '',
         }),
       })
 
@@ -301,7 +337,7 @@ export default function AdminCustomRequestsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'reopen_request',
-          note: noteDrafts[row.id] ?? '',
+          internalNote: internalNoteDrafts[row.id] ?? '',
         }),
       })
 
@@ -465,6 +501,29 @@ export default function AdminCustomRequestsPage() {
 
       {error && <Alert severity="error">{error}</Alert>}
       {successMessage && <Alert severity="success">{successMessage}</Alert>}
+      {/* OCT #28: the quote was saved but the email did not go out — say so, and
+          hand the owner the link to send by hand. */}
+      {quoteWarning && (
+        <Alert
+          severity="warning"
+          action={
+            quoteWarning.linkUrl ? (
+              <Button
+                color="inherit"
+                size="small"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(quoteWarning.linkUrl ?? '')
+                }}
+              >
+                Copy payment link
+              </Button>
+            ) : undefined
+          }
+        >
+          {quoteWarning.message}
+          {quoteWarning.linkUrl ? ` ${quoteWarning.linkUrl}` : ''}
+        </Alert>
+      )}
 
       <Box sx={{ border: `1px solid ${alpha(brandTokens.parchment, 0.1)}`, borderRadius: 1.2, p: 1.1, backgroundColor: alpha(brandTokens.bgSurface, 0.42) }}>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
@@ -641,24 +700,42 @@ export default function AdminCustomRequestsPage() {
                   />
                   <TextField
                     size="small"
-                    label="Admin note"
-                    value={noteDrafts[row.id] ?? ''}
+                    label="Message to customer"
+                    value={customerMessageDrafts[row.id] ?? ''}
                     onChange={(e) =>
-                      setNoteDrafts((prev) => ({
+                      setCustomerMessageDrafts((prev) => ({
                         ...prev,
                         [row.id]: e.target.value,
                       }))
                     }
-                    sx={{ minWidth: 220 }}
+                    sx={{ minWidth: 200 }}
                   />
-                  <Button
+                  <TextField
                     size="small"
-                    variant="contained"
-                    disabled={submittingId === row.id}
-                    onClick={() => void sendQuote(row)}
-                  >
-                    Send Quote
-                  </Button>
+                    label="Internal note (never sent)"
+                    value={internalNoteDrafts[row.id] ?? ''}
+                    onChange={(e) =>
+                      setInternalNoteDrafts((prev) => ({
+                        ...prev,
+                        [row.id]: e.target.value,
+                      }))
+                    }
+                    sx={{ minWidth: 200 }}
+                  />
+                  {/* OCT #28: quoting is only valid from awaiting_quote, or as a
+                      re-quote of quote_sent / expired. */}
+                  {(row.status === 'awaiting_quote' ||
+                    row.status === 'quote_sent' ||
+                    row.status === 'expired') && (
+                    <Button
+                      size="small"
+                      variant="contained"
+                      disabled={submittingId === row.id}
+                      onClick={() => requestSendQuote(row)}
+                    >
+                      {row.status === 'awaiting_quote' ? 'Send Quote' : 'Re-quote…'}
+                    </Button>
+                  )}
                   <Button
                     size="small"
                     variant="outlined"
@@ -720,31 +797,50 @@ export default function AdminCustomRequestsPage() {
         </Box>
       )}
 
-      {/* Reject Confirmation Dialog */}
-      <Dialog open={rejectDialogOpen} onClose={() => setRejectDialogOpen(false)}>
-        <DialogTitle>Reject Request</DialogTitle>
-        <DialogContent>
-          <Typography sx={{ mb: 2 }}>
-            This request will be marked as rejected and moved to the cancelled status.
+      {/* OCT #28: the send-quote confirmation — amount, recipient and the exact
+          customer message, because the click creates a live payment link. */}
+      <ConfirmDialog
+        open={confirmQuoteRowId !== null}
+        title="Send this quote?"
+        confirmLabel="Send quote"
+        busy={submittingId !== null}
+        onConfirm={() => void confirmSendQuote()}
+        onClose={() => setConfirmQuoteRowId(null)}
+        body={(() => {
+          const row = rows.find((entry) => entry.id === confirmQuoteRowId)
+          if (!row) return ''
+          const amount = Number(quoteDrafts[row.id] ?? 0)
+          return `Send a $${amount.toFixed(2)} quote to ${row.customer_email}? This creates a Square payment link and emails the customer now.`
+        })()}
+      >
+        {(customerMessageDrafts[confirmQuoteRowId ?? ''] ?? '').trim().length > 0 && (
+          <Typography sx={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>
+            {`Message to customer: ${customerMessageDrafts[confirmQuoteRowId ?? '']}`}
           </Typography>
-          <TextField
-            autoFocus
-            label="Rejection reason (optional)"
-            placeholder="Why is this request being rejected?"
-            value={rejectionReason}
-            onChange={(e) => setRejectionReason(e.target.value)}
-            multiline
-            rows={3}
-            fullWidth
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRejectDialogOpen(false)}>Cancel</Button>
-          <Button onClick={() => void confirmReject()} color="error">
-            Confirm Reject
-          </Button>
-        </DialogActions>
-      </Dialog>
+        )}
+      </ConfirmDialog>
+
+      {/* OCT #28: the shared dialog replaces the page-local one. */}
+      <ConfirmDialog
+        open={rejectDialogOpen}
+        title="Reject Request"
+        tone="danger"
+        confirmLabel="Confirm Reject"
+        busy={submittingId !== null}
+        onConfirm={() => void confirmReject()}
+        onClose={() => setRejectDialogOpen(false)}
+        body="This request will be marked as rejected and moved to the cancelled status."
+      >
+        <TextField
+          label="Rejection reason (optional)"
+          placeholder="Why is this request being rejected?"
+          value={rejectionReason}
+          onChange={(e) => setRejectionReason(e.target.value)}
+          multiline
+          rows={3}
+          fullWidth
+        />
+      </ConfirmDialog>
     </Box>
   )
 }

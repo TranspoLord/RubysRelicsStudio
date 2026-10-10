@@ -2,13 +2,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NextResponse } from 'next/server'
 
 import {
-  CSP_CONNECT_ORIGINS,
+  CSP_ANALYTICS_CONNECT_ORIGIN,
+  CSP_ANALYTICS_SCRIPT_ORIGIN,
   CSP_HEADER,
   CSP_NONCE_COOKIE,
   CSP_NONCE_HEADER,
+  CSP_VERCEL_LIVE_ORIGIN,
   applyCspToResponse,
   buildCspHeader,
+  cspConnectOrigins,
+  cspScriptOrigins,
   generateCspNonce,
+  supabaseCspOrigins,
 } from '@/lib/security/csp'
 
 /**
@@ -63,8 +68,8 @@ describe('buildCspHeader — analytics origin (§7.1)', () => {
 
   it('still allows the analytics beacon, or the loader would load and drop events', () => {
     const connectSrc = directives(buildCspHeader('nonce123'))['connect-src']
-    expect(connectSrc).toContain('https://vitals.vercel-insights.com')
-    for (const origin of CSP_CONNECT_ORIGINS) {
+    expect(connectSrc).toContain(CSP_ANALYTICS_CONNECT_ORIGIN)
+    for (const origin of cspConnectOrigins()) {
       expect(connectSrc).toContain(origin)
     }
   })
@@ -107,8 +112,67 @@ describe('buildCspHeader — nonce and hardening invariants', () => {
     expect(csp['object-src']).toBe("'none'")
     expect(csp['base-uri']).toBe("'self'")
     expect(csp['form-action']).toBe("'self'")
-    expect(csp['frame-src']).toBe('https://vercel.live')
+    expect(csp['frame-ancestors']).toBe("'none'")
     expect(buildCspHeader('n')).toContain('upgrade-insecure-requests')
+  })
+})
+
+describe('buildCspHeader — origin narrowing (OCT #69)', () => {
+  it('pins connect-src to this project instead of every *.supabase.co', () => {
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://pinned.supabase.co')
+
+    const connectSrc = directives(buildCspHeader('n'))['connect-src']
+
+    expect(connectSrc).toContain('https://pinned.supabase.co')
+    expect(connectSrc).toContain('wss://pinned.supabase.co')
+    expect(connectSrc).not.toContain('*')
+  })
+
+  it('drops the server-only Resend and USPS origins from connect-src', () => {
+    const connectSrc = directives(buildCspHeader('n'))['connect-src']
+
+    expect(connectSrc).not.toContain('resend')
+    expect(connectSrc).not.toContain('shippingapis')
+  })
+
+  it('allow-lists the preview toolbar only on a preview deployment', () => {
+    asProduction()
+    expect(cspScriptOrigins()).not.toContain(CSP_VERCEL_LIVE_ORIGIN)
+    expect(directives(buildCspHeader('n'))['script-src']).not.toContain('vercel.live')
+    expect(directives(buildCspHeader('n'))['frame-src']).toBe("'none'")
+
+    vi.stubEnv('VERCEL_ENV', 'preview')
+    expect(cspScriptOrigins()).toContain(CSP_VERCEL_LIVE_ORIGIN)
+    expect(directives(buildCspHeader('n'))['script-src']).toContain(CSP_VERCEL_LIVE_ORIGIN)
+    expect(directives(buildCspHeader('n'))['frame-src']).toBe(CSP_VERCEL_LIVE_ORIGIN)
+  })
+
+  it('keeps the analytics loader in every environment', () => {
+    asProduction()
+    expect(cspScriptOrigins()).toContain(CSP_ANALYTICS_SCRIPT_ORIGIN)
+  })
+})
+
+describe('supabaseCspOrigins (OCT #69)', () => {
+  it('derives the https + websocket origins from the project URL', () => {
+    expect(supabaseCspOrigins('https://abc.supabase.co')).toEqual([
+      'https://abc.supabase.co',
+      'wss://abc.supabase.co',
+    ])
+  })
+
+  it('keeps the scheme for a local Supabase (http + ws)', () => {
+    expect(supabaseCspOrigins('http://127.0.0.1:54321')).toEqual([
+      'http://127.0.0.1:54321',
+      'ws://127.0.0.1:54321',
+    ])
+  })
+
+  it('fails closed rather than widening for a missing or malformed URL', () => {
+    expect(supabaseCspOrigins(undefined)).toEqual([])
+    expect(supabaseCspOrigins('')).toEqual([])
+    expect(supabaseCspOrigins('not-a-url')).toEqual([])
+    expect(supabaseCspOrigins('ftp://abc.supabase.co')).toEqual([])
   })
 })
 
@@ -144,12 +208,23 @@ describe('applyCspToResponse', () => {
     expect(setCookie).toContain('Max-Age=60')
   })
 
-  it('adds Secure only in production, so http://localhost dev keeps working', () => {
+  it('adds Secure only on an https deployment, so http://localhost dev keeps working', () => {
     expect(applyCspToResponse(NextResponse.next(), 'n1').headers.get('set-cookie')).not.toContain(
       'Secure'
     )
 
     asProduction()
+    expect(applyCspToResponse(NextResponse.next(), 'n1').headers.get('set-cookie')).toContain(
+      'Secure'
+    )
+  })
+
+  it('adds Secure on a Vercel preview too (OCT #69)', () => {
+    // NODE_ENV is 'test' and VERCEL_ENV is 'preview': isProd() is false, but the
+    // deployment is https, so the cookie must still be Secure.
+    vi.stubEnv('VERCEL', '1')
+    vi.stubEnv('VERCEL_ENV', 'preview')
+
     expect(applyCspToResponse(NextResponse.next(), 'n1').headers.get('set-cookie')).toContain(
       'Secure'
     )

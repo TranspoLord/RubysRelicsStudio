@@ -20,7 +20,18 @@ export function getBrowserSupabaseClient(): SupabaseClient<Database> {
   if (!browserClient) {
     browserClient = createBrowserClient<Database>(
       getSupabaseUrl(),
-      getSupabasePublishableKey()
+      getSupabasePublishableKey(),
+      {
+        // OCT #69: match the server's cookie attributes. `Secure` can only be
+        // decided at runtime here, and it must be *off* on http://localhost or
+        // the browser drops the session cookie and sign-in appears to work but
+        // never persists.
+        cookieOptions: {
+          secure: typeof window !== 'undefined' && window.location.protocol === 'https:',
+          sameSite: 'lax',
+          path: '/',
+        },
+      }
     )
   }
   return browserClient

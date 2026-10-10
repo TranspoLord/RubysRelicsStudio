@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
+import { readSourceFile, stripComments } from '@/lib/testing/source-contract'
+
 const mocks = vi.hoisted(() => ({
   getSupabaseAdmin: vi.fn(),
   createServerSupabaseClient: vi.fn(),
@@ -78,20 +80,33 @@ function makeSessionClient(
       getClaims: vi.fn(async () => ({ data: { claims: plan.claims ?? ADMIN_CLAIMS }, error: null })),
       mfa: {
         getAuthenticatorAssuranceLevel: vi.fn(async () => ({ data: { currentLevel: 'aal1' } })),
-        listFactors: vi.fn(async () => ({ data: { totp: [] } })),
+        listFactors: vi.fn(async () => ({ data: { all: [] } })),
         enroll: vi.fn(async () => ({
           data: { id: 'factor-1', totp: { secret: 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ' } },
           error: null,
         })),
         challenge: vi.fn(async () => ({ data: { id: 'challenge-1' } })),
         verify: vi.fn(async () => ({ error: plan.mfaVerifyError ?? null })),
+        unenroll: vi.fn(async () => ({ error: null })),
       },
     },
   }
 }
 
-function request(host = 'localhost:3000', query = '') {
-  return new NextRequest(`http://${host}/api/dev/session${query}`)
+const DEV_TOKEN = 'a'.repeat(32)
+
+function request(
+  host = 'localhost:3000',
+  query = '',
+  options: { token?: string | null; fetchSite?: string | null; host?: string } = {}
+) {
+  // A real server always receives a `Host` header; undici's `Request` does not
+  // synthesise one, so the tests set it explicitly (that is the whole point of
+  // OCT #10 — the gate must read the caller's Host, not the bind hostname).
+  const headers: Record<string, string> = { host: options.host ?? host }
+  if (options.token !== null) headers['x-dev-signin-token'] = options.token ?? DEV_TOKEN
+  if (options.fetchSite) headers['sec-fetch-site'] = options.fetchSite
+  return new NextRequest(`http://${host}/api/dev/session${query}`, { headers })
 }
 
 beforeEach(() => {
@@ -99,6 +114,9 @@ beforeEach(() => {
   vi.unstubAllEnvs()
   vi.stubEnv('NODE_ENV', 'development')
   vi.stubEnv('ADMIN_DEV_SIGNIN_ENABLED', 'true')
+  // OCT #10: the flag is not a gate on its own.
+  vi.stubEnv('ADMIN_DEV_SIGNIN_TOKEN', DEV_TOKEN)
+  vi.stubEnv('ADMIN_DEV_SIGNIN_ALLOW_HOSTED', 'true')
   vi.stubEnv('VERCEL', '')
   vi.stubEnv('VERCEL_ENV', '')
   mocks.getSupabaseAdmin.mockReturnValue(makeAdminClient())
@@ -129,6 +147,52 @@ describe('GET /api/dev/session — gates', () => {
     const response = await GET(request('rubysrelicsstudio.vercel.app'))
     expect(response.status).toBe(404)
     expect(mocks.getSupabaseAdmin).not.toHaveBeenCalled()
+  })
+
+  // ── OCT #10: the flag alone was never a gate ────────────────────────────────
+  it('404s without the shared token, before any Supabase client exists', async () => {
+    const response = await GET(request('localhost:3000', '', { token: null }))
+
+    expect(response.status).toBe(404)
+    expect(mocks.getSupabaseAdmin).not.toHaveBeenCalled()
+  })
+
+  it('404s with a wrong token', async () => {
+    const response = await GET(request('localhost:3000', '', { token: 'b'.repeat(32) }))
+
+    expect(response.status).toBe(404)
+    expect(mocks.getSupabaseAdmin).not.toHaveBeenCalled()
+  })
+
+  it('404s when the Host header is not loopback (DNS rebinding)', async () => {
+    const response = await GET(request('localhost:3000', '', { host: 'evil.example' }))
+
+    expect(response.status).toBe(404)
+    expect(mocks.getSupabaseAdmin).not.toHaveBeenCalled()
+  })
+
+  it('404s a cross-site fetch', async () => {
+    const response = await GET(request('localhost:3000', '', { fetchSite: 'cross-site' }))
+
+    expect(response.status).toBe(404)
+    expect(mocks.getSupabaseAdmin).not.toHaveBeenCalled()
+  })
+
+  it('accepts a bracketed IPv6 loopback Host with the right token', async () => {
+    const response = await GET(request('localhost:3000', '', { host: '[::1]:3210' }))
+
+    expect(response.status).toBe(200)
+  })
+
+  it('reads the Host header, never `nextUrl.hostname` (source contract)', () => {
+    // Comments explain the bug, so strip them before asserting.
+    const source = stripComments(
+      readSourceFile('src/app/api/dev/session/route.ts')
+    )
+
+    expect(source).not.toContain('nextUrl.hostname')
+    expect(source).toContain("headers.get('host')")
+    expect(source).toContain('x-dev-signin-token')
   })
 describe('GET /api/dev/session — it cannot widen access', () => {
   it('409s with the admin:grant hint when no active admin exists', async () => {

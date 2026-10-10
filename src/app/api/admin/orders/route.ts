@@ -68,13 +68,20 @@ function isHookStage(value: string): value is HookStage {
   return ['design', 'setup', 'production', 'finishing', 'packing'].includes(value)
 }
 
+/**
+ * OCT #23: `cancelled` is deliberately absent from every list.
+ *
+ * Cancelling must go through `action: 'cancel'`, which releases reserved
+ * inventory; the Transition menu used to set `cancelled` directly (only stamping
+ * `cancelled_at`), leaving the stock reserved and ready-made items unsellable.
+ */
 function transitionAllowed(from: OrderStatus, to: OrderStatus): boolean {
   const allowed: Record<OrderStatus, OrderStatus[]> = {
-    awaiting_payment: ['paid', 'cancelled'],
-    paid: ['in_production', 'cancelled'],
-    in_production: ['ready_to_ship', 'cancelled'],
-    ready_to_ship: ['shipped', 'cancelled'],
-    shipped: ['delivered', 'cancelled'],
+    awaiting_payment: ['paid'],
+    paid: ['in_production'],
+    in_production: ['ready_to_ship'],
+    ready_to_ship: ['shipped'],
+    shipped: ['delivered'],
     delivered: [],
     cancelled: [],
   }
@@ -294,10 +301,6 @@ export async function PATCH(request: Request) {
       if (nextStatusRaw === 'paid') {
         patch.payment_status = 'paid'
         patch.paid_at = order.paid_at ?? new Date().toISOString()
-      }
-
-      if (nextStatusRaw === 'cancelled') {
-        patch.cancelled_at = new Date().toISOString()
       }
 
       // OCT #4: optimistic concurrency. The status was read above, so scope the

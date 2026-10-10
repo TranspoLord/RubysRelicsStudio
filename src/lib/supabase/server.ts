@@ -2,6 +2,7 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { isHttpsDeployment } from '@/lib/security/env'
 import { getSupabasePublishableKey, getSupabaseUrl } from '@/lib/supabase/env'
 import type { Database } from '@/types/database'
 
@@ -20,6 +21,15 @@ export async function createServerSupabaseClient(): Promise<SupabaseClient<Datab
   const cookieStore = await cookies()
 
   return createServerClient<Database>(getSupabaseUrl(), getSupabasePublishableKey(), {
+    // OCT #69: `@supabase/ssr`'s defaults write auth cookies with no `Secure`
+    // flag. `httpOnly` cannot be set here (the browser client reads them), but
+    // `Secure` can, and preview deployments are https too — hence
+    // isHttpsDeployment() rather than isProd().
+    cookieOptions: {
+      secure: isHttpsDeployment(),
+      sameSite: 'lax',
+      path: '/',
+    },
     cookies: {
       getAll() {
         return cookieStore.getAll()

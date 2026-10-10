@@ -33,6 +33,12 @@ const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/
  *
  * Accepted values are re-serialized from the URL parser so query strings and
  * fragments survive while the origin cannot change.
+ *
+ * OCT #66: the raw-string checks above run *before* URL parsing, and parsing
+ * removes dot segments. `/.//evil.com`, `/..//evil.com`, `/%2e%2e//evil.com` and
+ * `/admin/..//evil.com` all re-serialize to the protocol-relative `//evil.com`,
+ * which `new URL(out, origin)` then reads as `https://evil.com/`. So the parsed
+ * result is re-checked for a leading `//` (or `/\`) before it is returned.
  */
 export function sanitizeAuthNextPath(
   value: unknown,
@@ -51,7 +57,15 @@ export function sanitizeAuthNextPath(
     const resolved = new URL(candidate, AUTH_URL_SENTINEL)
     // A same-origin resolution is the only acceptable outcome.
     if (resolved.origin !== AUTH_URL_SENTINEL) return fallback
-    return `${resolved.pathname}${resolved.search}${resolved.hash}`
+
+    const out = `${resolved.pathname}${resolved.search}${resolved.hash}`
+
+    // OCT #66: re-check *after* dot-segment removal. A result starting with `//`
+    // (or `/\`) is an authority, not a path — resolving it against an origin
+    // would send the browser to another site.
+    if (out.startsWith('//') || out.startsWith('/\\')) return fallback
+
+    return out
   } catch {
     return fallback
   }
@@ -86,10 +100,16 @@ export function sanitizeAdminNextPath(
  * Builds the `redirectTo` URL handed to `supabase.auth.signInWithOAuth()`.
  *
  * The result must be listed in the Supabase dashboard under
- * Authentication → URL Configuration → Redirect URLs (for example
- * `https://your-domain.com/auth/callback`, plus `/**` variants for preview
- * deployments). The `next` path is only appended when it is non-default and
- * already sanitized, so the URL stays stable for allow-list matching.
+ * Authentication → URL Configuration → Redirect URLs — **exactly**, e.g.
+ * `https://your-domain.com/auth/callback`. OCT #11: do not allow-list `/**`,
+ * `https://*-<team>.vercel.app/**` or a localhost wildcard. Supabase honours any
+ * allow-listed `redirect_to` for a flow the *attacker* starts, so a wildcard entry
+ * lets them land the admin's one-time `code` on their own origin and exchange it
+ * with their own PKCE verifier (PKCE does not help — they own the flow). Preview
+ * deployments sign in through production or use their own project.
+ *
+ * `next` is only appended when it is non-default and already sanitized, so the URL
+ * stays stable for exact allow-list matching.
  */
 export function buildAuthCallbackUrl(siteUrl: string, next?: unknown): string {
   const base = siteUrl.trim().replace(/\/+$/, '')

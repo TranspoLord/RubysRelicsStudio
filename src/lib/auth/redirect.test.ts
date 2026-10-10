@@ -71,6 +71,21 @@ describe('sanitizeAuthNextPath', () => {
     expect(sanitizeAuthNextPath('/shop/../cart')).toBe('/cart')
   })
 
+  // OCT #66: these passed the raw-string checks and only became protocol-relative
+  // *after* URL parsing removed the dot segments, so `new URL(out, origin)` read
+  // `//evil.com` as an authority.
+  it.each(['/.//evil.com', '/..//evil.com', '/%2e%2e//evil.com', '/admin/..//evil.com'])(
+    'rejects the dot-segment bypass %s',
+    (value) => {
+      expect(sanitizeAuthNextPath(value)).toBe(DEFAULT_AUTH_NEXT)
+    }
+  )
+
+  it('still accepts a path whose traversal stays inside the origin', () => {
+    expect(sanitizeAuthNextPath('/shop/./cart')).toBe('/shop/cart')
+    expect(sanitizeAuthNextPath('/admin/../cart')).toBe('/cart')
+  })
+
   it('honours a custom fallback', () => {
     expect(sanitizeAuthNextPath('https://evil.example', '/sign-in')).toBe('/sign-in')
   })
@@ -94,6 +109,12 @@ describe('buildAuthCallbackUrl', () => {
 
   it('drops a hostile destination rather than forwarding it', () => {
     expect(buildAuthCallbackUrl('https://rubysrelics.test', '//evil.example')).toBe(
+      `https://rubysrelics.test${AUTH_CALLBACK_PATH}`
+    )
+  })
+
+  it('drops a dot-segment bypass rather than forwarding it (OCT #66)', () => {
+    expect(buildAuthCallbackUrl('https://rubysrelics.test', '/.//evil.com')).toBe(
       `https://rubysrelics.test${AUTH_CALLBACK_PATH}`
     )
   })

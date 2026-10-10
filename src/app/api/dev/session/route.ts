@@ -1,7 +1,16 @@
 import { NextResponse, type NextRequest } from 'next/server'
 
 import { hasAal2, hasAdminRole, readAuthClaims } from '@/lib/auth/claims'
-import { describeDevSigninGate, escalateToAal2, findActiveAdmin, isLoopbackHostname, type AllowListClient, type DevMfaClient } from '@/lib/dev/dev-signin'
+import {
+  DEV_SIGNIN_TOKEN_ENV,
+  describeDevSigninGate,
+  escalateToAal2,
+  findActiveAdmin,
+  isLoopbackHostHeader,
+  isValidDevSigninToken,
+  type AllowListClient,
+  type DevMfaClient,
+} from '@/lib/dev/dev-signin'
 import { safeLogError } from '@/lib/security/logger'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
@@ -38,9 +47,26 @@ function json(body: unknown, status: number): NextResponse {
 export async function GET(request: NextRequest) {
   const gate = describeDevSigninGate()
 
+  // OCT #10: the opt-in flag alone was never a gate. `next dev` binds every
+  // interface and `request.nextUrl.hostname` reports the *bind* host (always
+  // `localhost`), so a peer on the same Wi-Fi could mint a production admin
+  // session. Now the raw Host header is checked (which also blocks DNS
+  // rebinding), a shared token must match, and a cross-site fetch is refused.
+  // Every check runs before any Supabase client is created.
+  const hostHeader = request.headers.get('host')
+  const providedToken = request.headers.get('x-dev-signin-token')
+  const fetchSite = request.headers.get('sec-fetch-site')
+
+  const fetchSiteOk = fetchSite === null || fetchSite === 'none' || fetchSite === 'same-origin'
+
   // A disabled helper is indistinguishable from a missing route, so a probe on a
   // real deployment learns nothing.
-  if (!gate.allowed || !isLoopbackHostname(request.nextUrl.hostname)) {
+  if (
+    !gate.allowed ||
+    !isLoopbackHostHeader(hostHeader) ||
+    !isValidDevSigninToken(providedToken, process.env[DEV_SIGNIN_TOKEN_ENV]) ||
+    !fetchSiteOk
+  ) {
     return json({ error: 'Not found.' }, 404)
   }
 

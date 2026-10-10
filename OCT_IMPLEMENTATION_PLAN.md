@@ -871,7 +871,7 @@ not batch work.)
 
 **Verification:** type-check 0 · lint 0 errors · 500 tests / 63 files · build clean.
 
-### Batch O-D — Payment events & email — **in progress: `#14` foundation shipped 2026-10-09**
+### Batch O-D — Payment events & email — **✅ COMPLETE 2026-10-10** (`#14`, `#4`, `#21`, `#13`)
 
 `#14` **foundation shipped.** `src/lib/resend/send.ts` is now the one place an email is sent: it checks
 `RESEND_API_KEY` and the sender, inspects Resend's `{ data, error }` (v4 never throws — which is exactly why a
@@ -910,18 +910,20 @@ PATCH is *why* the 429s happen at all; the plan suggests `after()` or the `#38` 
 returning `warnings: ['email_not_sent']` so the admin UI stops claiming success on a failed send (the send
 function already returns the result; only the response shape and the warning UI are missing).
 
-**Then in O-D:** `#4` (Square webhook status check, real event names, state guard, dedupe) · `#13` (post-payment
-page + confirmation email) · `#21` (Shippo mapping + the `exp_order_status_events` CHECK widening).
+**In O-D — all shipped 2026-10-10:** `#4` (Square webhook status check, real event names, state guard,
+dedupe, refunds) · `#13` (post-payment page, shop confirmation email, customer status vocabulary) ·
+`#21` (Shippo mapping + dedupe + the `exp_order_status_events` CHECK widening).
 
-#### `#4` — implementation note (read before starting; there is a sequencing trap)
+#### `#4` — implementation note (the sequencing trap is now closed)
 
-> ⚠ **The status guard and the Square webhook subscription must ship TOGETHER.** Today the handler marks an
-> order paid on `payment.created` without reading `payment.status`. Adding the correct
-> `payment.status === 'COMPLETED'` guard *alone* would stop every order being marked paid, because the real
-> COMPLETED transition arrives as **`payment.updated`** — and the webhook is not subscribed to that event yet
-> (`payment.completed`/`payment.failed` in the handler are not Square event types at all, so those branches are
-> dead). So: land the handler rewrite, **then** have the owner add `payment.updated`, `refund.created` and
-> `refund.updated` in the Square dashboard, and only then deploy. Doing either half alone breaks payments.
+> ✅ **Resolved 2026-10-10.** The handler rewrite, the `075` RPC and the Square subscription are all in place, so
+> the guard and the subscription shipped together as required. The trap was: the old handler marked an order paid
+> on `payment.created` without reading `payment.status`, while the real COMPLETED transition arrives as
+> **`payment.updated`** (`payment.completed`/`payment.failed` are not Square event types at all, so those branches
+> were dead). Landing the `COMPLETED` guard alone would have stopped every order being marked paid. Live evidence
+> from 2026-10-10: `payment.created` and `payment.updated` were both delivered and processed (rows in
+> `exp_square_webhook_events`), and the order was marked paid by the then-deployed **old** handler — the rewrite
+> above had not been deployed yet.
 
 **Shipped 2026-10-09 — the two safe halves** (neither changes payment marking, so both are inert alone):
 - ✅ **Migration `074_mark_order_paid.sql`**: the RPC (idempotent, row-locked `for update`, amount-checked,
@@ -954,11 +956,21 @@ page + confirmation email) · `#21` (Shippo mapping + the `exp_order_status_even
    - dedupe inserts `processed = false`, treats **only `23505`** as a duplicate, and **clears the row before
      returning 500** on a failure — that is what makes Square's retry actually work; rows are kept **7 days**;
    - the date parse is guarded, and the customer email only runs when the RPC reports `marked_paid`.
-3. **Still to do in `#4`:** the refund branch (`refund.created`/`refund.updated` → `refunded` /
-   `partially_refunded` + `refunded_at` / `refunded_amount` — the columns exist), moving the email into `after()`
-   so latency never delays Square's 200, and the route tests (HMAC-signed bodies). Plus the owner-side
-   reconciliation of any order historically marked paid on a non-COMPLETED status.
-4. **Owner**: subscribe the webhook to `payment.updated`, `refund.created`, `refund.updated`.
+3. **✅ Shipped 2026-10-10.** The refund branch handles `refund.created` **and** `refund.updated`: only a
+   `COMPLETED` refund moves money; the refund id is claimed in `exp_order_status_events` *before* the order is
+   touched (new partial unique index in `077`), so Square's two events for one refund cannot double-count it;
+   `refunded_amount` accumulates and `payment_status` becomes `partially_refunded` or `refunded` (a tax-inclusive
+   charge larger than `order_total` still counts as full); a refund for an unpaid order is ignored; and a failed
+   order update releases both the claim and the dedupe row so Square's retry can finish the job.
+   `077_partially_refunded.sql` also widens the `payment_status` CHECK, which allowed only
+   `pending | paid | failed | refunded` — writing `partially_refunded` would have 23514'd forever.
+   The confirmation email now runs in `after()` (extracted to `sendPaymentConfirmationEmail`), so Resend's
+   latency never delays Square's 200. 25 HMAC-signed route tests in
+   `src/app/api/webhooks/square/route.test.ts`. Remaining: the owner-side reconciliation of any order
+   historically marked paid on a non-COMPLETED status.
+4. **Owner**: the subscription must include `payment.updated`, `refund.created` and `refund.updated`.
+   `payment.created`/`payment.updated` are confirmed delivering (Square webhook logs, 2026-10-10); the refund
+   events are only exercised by the code so far — re-check the dashboard before the first real refund.
    → `jsonb`, `security definer`, `set search_path = ''`, execute revoked from `public, anon, authenticated`.
    Locks the row `for update`, returns `already_paid`, checks the amount, sets `payment_status='paid'` +
    `paid_at` + `square_payment_id`, moves `awaiting_payment → paid` (and reports `was_cancelled`), and inserts a
@@ -980,23 +992,241 @@ no paid update; APPROVED → no RPC; `payment.updated` COMPLETED → RPC once; `
 amount → no RPC; CAD → no RPC; a throw → 500 **and** the dedupe row deleted (so redelivery succeeds); `23505` →
 200; bad signature → 401; refund COMPLETED → `refunded`. Plus an admin-route test for the 409.
 
-**Verification (so far):** type-check 0 · lint 0 errors · 514 tests / 64 files · build clean.
+#### `#21` — Shippo webhook — **✅ shipped 2026-10-10**
 
-### Batch O-E — Admin unblock
+- **`TRANSIT` now maps to `shipped`.** Shippo reports `TRANSIT`/`DELIVERED`, so the old
+  `status.includes('ship')` never matched and no order ever became `shipped`.
+- **Conditional transitions**: `TRANSIT` only moves `in_production`/`ready_to_ship` → `shipped`, and
+  `DELIVERED` only moves `shipped` → `delivered`, so a late scan cannot pull an order backwards or
+  resurrect a cancelled one. The delivery email is sent **only when a row actually changed** (with the
+  `delivered:<orderId>` idempotency key as the second guard), instead of on every DELIVERED update.
+- **The status-event insert error is checked now.** `tracking_update` was rejected by the `action_type`
+  CHECK until `074` and the failure was swallowed, so no tracking event was ever recorded.
+- **Dedupe like `#4`**: the row is written with `processed = false` (the column defaulted to `true`, so a
+  failure was never retried), only `23505` counts as a duplicate, any other insert error returns 500, and a
+  processing failure deletes the row so Shippo's retry works. The row is marked `processed` only once the
+  event has landed.
+- **Credentials**: the hex HMAC in `x-shippo-signature` still works, and a `?token=` secret compared with
+  `timingSafeEqual` is accepted when `SHIPPO_WEBHOOK_TOKEN` is set. Both are documented in `.env.example`
+  (which had no Shippo entries at all before).
+- **Owner**: send a Shippo dashboard test webhook and confirm which scheme it uses (the plan's original
+  step 1) — the endpoint only accepts a request when the configured credential matches.
+- 18 route tests in `src/app/api/shippo/webhook/route.test.ts`.
+
+#### 2026-10-10 — live incident: production was running the OLD build, and every checkout lost its line items
+
+Chasing the `/api/square/checkout` 500 turned up two separate things: the deployment serving
+`rubysrelicsstudio.vercel.app` was still `f925e88` (the remediation had never reached production), and a
+**live-schema drift** that made every order-items insert fail — silently in the old build, as a 500 in the new
+one. The local server was not the problem; it was simply the only place the failure was loud.
+
+**Evidence (order `cade2b79-fb64-4fba-b5f2-0f716886a37f`, paid 2026-10-10 01:27):** the log line is
+`[square:checkout:order-items-insert] [object Object]` (the old logger printed `String(error)`, which is exactly
+what the `describeError` fix in `logger.ts` removes); the row had `square_order_id` set but
+`square_payment_link_id`/`square_payment_link_url` **null**, `checkout_attempt_id` null and
+`inventory_reserved_at`/`claimed_at` null — only the pre-remediation build writes `square_order_id` at insert
+time and never the link columns. `exp_order_items` held **zero rows**, so a paying customer's order had no items.
+
+**Root cause:** `exp_order_items.option_snapshot` was missing from the live database. Migration 028, 049's
+`create table` and `schema_repair.sql` all declare it, but the project never had it, so every insert naming it
+failed with `PGRST204 Could not find the 'option_snapshot' column of 'exp_order_items' in the schema cache`.
+PostgREST's cache *did* know the columns added by 069–072, so this was genuine drift, not a stale cache.
+`GET /api/admin/orders` selects `option_snapshot` too, so the admin order detail was broken the same way.
+
+**Shipped:**
+- `076_order_item_option_snapshot.sql` restores the column (+ `notify pgrst, 'reload schema'`) — **applied to
+  the live project 2026-10-10**, verified in `information_schema` and through the PostgREST schema.
+- The paid order's line item was backfilled from its own `cart_snapshot` (Slate Coasters, 1 × $25.00), and an
+  `exp_order_internal_notes` row records why it was added by hand.
+- `#2` **retry-reuse**: the idempotency lookup now also reuses the order row when a half-finished attempt left
+  one *without* a link — inserting again hit `exp_orders_checkout_attempt_uidx` (23505) and 500'd on every
+  retry. The retry rewrites that row, clears its stale items, re-reserves (the RPC is idempotent:
+  `already_reserved`) and skips the promo/deal claims when `exp_orders.claimed_at` says the order already
+  claimed them (the marker is now written after a successful claim round). 3 new route tests.
+- `getProductsByCategory` no longer logs `undefined` for an unknown category slug — it was reporting a null
+  result as an error for every slug that has no taxonomy row.
+
+**Sequencing:** `076` is applied, so deploying this build is safe. Deploying the fail-closed build *first* would
+have turned the silent data loss into a hard checkout outage.
+
+**Owner follow-ups:**
+- Vercel is missing `NEXT_PUBLIC_APP_ENV=production` (real production orders are stamped `branch = 'DEV'`), and
+  `NEXT_PUBLIC_SITE_URL` / `NEXT_PUBLIC_APP_URL` are still `http://localhost:3000` in `.env` — both must be the
+  public origin in Vercel.
+- The Footer links to `/shop/categories/engraved-drinkware` and `/shop/categories/sublimated-gifts`, but the
+  live taxonomy has `drinkware` and no `sublimated-gifts` (visible slugs: acrylic-pieces, apparel-fabrics,
+  drinkware, leather-goods, pet-products, signs-and-decor, stickers, wood-goods) — two dead links on every page
+  (OCT-23).
+- The link-create / link-attach failure paths cancel the order but leave the inventory reservation and the promo
+  usage in place (the admin release endpoint is the manual escape hatch) — the `#12`/`#19` tail.
+
+#### `#13` — post-payment page, confirmation email & customer status — **✅ shipped 2026-10-10**
+
+- **The success page is a real page now.** `/checkout/success?order=<id>&access=<guest token>` loads the
+  order by **id and token** (a guessed id alone reveals nothing), shows the items with their options,
+  shipping, discounts, tax and total, and sets `robots: { index: false }`. The "Stripe redirected
+  successfully…" fallback, the `session_id` lookup and the "Session: …" line are gone.
+- **Square is told where to send the buyer.** `createSquareCheckout` accepts a `redirectUrl`, and the
+  checkout route passes `/checkout/success?order=…&access=…` (Square appends its own params after ours).
+- **While the payment is still syncing** the page says it is confirming with Square and a client poller
+  (`OrderStatusPoller`) refreshes it every 5 s for up to 60 s. If the webhook has not landed within 30 s,
+  the page reconciles with Square itself (`src/lib/orders/reconcile-square-payment.ts` →
+  `retrieveSquareOrder` + `exp_mark_order_paid`), so a paying buyer is never stuck on "awaiting payment".
+  The amount comes from Square's own `total_money`/`total_tax_money` and the RPC refuses a mismatch.
+- **The cart is only cleared when the order was found** (`ClearCartOnSuccess` takes `enabled`), so opening
+  the URL by hand no longer empties a cart that was never bought.
+- **Shop orders get a confirmation email.** From the webhook's paid transition only (`marked_paid`), one
+  email per order (`paid:<orderId>`) with the items, their options, the amount Square actually charged,
+  the production estimate and the `/orders/<id>?access=…` link. Before this, only custom requests were
+  emailed and a shop customer heard nothing until Shippo reported a shipment. `customer_email` is
+  backfilled from `payment.buyer_email_address` when the buyer never typed one.
+- **Plain-language statuses everywhere.** `src/lib/orders/customer-status.ts` maps every order and payment
+  status (including `partially_refunded`) and falls back to neutral copy for anything unknown, so
+  `awaiting_payment` cannot leak onto a customer page or into an email. `/orders/[id]` uses it, shows the
+  carrier and tracking number, the selected options, and timestamps in the shop's time zone
+  (`src/lib/time/shop-time.ts`, `SHOP_TIME_ZONE`, default `America/Chicago`).
+- **Contract test** `src/components/checkout/checkout-copy.contract.test.ts`: no `Stripe` anywhere under
+  `src/app/checkout/**` or `src/components/checkout/**` — the last vestiges (the checkout page's meta
+  description and two dead `stripeCheckoutEnabled`/`stripeDisabledMessage` props) are renamed.
+
+**Still open from `#13`:** making the buyer email **required** at checkout (that is `#30`, in O-E; the
+backfill covers the gap until then) and the `#39` finance/date-range half of the time-zone work.
+
+**Verification (so far):** type-check 0 · lint 0 errors · 588 tests / 70 files · build clean.
+
+### Batch O-E — Admin unblock — **`#6` bridge, `#7` hotfix, `#15`, `#28`, `#23` shipped 2026-10-10**
 `#6` (move custom-request mutations under `/api/admin` so CSRF works) · `#15` (deactivate superseded quote
 links) · `#28` (Send Quote confirm + note split) · `#7` (pricing-page clobber hotfix + PATCH semantics) ·
 `#23` (cancel/refund confirm; transition→cancelled releases stock).
 
-### Batch O-F — Auth hardening
+**Shipped 2026-10-10:**
+
+- **`#6` — the panel works again (minimal alternative).** `AdminCsrfFetchBridge` now attaches
+  `x-csrf-token` to the same-origin admin mutations that predate the `/api/admin` namespace, via an exported
+  `ADMIN_MUTATION_PREFIXES` (`/api/admin`, `/api/custom-orders/`, `/api/designs/export`). Before this, every
+  Send Quote / Resend / Extend / Handoff / Reject / Reopen / Generate Exports click returned **403 "CSRF token
+  missing or invalid."** and the whole custom-request pipeline was dead in the panel. The route *move* under
+  `/api/admin` (the plan's preferred path, so the edge gate and the route-pattern contract cover them) is still
+  open. Guarded by `src/components/admin/admin-fetch-scope.contract.test.ts`: all 84 admin mutation fetches
+  target an allow-listed prefix, with a planted-offence case proving the guard bites.
+- **`#7` hotfix.** The pricing page's PUT body now carries `has_designer` and `designer_mockup_url`, so saving
+  a base price no longer switches the embedded designer off and nulls the mockup URL. Guarded by
+  `src/lib/admin/product-editor.contract.test.ts`. The root fix (a `PATCH` that updates only the keys present,
+  with `expected_updated_at` → 409) is still open.
+- **`#15` — money safety in `custom-orders/[id]`.** The status is checked **before** a payable link exists
+  (400 for anything but `awaiting_quote`, or a re-quote of `quote_sent | expired`); a re-quote deletes the old
+  Square link and cancels its pending order with a "Superseded by re-quote" event; a failed order insert now
+  deletes the new link and returns 500 (it used to be swallowed, leaving a payable link the webhook could not
+  match); handoff selects the **paid** linked order instead of the newest one.
+- **`#28` server half.** `customerMessage` (emailed) and `internalNote` (never emailed) are separate fields;
+  internal notes append to the new `exp_custom_requests.internal_notes` (migration `078`, **applied to the live
+  project**); `admin_notes` is no longer overwritten by send / handoff / reject / reopen, so an empty box can
+  no longer erase the last rejection reason; the quote email says the link replaces earlier ones;
+  `send_quote` and `resend_quote` return `warnings: ['email_not_sent']` plus `paymentLinkUrl`, so the panel can
+  offer a copy-the-link fallback instead of claiming success.
+- 9 route tests in `src/app/api/custom-orders/[id]/route.test.ts`; the route now logs through `safeLogError`
+  (5 `console.error` calls replaced).
+
+- **`#28` UI half.** A shared `src/components/admin/ConfirmDialog.tsx` (MUI `Dialog`, `aria-labelledby`, focus
+  on Cancel, `tone: 'danger' | 'primary'`, `busy`) now guards Send Quote, and its body names the amount, the
+  recipient and the exact customer message. The panel has two note fields — "Message to customer" and
+  "Internal note (never sent)" — Send Quote is status-gated (`awaiting_quote`, or "Re-quote…" for
+  `quote_sent | expired`), and a failed email renders a **warning** with a Copy-payment-link action instead of
+  "Quote sent successfully." The page-local reject dialog is replaced by the shared one.
+- **`#23`.** `cancelled` is gone from both transition menus (client `nextStatusOptions` and server
+  `transitionAllowed`), so cancelling can only go through `action: 'cancel'` — which releases reserved
+  inventory. The dropdown path used to leave stock reserved forever and ready-made items unsellable. Cancel
+  Order and Mark Refunded now open a confirmation dialog that requires a reason (≥ 3 characters), shows the
+  total / payment status / paid date, and says plainly that "Mark Refunded" only records the refund — with a
+  link to the Square dashboard. Guarded by `src/components/admin/confirm-dialog.contract.test.ts` and a new
+  route test (`transition` → `cancelled` returns 400).
+
+**Still open in O-E:** the `#6` route move under `/api/admin` (edge-gate coverage) and the `#7` root fix
+(a `PATCH` that writes only the keys present, with `expected_updated_at` → 409).
+
+**Verification:** type-check 0 · lint 0 errors · 608 tests / 74 files · build clean.
+
+### Batch O-F — Auth hardening — **✅ CODE COMPLETE 2026-10-10** (`#10`, `#11`, `#34`, `#66`–`#69`)
 `#10` (dev sign-in token + no plaintext TOTP) · `#11` (Supabase Auth dashboard: exact redirect URLs,
 confirmed-Google grants) · `#34` (session TTL decision + enforcement) · `#66`–`#69` (redirect sanitizer,
 panel page gate, auth-error text, headers/cookies/image-proxy).
+
+
+**Shipped 2026-10-10:**
+
+- **`#10` — the dev sign-in helper stopped being a production backdoor.** `ADMIN_DEV_SIGNIN_ENABLED` alone
+  was enough to mint a production admin session, because `npm run dev` binds every interface. The route now
+  also requires `ADMIN_DEV_SIGNIN_TOKEN` (≥ 32 chars) in `x-dev-signin-token`, reads the raw **`Host`** header
+  (loopback only — `nextUrl.hostname` is the server's *bind* hostname and always passed), refuses Vercel, and
+  needs `ADMIN_DEV_SIGNIN_ALLOW_HOSTED=true` before it will mint against the hosted project. The MFA escalator
+  no longer writes the TOTP secret to `%TEMP%`: it names each factor `dev-harness-<timestamp>` and unenrolls
+  the previous one. Guarded by `src/lib/dev/dev-signin.test.ts` + `src/app/api/dev/session/route.test.ts`.
+- **`#11` — a grant can no longer be hijacked by email.** `grantAdmin()` resolves the account by matching an
+  email address, so an attacker who pre-registered the future admin's address could have **their** row
+  allow-listed. `assertGrantableUser()` now refuses any account that is not confirmed or has no Google
+  identity, and `scripts/grant-admin.mjs` prints the resolved account and refuses to write until the operator
+  echoes its `user_id` back with `--confirm-user-id`. Guarded by `src/lib/admin/admin-allowlist-script.test.ts`
+  (including "no upsert happens for a refused account"). Docs: `docs/GOOGLE_AUTH_SUPABASE.md` §1/§4 now list
+  the **exact** redirect URLs and say why wildcards are an account-takeover path.
+- **`#34` — the Settings "Session TTL" control is live.** It validated 1–336, saved, and nothing read it:
+  `@supabase/ssr` rotates cookies with a 400-day `maxAge` and a refresh token keeps its `aal2` level, so a
+  stolen token was a *permanent* MFA-satisfied admin credential while the owner believed the limit was 12 h.
+  `readAuthClaims()` now exposes `authenticatedAt` (the `totp` entry in `amr`, so re-authentication means
+  re-doing MFA) and `isAdminSessionFresh()` enforces `admin_session.ttl_hours` in the API gate (401
+  `code: 'admin_session_expired'`) and the page gate (`/admin/login?reason=expired&next=…`), memoising the
+  settings read for 60 s and **failing closed** on a token with no usable `amr`. `AdminLoginView` signs the
+  stale session out when it sees `reason=expired`, so the next Google hop mints a fresh `amr`. The MFA page is
+  deliberately exempt — verifying the second factor *is* the re-authentication. Guarded by
+  `src/lib/admin/auth.test.ts` (33 cases) and `src/lib/admin/admin-session-ttl.contract.test.ts`.
+
+- **`#66` — the latent open redirect is closed.** `sanitizeAuthNextPath()` checked the raw string *before* URL
+  parsing, and parsing removes dot segments: `/.//evil.com`, `/..//evil.com`, `/%2e%2e//evil.com` and
+  `/admin/..//evil.com` all re-serialized to `//evil.com`, which `new URL(out, origin)` reads as
+  `https://evil.com/`. The parsed result is now re-checked for a leading `//`/`/\`, and the callback asserts
+  `destination.origin === origin` before redirecting.
+- **`#67` — the panel gate runs per page, not just in the layout.** Client-side navigation renders only the
+  changed segment, so `(panel)/layout.tsx`'s allow-list re-check was skipped and a stale `role=admin` claim
+  could still fetch the dashboard RSC payload (read with the service role). `(panel)/page.tsx` now calls
+  `requireAdminPageSessionOrRedirect()` itself, and the break-glass runbook (SEPT §10.17) gained the two steps
+  that make a removal stick: `admin:revoke` **and** `delete from auth.sessions where user_id = …`. Guarded by
+  `src/lib/admin/admin-page-gate.contract.test.ts`, which walks all 36 panel pages/layouts and fails on any
+  server page that reads the database without the gate (with planted-offence cases).
+- **`#68` — `/auth/auth-error` renders fixed copy.** `?reason=` was displayed verbatim under "We could not sign
+  you in" on the real origin — React escaped it, so no XSS, but it was a credible phishing lure. The callback
+  now maps every failure to `cancelled | link_incomplete | exchange_failed | provider_error`, logs the raw text
+  through `safeLogError`, and redirects with `?code=`; `src/lib/auth/auth-error.ts` owns the copy. Guarded by
+  `src/app/auth/callback/route.test.ts` (asserts the Location never contains the provider text) and
+  `src/lib/auth/auth-error.test.ts` (source contract: the page no longer references `reason`).
+- **`#69` — header, cookie and image-proxy drift.** `Permissions-Policy` still allowed `js.stripe.com`
+  (`payment=()` now); `connect-src` allow-listed **every** `*.supabase.co` project plus two server-only
+  origins (Resend, USPS) — it is now derived from `NEXT_PUBLIC_SUPABASE_URL`; `vercel.live` was allow-listed
+  in production and is now preview-only; `frame-ancestors 'none'` added. Supabase auth cookies gain `Secure`
+  (`isHttpsDeployment()` = prod **or** Vercel, so previews are covered too — `isProd()` alone left them
+  flag-less there), the CSRF/nonce cookies follow the same predicate, and `images.remotePatterns` is pinned to
+  the project hostname instead of `*.supabase.co` (which let any third party spend this deployment's image
+  quota). Guarded by `csp.test.ts`, `remote-patterns.test.ts`, `next-config.contract.test.ts` and
+  `src/lib/supabase/cookie-options.test.ts`.
+
+**Still open in O-F (owner-side, no code):**
+
+- Supabase → **Auth → URL Configuration**: delete the wildcard redirect entries (`https://<domain>/**`,
+  `https://*-<team>.vercel.app/**`, `http://localhost:3000/**`) and keep the exact `…/auth/callback` URLs;
+  **Auth → Providers**: disable Email/Phone/Anonymous.
+- Supabase → **Auth → Sessions**: turn on time-boxing / inactivity timeout as a second, dashboard-level bound
+  (the code-level TTL is the one that cannot be forgotten; this one is defence in depth).
+- **Announce the deploy effect:** the first request after deploy signs out any admin whose session is older
+  than `admin_session.ttl_hours` (default 12 h) — the panel says so on `/admin/login?reason=expired`.
+- Verify once on a preview deployment that a Google + TOTP sign-in actually yields an `amr` claim: the TTL
+  fails closed without one, and `UI_AUDIT.md` §15.3 now lists it as a harness precondition.
+
+**Verification:** type-check 0 · lint 0 errors · 720 tests / 82 files · build clean.
 
 ### Batch O-G — Storefront conversion
 `#17` (`/cart` → `/checkout`) · `#18` (`/future-products` notify form) · `#29` (artwork "file" upload) ·
 `#30` (checkout gating/errors) · `#31` (address form) · `#32` (upload rules) · `#33` (configurator a11y).
 
 ### Batch O-H — Operations, resilience & privacy
+
 `#8` (abandoned-cart correctness) · `#36` (public-endpoint abuse) · `#37` (timeouts + env validation) ·
 `#38` (scheduler) · `#39` (finance dates + timezone) · `#40` (privacy & email compliance).
 
@@ -1008,6 +1238,12 @@ switch + duplicate row) · `OCT-23` (footer slug) · `OCT-26` (copy decisions) �
 ### Batch O-J — Storefront UX & performance (P2/P3)
 `#52`–`#63` (designer, quantity, intake, sold-out, error pages, mobile search, cart, contact, analytics,
 disclosure, performance, SEO remainder) · `#70` · `#71`.
+
+**Voice pass (owner request 2026-10-09):** the shipping/postal surface should match the shop's dragon theme —
+e.g. Shippo's carrier and service names presented as in-world labels ("Tribute to the Postal Griffins"). The
+Shippo integration itself works; this is **presentation only**. Keep the real carrier + service name intact in
+the data, the admin and the printed label, and treat the themed string as display copy — so fulfilment and any
+carrier dispute stay unambiguous.
 
 ### Batch O-K — SEPT-only residuals (no remediation item)
 These have no `#n` counterpart, so they are not in §4: `§2.2` (gift-ideas route + gift message) ·

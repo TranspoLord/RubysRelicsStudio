@@ -120,6 +120,74 @@ export async function findAuthUserByEmail(client, email) {
   return null
 }
 
+/** Provider names for a user: `identities[].provider` plus the legacy app_metadata keys. */
+export function userProviderNames(user) {
+  const names = new Set()
+
+  for (const identity of Array.isArray(user?.identities) ? user.identities : []) {
+    if (identity?.provider) names.add(String(identity.provider).toLowerCase())
+  }
+
+  const meta = user?.app_metadata ?? {}
+  if (meta.provider) names.add(String(meta.provider).toLowerCase())
+  for (const provider of Array.isArray(meta.providers) ? meta.providers : []) {
+    names.add(String(provider).toLowerCase())
+  }
+
+  return [...names]
+}
+
+/**
+ * OCT #11(b): refuses an account that may not be the intended admin.
+ *
+ * `grantAdmin()` resolves the account by matching an email address, so if the
+ * Email provider is enabled without confirmation an attacker can pre-register the
+ * future admin's address and have **their** row allow-listed — SEPT §10.0 calls
+ * email-based granting an account-takeover path. A grantable account must
+ * therefore be **confirmed** and carry a **Google** identity, because Google
+ * sign-in is the only admin sign-in method (§10).
+ *
+ * Runs before any read or write of the allow-list.
+ */
+export function assertGrantableUser(user) {
+  if (!user || typeof user.id !== 'string' || user.id.length === 0) {
+    throw new Error('Refusing to grant admin access: no auth.users row was supplied to verify.')
+  }
+
+  const label = `${normalizeEmail(user.email) || '(no email)'} [${user.id}]`
+  const providers = userProviderNames(user)
+
+  if (!providers.includes('google')) {
+    throw new Error(
+      `Refusing to grant admin access to ${label}: no Google identity ` +
+        `(providers: ${providers.join(', ') || 'none'}). Admin sign-in is Google-only (§10), ` +
+        'so this account cannot be the intended admin.'
+    )
+  }
+
+  if (!user.email_confirmed_at && !user.confirmed_at) {
+    throw new Error(
+      `Refusing to grant admin access to ${label}: the address is not confirmed. An unconfirmed ` +
+        'address can be pre-registered by someone else, so granting it would hand them admin ' +
+        'access. Have the owner complete a Google sign-in first.'
+    )
+  }
+
+  return user
+}
+
+/** Log-safe account summary, so the grant CLI can show *which* row it is about to write. */
+export function describeAuthUser(user) {
+  const confirmed = user?.email_confirmed_at ?? user?.confirmed_at
+  return [
+    `user_id:    ${user?.id ?? '(none)'}`,
+    `email:      ${normalizeEmail(user?.email) || '(none)'}`,
+    `providers:  ${userProviderNames(user).join(', ') || '(none)'}`,
+    `created_at: ${user?.created_at ?? '(unknown)'}`,
+    `confirmed:  ${confirmed ?? 'no'}`,
+  ].join('\n  ')
+}
+
 /**
  * Grants admin access: upserts the allow-list row, then mirrors the role into
  * `app_metadata` so the Edge gate agrees.
@@ -137,6 +205,9 @@ export async function grantAdmin(client, { email, createdBy = 'scripts/grant-adm
         '(storefront /sign-in) before it can be allow-listed — Google sign-in is what creates the row.'
     )
   }
+
+  // OCT #11(b): never grant an account someone else could have pre-registered.
+  assertGrantableUser(user)
 
   const { data: existingRow, error: readError } = await client
     .from(ALLOWLIST_TABLE)

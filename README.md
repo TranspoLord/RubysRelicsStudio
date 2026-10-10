@@ -16,7 +16,7 @@ E-commerce storefront + admin panel for Ruby's Relics Studio.
 - `npm run type-check` — TypeScript check
 - `npm run test` — Vitest suite
 - `npm run audit` — dependency audit gate (`--audit-level=high`)
-- `npm run admin:grant -- <google-email>` — add a Google account to the admin allow-list
+- `npm run admin:grant -- <google-email> --confirm-user-id <uuid>` — add a Google account to the admin allow-list
 - `npm run admin:revoke -- <google-email>` — remove it (deactivates the row and clears the claim)
 
 ## Environment
@@ -32,9 +32,12 @@ are removed by `docs/archive/SEPT_IMPLEMENTATION_PLAN.md` §10.13.
 
 Admin access is an allow-list (`exp_admin_users`) keyed by Supabase
 `auth.users.id`. Add an account with
-`npm run admin:grant -- <google-email>`; that account must have signed in with
+`npm run admin:grant -- <google-email> --confirm-user-id <uuid>`; that account must have signed in with
 Google at least once first, because Google sign-in is what creates the
-`auth.users` row. The row is the revocation authority; the matching
+`auth.users` row. The command prints the account it resolved and refuses to write
+until you echo its `user_id` back with `--confirm-user-id`, because the lookup is
+by email — it also refuses an unconfirmed address and any account with no Google
+identity (OCT #11). The row is the revocation authority; the matching
 `app_metadata.role = 'admin'` claim written by the same command is what the Edge
 gate reads. Remove access with `npm run admin:revoke -- <google-email>`.
 

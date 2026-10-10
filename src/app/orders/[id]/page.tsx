@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Container from '@mui/material/Container'
@@ -8,7 +9,15 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { Breadcrumb } from '@/components/layout/Breadcrumb'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
+import { describeOrderStatus, describePaymentStatus } from '@/lib/orders/customer-status'
+import { formatShopDateTime } from '@/lib/time/shop-time'
 import { brandTokens } from '@/theme/theme'
+
+/** OCT #13: a guest order page is private — never index it. */
+export const metadata: Metadata = {
+  title: 'Order tracking',
+  robots: { index: false, follow: false },
+}
 
 interface OrderItemRow {
   id: string
@@ -32,6 +41,9 @@ interface OrderRow {
   order_total: number
   created_at: string
   guest_tracking_expires_at: string | null
+  /** OCT #13: shown once the carrier reports a tracking number. */
+  shipping_carrier: string | null
+  tracking_number: string | null
 }
 
 async function getGuestOrder(orderId: string, accessToken: string) {
@@ -41,7 +53,7 @@ async function getGuestOrder(orderId: string, accessToken: string) {
 
   const { data: order, error } = await supabase
     .from('exp_orders')
-    .select('id, status, payment_status, production_estimate_band, subtotal, discount_amount, shipping_cost, shipping_discount, tax_amount, order_total, created_at, guest_tracking_expires_at')
+    .select('id, status, payment_status, production_estimate_band, subtotal, discount_amount, shipping_cost, shipping_discount, tax_amount, order_total, created_at, guest_tracking_expires_at, shipping_carrier, tracking_number')
     .eq('id', orderId)
     .eq('guest_tracking_token', accessToken)
     .single()
@@ -70,19 +82,6 @@ async function getGuestOrder(orderId: string, accessToken: string) {
     order: order as OrderRow,
     items: (items ?? []) as OrderItemRow[],
   }
-}
-
-function formatTimestamp(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(date)
 }
 
 export default async function OrderTrackingPage({
@@ -139,10 +138,10 @@ export default async function OrderTrackingPage({
                 </Typography>
 
                 <Typography sx={{ fontSize: '0.84rem', color: alpha(brandTokens.parchment, 0.62) }}>
-                  Order: {result.order.id}
+                  Order: {result.order.id.slice(0, 8).toUpperCase()}
                 </Typography>
                 <Typography sx={{ fontSize: '0.84rem', color: alpha(brandTokens.parchment, 0.62) }}>
-                  Created: {formatTimestamp(result.order.created_at)}
+                  Placed: {formatShopDateTime(result.order.created_at)}
                 </Typography>
 
                 <Box
@@ -155,14 +154,24 @@ export default async function OrderTrackingPage({
                   }}
                 >
                   <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.7) }}>
-                    Payment: {result.order.payment_status}
+                    Payment: {describePaymentStatus(result.order.payment_status).label}
                   </Typography>
                   <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.7) }}>
-                    Status: {result.order.status}
+                    Status: {describeOrderStatus(result.order.status).label}
                   </Typography>
-                  <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.7) }}>
+                  <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.7), mt: 0.3 }}>
+                    {describeOrderStatus(result.order.status).detail}
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.7), mt: 0.3 }}>
                     Production estimate: {result.order.production_estimate_band}
                   </Typography>
+                  {/* OCT #13: the carrier and tracking number were stored but never shown. */}
+                  {result.order.tracking_number && (
+                    <Typography sx={{ fontSize: '0.82rem', color: alpha(brandTokens.parchment, 0.7), mt: 0.3 }}>
+                      Tracking: {result.order.shipping_carrier ? `${result.order.shipping_carrier} ` : ''}
+                      {result.order.tracking_number}
+                    </Typography>
+                  )}
                 </Box>
 
                 <Box sx={{ display: 'grid', gap: 0.8, mt: 0.4 }}>
@@ -187,6 +196,15 @@ export default async function OrderTrackingPage({
                           {item.variant_label}
                         </Typography>
                       )}
+                      {/* OCT #13: the selected options were never shown here. */}
+                      {item.selected_options && Object.keys(item.selected_options).length > 0 && (
+                        <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.25 }}>
+                          {Object.entries(item.selected_options)
+                            .map(([key, value]) => `${key}: ${String(value)}`)
+                            .join(' • ')}
+                        </Typography>
+                      )}
+
                       <Typography sx={{ fontSize: '0.75rem', color: alpha(brandTokens.parchment, 0.62), mt: 0.35 }}>
                         Qty {item.quantity}
                       </Typography>

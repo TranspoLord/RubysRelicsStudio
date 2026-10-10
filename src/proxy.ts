@@ -39,7 +39,7 @@ import {
 } from '@/lib/admin/edge-gate'
 import { CSP_NONCE_COOKIE, applyCspToResponse, generateCspNonce } from '@/lib/security/csp'
 import { CSRF_COOKIE_NAME } from '@/lib/security/csrf'
-import { isProd } from '@/lib/security/env'
+import { isHttpsDeployment } from '@/lib/security/env'
 import { safeLogError } from '@/lib/security/logger'
 import { refreshSupabaseSession, updateSupabaseSession } from '@/lib/supabase/update-session'
 
@@ -51,7 +51,9 @@ function ensureCsrfCookie(request: NextRequest, response: NextResponse): NextRes
       value: crypto.randomUUID().replace(/-/g, ''),
       httpOnly: false,
       sameSite: 'strict',
-      secure: isProd(),
+      // OCT #69: preview deployments are https, so isProd() alone left this
+      // cookie without `Secure` there.
+      secure: isHttpsDeployment(),
       path: '/',
       maxAge: 60 * 60 * 24 * 14, // 14 days
     })

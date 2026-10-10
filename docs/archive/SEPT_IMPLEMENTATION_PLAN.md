@@ -1613,6 +1613,20 @@ schema first (use `supabase db dump`, not `db push` — §1.1's migration-histor
 (`update exp_admin_users set is_active = …`). The edge claim is only an optimisation; the DB check is the
 authority, so a stale JWT cannot keep a revoked admin in.
 
+*(OCT #67, 2026-10-10.)* Clearing `is_active` alone is **not** enough for a break-glass removal, because the
+claim keeps refreshing: the edge gate reads only the claim, and client-side navigation skips the `(panel)`
+layout's DB check, so the dashboard's RSC payload stays reachable for as long as the token keeps rotating —
+unbounded, not just for one access-token lifetime. A break-glass removal is therefore three steps:
+
+1. `npm run admin:revoke -- <google-email>` — deactivates the allow-list row **and** clears
+   `app_metadata.role`, so the edge gate stops admitting the account.
+2. Delete the live sessions with the service role:
+   `delete from auth.sessions where user_id = '<auth.users.id>';` (a refresh token keeps its `aal2` level, so a
+   session that survives the revoke is still an MFA-satisfied admin credential).
+3. Confirm: the account's `/admin` request lands on `/admin/not-authorized` and `/api/admin/*` answers `401`.
+   Server pages that read data call `requireAdminPageSessionOrRedirect()` themselves (OCT #67), so no route
+   depends on the layout having run.
+
 **Verification checklist for step 3.** Non-admin Google account → `/admin` lands on `/admin/not-authorized`,
 `/api/admin/*` answers `401`, and there is no redirect loop. Admin account → the panel loads, `AdminShell`
 sign-out ends the session on the panel **and** the storefront, and `exp_admin_audit_log.actor_email` is

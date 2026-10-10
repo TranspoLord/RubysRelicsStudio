@@ -132,6 +132,38 @@ describe('PATCH /api/admin/orders', () => {
     expect(calls.orderUpdateEq).not.toHaveBeenCalled()
   })
 
+  it('refuses `cancelled` through the transition action (OCT #23)', async () => {
+    const { supabase, calls } = createSupabase({
+      orderRow: {
+        id: 'ord_cancel',
+        status: 'paid',
+        payment_status: 'paid',
+        inventory_reserved_at: '2026-10-01T00:00:00.000Z',
+        inventory_released_at: null,
+        paid_at: '2026-10-01T00:00:00.000Z',
+      },
+    })
+    mocks.getSupabaseAdmin.mockReturnValue(supabase)
+
+    const request = new Request('http://localhost/api/admin/orders', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        action: 'transition',
+        orderId: 'ord_cancel',
+        nextStatus: 'cancelled',
+      }),
+    })
+
+    const response = await PATCH(request)
+    const payload = await response.json()
+
+    // Cancelling must go through `action: 'cancel'`, which releases inventory.
+    expect(response.status).toBe(400)
+    expect(payload.error).toContain('Transition not allowed')
+    expect(calls.orderUpdateEq).not.toHaveBeenCalled()
+  })
+
   it('applies a valid transition and records event', async () => {
     const { supabase, calls } = createSupabase({
       orderRow: {

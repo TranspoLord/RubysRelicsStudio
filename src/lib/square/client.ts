@@ -54,6 +54,12 @@ interface CreateSquareCheckoutParams {
   idempotencyKey: string
   note?: string
   metadata?: Record<string, string>
+  /**
+   * OCT #13: where Square sends the buyer after paying. The checkout route
+   * appends `?order=<id>&access=<guest token>` so the success page can load the
+   * order instead of showing a bare "thanks".
+   */
+  redirectUrl?: string
 }
 
 export async function createSquareCheckout(params: CreateSquareCheckoutParams): Promise<SquareCheckoutResponse> {
@@ -86,7 +92,9 @@ export async function createSquareCheckout(params: CreateSquareCheckoutParams): 
         ...(params.discounts?.length ? { discounts: params.discounts } : {}),
       },
       checkout_options: {
-        redirect_url: `${process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'}/checkout/success`,
+        redirect_url:
+          params.redirectUrl ??
+          `${process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'}/checkout/success`,
       },
       pre_populated_data: {
         buyer_email: params.metadata?.buyer_email,
@@ -116,6 +124,14 @@ export async function retrieveSquareOrder(orderId: string): Promise<{
   id: string
   total_tax_money?: { amount: number; currency: string }
   total_money?: { amount: number; currency: string }
+  /**
+   * OCT #13: the tenders carry the payment ids, which is how the success-page
+   * reconcile finds the payment without a second API call.
+   */
+  tenders?: Array<{
+    payment_id?: string
+    amount_money?: { amount: number; currency: string }
+  }>
 } | null> {
   if (!SQUARE_ACCESS_TOKEN) {
     throw new Error('Square credentials not configured.')
@@ -134,6 +150,10 @@ export async function retrieveSquareOrder(orderId: string): Promise<{
       id: string
       total_tax_money?: { amount: number; currency: string }
       total_money?: { amount: number; currency: string }
+      tenders?: Array<{
+        payment_id?: string
+        amount_money?: { amount: number; currency: string }
+      }>
     }
     errors?: SquareError[]
   } | null

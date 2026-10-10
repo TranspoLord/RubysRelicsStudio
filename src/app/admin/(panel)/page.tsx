@@ -2,6 +2,7 @@ import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import { alpha } from '@mui/material/styles'
 
+import { requireAdminPageSessionOrRedirect } from '@/lib/admin/auth'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { brandTokens } from '@/theme/theme'
 import { AdminPageHeading } from '@/components/admin/AdminPageHeading'
@@ -93,6 +94,13 @@ const MODULE_CARDS = [
 ]
 
 export default async function AdminDashboardPage() {
+  // OCT #67: the `(panel)` layout gate does **not** run on client-side
+  // navigation — the RSC request re-renders only the changed segment — so a
+  // stale `role=admin` claim whose allow-list row was revoked could still fetch
+  // this payload, which `getDashboardStats()` reads with the service role. Every
+  // server page that reads data re-checks the row itself; this one is first.
+  await requireAdminPageSessionOrRedirect('/admin')
+
   const stats = await getDashboardStats()
 
   return (

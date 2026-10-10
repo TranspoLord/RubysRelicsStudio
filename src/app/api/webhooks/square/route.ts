@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { getSupabaseAdmin } from '@/lib/supabase/client'
 import { rateLimit, rateLimitResponse } from '@/lib/rate-limit'
@@ -275,60 +275,395 @@ export async function POST(request: NextRequest) {
 
     // Only reached when the RPC genuinely marked the order paid.
     if (outcome.reason === 'marked_paid') {
-      // Send payment confirmation email to the customer if this is a custom
-      // request order. The DB trigger (migration 050) will set the custom
-      // request status to 'paid' — we just notify the customer here.
-      try {
-        const { data: orderDetails } = await supabase
-          .from('exp_orders')
-          .select('id, customer_email, custom_request_id, order_total')
-          .eq('id', order.id)
-          .single()
-
-        if (orderDetails?.customer_email && orderDetails?.custom_request_id) {
-          const { data: customRequest } = await supabase
-            .from('exp_custom_requests')
-            .select('id, item_type, customer_name, customer_access_token')
-            .eq('id', orderDetails.custom_request_id)
-            .single()
-
-          if (customRequest) {
-            const origin = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://rubysrelicsstudio.com'
-            const statusUrl = customRequest.customer_access_token
-              ? `${origin}/custom-orders/${customRequest.id}?access=${encodeURIComponent(customRequest.customer_access_token)}`
-              : `${origin}/custom-orders`
-
-            // OCT #14: a typed result instead of a silently ignored one, and a
-            // deterministic key so a retried webhook cannot email twice.
-            const paymentEmail = await sendEmail({
-              to: orderDetails.customer_email,
-              subject: `Payment received — your custom order is now in production (${customRequest.id.slice(0, 8)})`,
-              idempotencyKey: `paid:${orderDetails.id}`,
-              html: `
-                <h2>Payment Received — Thank You!</h2>
-                <p>Hi ${safeHtmlEscape(customRequest.customer_name ?? 'there')},</p>
-                <p>We've received your payment and your custom order is now in production!</p>
-                <p><strong>Request ID:</strong> ${safeHtmlEscape(customRequest.id)}</p>
-                <p><strong>Item type:</strong> ${safeHtmlEscape(customRequest.item_type)}</p>
-                <p><strong>Amount paid:</strong> $${Number(orderDetails.order_total).toFixed(2)}</p>
-                <h3>What Happens Next?</h3>
-                <p>Our team will begin working on your item. You'll receive updates as your order progresses through production.</p>
-                <p>Track your request status anytime:</p>
-                <p><a href="${safeHtmlEscape(statusUrl)}">${safeHtmlEscape(statusUrl)}</a></p>
-              `,
-            })
-
-            if (!paymentEmail.ok) {
-              safeLogError('[Square Webhook:payment-email]', paymentEmail.error)
-            }
-          }
-        }
-      } catch (emailError) {
-        safeLogError('[Square Webhook:payment-email]', emailError)
-        // Email failure should not affect webhook processing
-      }
+      // OCT #4: the confirmation email is scheduled with `after()`, so Resend's
+      // latency can never delay Square's 200 (a slow send risks a redelivery of
+      // the whole event). The body lives in `sendPaymentConfirmationEmail`.
+      const buyerEmailFromSquare =
+        typeof payment.buyer_email_address === 'string' ? payment.buyer_email_address : undefined
+      after(() => sendPaymentConfirmationEmail(order.id, buyerEmailFromSquare, Math.round(paymentAmount)))
     }
+  }
+
+  // OCT #4: refunds. Square emits `refund.created` (usually PENDING) and then
+  // `refund.updated` (COMPLETED) for the same refund, so this is handled in one
+  // place that only moves money on COMPLETED and claims the refund id first.
+  if (event.type === 'refund.created' || event.type === 'refund.updated') {
+    return handleRefundEvent(event, eventId)
   }
 
   return NextResponse.json({ received: true })
 }
+
+/**
+ * OCT #4: the refund half of the Square webhook.
+ *
+ * Square emits `refund.created` (usually PENDING) and then `refund.updated`
+ * (COMPLETED) for the same refund, so this function
+ *   * only moves money on COMPLETED,
+ *   * claims the refund id in `exp_order_status_events` before touching the
+ *     order — the partial unique index from migration 077 makes that insert the
+ *     atomic gate, so the second delivery loses with 23505,
+ *   * releases the claim and the dedupe row if the order update fails, so
+ *     Square's retry can finish the job.
+ */
+async function handleRefundEvent(event: any, eventId: string): Promise<NextResponse> {
+  const refund = event.data?.object?.refund
+  if (!refund) {
+    return NextResponse.json({ error: 'No refund data' }, { status: 400 })
+  }
+
+  const refundStatus = String(refund.status ?? '').toUpperCase()
+  if (refundStatus !== 'COMPLETED') {
+    // PENDING / REJECTED / FAILED are not money back (yet, or ever).
+    return NextResponse.json({ received: true, refund_status: refundStatus })
+  }
+
+  const refundId = typeof refund.id === 'string' ? refund.id : ''
+  const refundAmount = refund.amount_money?.amount
+  const refundCurrency = refund.amount_money?.currency
+
+  if (!refundId) {
+    safeLogError('[Square Webhook]', 'Refund has no id — cannot dedupe')
+    return NextResponse.json({ error: 'Invalid refund' }, { status: 400 })
+  }
+
+  if (typeof refundAmount !== 'number' || !Number.isFinite(refundAmount) || refundAmount <= 0) {
+    safeLogError('[Square Webhook]', `Refund ${refundId} has no usable amount_money`)
+    return NextResponse.json({ received: true, missing_amount: true })
+  }
+
+  if (refundCurrency && refundCurrency !== 'USD') {
+    safeLogError('[Square Webhook]', `Refund ${refundId} is in ${refundCurrency}, not USD`)
+    return NextResponse.json({ received: true, currency_mismatch: true })
+  }
+
+  if (
+    process.env.SQUARE_LOCATION_ID &&
+    refund.location_id &&
+    refund.location_id !== process.env.SQUARE_LOCATION_ID
+  ) {
+    safeLogError('[Square Webhook]', `Refund ${refundId} belongs to another location`)
+    return NextResponse.json({ received: true, location_mismatch: true })
+  }
+
+  const { order, error: lookupError } = await findOrderForRefund(
+    refund.order_id,
+    refund.payment_id,
+  )
+
+  if (lookupError) {
+    safeLogError('[Square Webhook:refund-lookup]', lookupError)
+    await clearDedupeRow(eventId)
+    return NextResponse.json({ error: 'Refund lookup failed' }, { status: 500 })
+  }
+
+  if (!order) {
+    safeLogError('[Square Webhook]', `No order found for refund ${refundId}`)
+    return NextResponse.json({ received: true, order_found: false })
+  }
+
+  // A refund only means something once the order is paid: the checkout writes
+  // `square_order_id` before any money moves, so a pending order can match too.
+  const refundable =
+    order.payment_status === 'paid' ||
+    order.payment_status === 'partially_refunded' ||
+    order.payment_status === 'refunded'
+
+  if (!refundable) {
+    safeLogError(
+      '[Square Webhook]',
+      `Refund ${refundId} for order ${order.id} ignored — payment_status is ${order.payment_status ?? 'null'}`,
+    )
+    return NextResponse.json({ received: true, refund_ignored: 'not_paid' })
+  }
+
+  const refundedCents =
+    Math.round(Number(order.refunded_amount ?? 0) * 100) + Math.round(refundAmount)
+  const orderTotalCents = Math.round(Number(order.order_total ?? 0) * 100)
+  // The charge can exceed `order_total` when Square adds tax (OCT #35), so a
+  // cumulative refund that covers the record counts as a full refund.
+  const nextPaymentStatus = refundedCents >= orderTotalCents ? 'refunded' : 'partially_refunded'
+  const now = new Date().toISOString()
+  const refundedAt = squareTimestamp(refund.updated_at ?? refund.created_at, now)
+
+  const { data: claim, error: claimError } = await supabase
+    .from('exp_order_status_events')
+    .insert({
+      order_id: order.id,
+      action_type: 'refund_webhook',
+      previous_status: null,
+      next_status: null,
+      previous_payment_status: order.payment_status,
+      next_payment_status: nextPaymentStatus,
+      note: null,
+      metadata: {
+        square_refund_id: refundId,
+        amount_cents: Math.round(refundAmount),
+        refunded_total_cents: refundedCents,
+        source: 'square_webhook',
+      },
+      created_by: 'square_webhook',
+    })
+    .select('id')
+    .single()
+
+  if (claimError?.code === '23505') {
+    // Already applied by an earlier delivery of this same refund.
+    return NextResponse.json({ received: true, refund_already_applied: true })
+  }
+
+  if (claimError || !claim?.id) {
+    safeLogError('[Square Webhook:refund-claim]', claimError)
+    await clearDedupeRow(eventId)
+    return NextResponse.json({ error: 'Could not record the refund' }, { status: 500 })
+  }
+
+  const { error: refundError } = await supabase
+    .from('exp_orders')
+    .update({
+      payment_status: nextPaymentStatus,
+      refunded_amount: refundedCents / 100,
+      refunded_at: refundedAt,
+      updated_at: now,
+    })
+    .eq('id', order.id)
+
+  if (refundError) {
+    // Release the claim so the trail never claims a refund that was not applied.
+    safeLogError('[Square Webhook:refund]', refundError)
+    await supabase.from('exp_order_status_events').delete().eq('id', claim.id)
+    await clearDedupeRow(eventId)
+    return NextResponse.json({ error: 'Could not record the refund' }, { status: 500 })
+  }
+
+  return NextResponse.json({
+    received: true,
+    refund_applied: nextPaymentStatus,
+    refunded_total_cents: refundedCents,
+  })
+}
+
+/** OCT #4: drop the dedupe row so Square's retry is processed again. */
+async function clearDedupeRow(eventId: string): Promise<void> {
+  await supabase.from('exp_square_webhook_events').delete().eq('id', eventId)
+}
+
+interface RefundedOrderRow {
+  id: string
+  order_total: number | null
+  payment_status: string | null
+  refunded_amount: number | null
+}
+
+/**
+ * OCT #4: look a refunded order up by the Square order id the checkout writes,
+ * then by the payment id the mark-paid RPC stores, so a refund is not dropped
+ * when Square omits one of the two.
+ */
+async function findOrderForRefund(
+  squareOrderId: unknown,
+  paymentId: unknown,
+): Promise<{ order: RefundedOrderRow | null; error: unknown }> {
+  const columns = 'id, order_total, payment_status, refunded_amount'
+
+  if (typeof squareOrderId === 'string' && squareOrderId) {
+    const { data, error } = await supabase
+      .from('exp_orders')
+      .select(columns)
+      .eq('square_order_id', squareOrderId)
+      .maybeSingle()
+
+    if (error) return { order: null, error }
+    if (data) return { order: data as RefundedOrderRow, error: null }
+  }
+
+  if (typeof paymentId === 'string' && paymentId) {
+    const { data, error } = await supabase
+      .from('exp_orders')
+      .select(columns)
+      .eq('square_payment_id', paymentId)
+      .maybeSingle()
+
+    if (error) return { order: null, error }
+    if (data) return { order: data as RefundedOrderRow, error: null }
+  }
+
+  return { order: null, error: null }
+}
+
+/** A Square timestamp we can trust, or `fallback` (never "Invalid Date"). */
+function squareTimestamp(value: unknown, fallback: string): string {
+  if (typeof value === 'string') {
+    const parsed = new Date(value)
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString()
+  }
+  return fallback
+}
+
+/**
+ * OCT #4 / #13 / #14: the "payment received" email, scheduled by the webhook with
+ * `after()` so it never delays the response.
+ *
+ * Two shapes: a shop order (items + options + total + the order link) and a
+ * custom-request order (the request link). `chargedCents` is the amount Square
+ * actually took, which includes any tax Square added; it falls back to the
+ * recorded total when it is not known.
+ */
+async function sendPaymentConfirmationEmail(
+  orderId: string,
+  buyerEmailFallback?: string,
+  chargedCents?: number,
+): Promise<void> {
+  try {
+    const { data: orderDetails } = await supabase
+      .from('exp_orders')
+      .select('id, customer_email, custom_request_id, order_total, guest_tracking_token, production_estimate_band')
+      .eq('id', orderId)
+      .single()
+
+    if (!orderDetails) return
+
+    // OCT #13: a shop order has no custom request. `customer_email` can be
+    // missing when the buyer never typed one, but Square knows it.
+    if (!orderDetails.custom_request_id) {
+      await sendShopConfirmationEmail(orderDetails, buyerEmailFallback, chargedCents)
+      return
+    }
+
+    if (!orderDetails.customer_email) return
+
+    const { data: customRequest } = await supabase
+      .from('exp_custom_requests')
+      .select('id, item_type, customer_name, customer_access_token')
+      .eq('id', orderDetails.custom_request_id)
+      .single()
+
+    if (!customRequest) return
+
+    const origin = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://rubysrelicsstudio.com'
+    const statusUrl = customRequest.customer_access_token
+      ? `${origin}/custom-orders/${customRequest.id}?access=${encodeURIComponent(customRequest.customer_access_token)}`
+      : `${origin}/custom-orders`
+
+    // OCT #14: a typed result instead of a silently ignored one, and a
+    // deterministic key so a retried webhook cannot email twice.
+    const paymentEmail = await sendEmail({
+      to: orderDetails.customer_email,
+      subject: `Payment received — your custom order is now in production (${customRequest.id.slice(0, 8)})`,
+      idempotencyKey: `paid:${orderDetails.id}`,
+      html: `
+        <h2>Payment Received — Thank You!</h2>
+        <p>Hi ${safeHtmlEscape(customRequest.customer_name ?? 'there')},</p>
+        <p>We've received your payment and your custom order is now in production!</p>
+        <p><strong>Request ID:</strong> ${safeHtmlEscape(customRequest.id)}</p>
+        <p><strong>Item type:</strong> ${safeHtmlEscape(customRequest.item_type)}</p>
+        <p><strong>Amount paid:</strong> $${Number(orderDetails.order_total).toFixed(2)}</p>
+        <h3>What Happens Next?</h3>
+        <p>Our team will begin working on your item. You'll receive updates as your order progresses through production.</p>
+        <p>Track your request status anytime:</p>
+        <p><a href="${safeHtmlEscape(statusUrl)}">${safeHtmlEscape(statusUrl)}</a></p>
+      `,
+    })
+
+    if (!paymentEmail.ok) {
+      safeLogError('[Square Webhook:payment-email]', paymentEmail.error)
+    }
+  } catch (emailError) {
+    // An email failure must never affect webhook processing.
+    safeLogError('[Square Webhook:payment-email]', emailError)
+  }
+}
+
+interface ShopOrderEmailRow {
+  id: string
+  customer_email: string | null
+  order_total: number | null
+  guest_tracking_token: string | null
+  production_estimate_band: string | null
+}
+
+/**
+ * OCT #13: the shop-order confirmation email.
+ *
+ * Sent from the paid transition only, so a pending or failed payment never
+ * produces one. It carries the order number, the items with their options, the
+ * amount charged and the `/orders/…?access=…` link, because the first shipping
+ * update can be weeks away for made-to-order items.
+ */
+async function sendShopConfirmationEmail(
+  order: ShopOrderEmailRow,
+  buyerEmailFallback?: string,
+  chargedCents?: number,
+): Promise<void> {
+  const to = order.customer_email ?? buyerEmailFallback ?? ''
+  if (!to) {
+    safeLogError('[Square Webhook:payment-email]', `Order ${order.id} has no customer email`)
+    return
+  }
+
+  // OCT #13: backfill so later shipping and delivery emails can reach the buyer.
+  if (!order.customer_email && buyerEmailFallback) {
+    await supabase
+      .from('exp_orders')
+      .update({ customer_email: buyerEmailFallback, updated_at: new Date().toISOString() })
+      .eq('id', order.id)
+      .then(null, () => {})
+  }
+
+  const { data: items } = await supabase
+    .from('exp_order_items')
+    .select('product_title, variant_label, quantity, line_total, selected_options')
+    .eq('order_id', order.id)
+
+  const rows = (items ?? []) as Array<{
+    product_title: string
+    variant_label: string | null
+    quantity: number
+    line_total: number
+    selected_options: Record<string, unknown> | null
+  }>
+
+  const itemLines = rows
+    .map((item) => {
+      const options =
+        item.selected_options && Object.keys(item.selected_options).length > 0
+          ? ` <span style="color:#666">(${Object.entries(item.selected_options)
+              .map(([key, value]) => `${safeHtmlEscape(key)}: ${safeHtmlEscape(String(value))}`)
+              .join(', ')})</span>`
+          : ''
+      const variant = item.variant_label ? ` — ${safeHtmlEscape(item.variant_label)}` : ''
+      return `<li>${safeHtmlEscape(item.product_title)}${variant} × ${Number(item.quantity)}${options} — $${Number(item.line_total).toFixed(2)}</li>`
+    })
+    .join('')
+
+  const origin = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://rubysrelicsstudio.com'
+  const orderUrl = order.guest_tracking_token
+    ? `${origin}/orders/${encodeURIComponent(order.id)}?access=${encodeURIComponent(order.guest_tracking_token)}`
+    : `${origin}/orders/${encodeURIComponent(order.id)}`
+
+  const paidAmount =
+    typeof chargedCents === 'number' && chargedCents > 0
+      ? chargedCents / 100
+      : Number(order.order_total ?? 0)
+
+  const email = await sendEmail({
+    to,
+    subject: `Payment received — order ${order.id.slice(0, 8).toUpperCase()}`,
+    // OCT #14: one deterministic key per order, so a redelivered webhook cannot
+    // send a second confirmation.
+    idempotencyKey: `paid:${order.id}`,
+    html: `
+      <h2>Payment Received — Thank You!</h2>
+      <p>We received your payment of <strong>$${paidAmount.toFixed(2)}</strong> and your order is in our forge queue.</p>
+      ${itemLines ? `<h3>Your order</h3><ul>${itemLines}</ul>` : ''}
+      <p><strong>Production estimate:</strong> ${safeHtmlEscape(order.production_estimate_band ?? 'To be confirmed')}</p>
+      <p><a href="${safeHtmlEscape(orderUrl)}">View your order</a> — that page always shows the latest status and any tracking number.</p>
+      <p>We will email you again when your order ships.</p>
+    `,
+  })
+
+  if (!email.ok) {
+    safeLogError('[Square Webhook:payment-email]', email.error)
+  }
+}
+

@@ -25,6 +25,11 @@ const rateLimiter = vi.hoisted(() => ({
   rateLimitResponse: vi.fn(),
 }))
 
+/** OCT #34: the admin session TTL now comes from storefront settings. */
+const storefrontSettings = vi.hoisted(() => ({
+  getAdminSessionSettings: vi.fn(async () => ({ ttl_hours: 12 })),
+}))
+
 vi.mock('next/navigation', () => ({
   redirect: vi.fn((url: string) => {
     throw new Error(`REDIRECT:${url}`)
@@ -62,7 +67,17 @@ vi.mock('@/lib/supabase/client', () => ({
   }),
 }))
 
-import { requireAdminApiSession, requireAdminPageMfaSessionOrRedirect, requireAdminPageSessionOrRedirect } from '@/lib/admin/auth'
+vi.mock('@/lib/storefront-settings', () => ({
+  getAdminSessionSettings: storefrontSettings.getAdminSessionSettings,
+}))
+
+import {
+  isAdminSessionFresh,
+  requireAdminApiSession,
+  requireAdminPageMfaSessionOrRedirect,
+  requireAdminPageSessionOrRedirect,
+  resetAdminSessionTtlCache,
+} from '@/lib/admin/auth'
 
 const ADMIN_USER_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
 
@@ -74,12 +89,30 @@ const ACTIVE_ROW = {
   last_login_at: null,
 }
 
-function claimsPayload(appMetadata: Record<string, unknown> = { role: 'admin' }, aal = 'aal2') {
+/** Seconds since the epoch, offset from *now* so the TTL check sees a live value. */
+function secondsAgo(seconds: number): number {
+  return Math.floor(Date.now() / 1000) - seconds
+}
+
+/**
+ * `amr` defaults to a session that authenticated a minute ago — an `oauth` entry
+ * plus the `totp` entry MFA verification mints, which is what the admin session
+ * TTL (OCT #34) measures from. Pass `amr: null` to omit the claim entirely.
+ */
+function claimsPayload(
+  appMetadata: Record<string, unknown> = { role: 'admin' },
+  aal = 'aal2',
+  amr: unknown = [
+    { method: 'oauth', timestamp: secondsAgo(90) },
+    { method: 'totp', timestamp: secondsAgo(60) },
+  ]
+) {
   return {
     sub: ADMIN_USER_ID,
     email: 'admin@example.com',
     iat: 1_800_000_000,
     aal,
+    ...(amr === null ? {} : { amr }),
     app_metadata: appMetadata,
   }
 }
@@ -103,6 +136,9 @@ beforeEach(() => {
     .mockResolvedValue({ data: { claims: claimsPayload() }, error: null })
   rateLimiter.rateLimit.mockReset().mockResolvedValue({ allowed: true })
   rateLimiter.rateLimitResponse.mockReset()
+  // The TTL read is memoised for 60 s, so each test starts from a cold cache.
+  resetAdminSessionTtlCache()
+  storefrontSettings.getAdminSessionSettings.mockReset().mockResolvedValue({ ttl_hours: 12 })
 })
 
 describe('requireAdminApiSession — admits an allow-listed admin', () => {
@@ -212,6 +248,145 @@ describe('requireAdminApiSession — fails closed', () => {
     const response = await expectDenied(result)
     expect(response?.status).toBe(403)
     expect(supabaseAuth.getClaims).not.toHaveBeenCalled()
+  })
+})
+
+describe('admin session TTL (OCT #34)', () => {
+  it('refuses a session older than admin_session.ttl_hours, with its own code', async () => {
+    supabaseAuth.getClaims.mockResolvedValue({
+      data: { claims: claimsPayload({ role: 'admin' }, 'aal2', [
+        { method: 'oauth', timestamp: secondsAgo(13 * 3600) },
+        { method: 'totp', timestamp: secondsAgo(12 * 3600 + 60) },
+      ]) },
+      error: null,
+    })
+
+    const response = await expectDenied(await requireAdminApiSession(apiRequest()))
+
+    expect(response?.status).toBe(401)
+    expect(await response?.json()).toEqual({
+      error: 'Admin session expired. Sign in again.',
+      code: 'admin_session_expired',
+    })
+  })
+
+  it('admits a session inside the TTL', async () => {
+    const result = await requireAdminApiSession(apiRequest())
+
+    expect(result.ok).toBe(true)
+  })
+
+  it('fails closed when the token carries no usable amr', async () => {
+    supabaseAuth.getClaims.mockResolvedValue({
+      data: { claims: claimsPayload({ role: 'admin' }, 'aal2', null) },
+      error: null,
+    })
+
+    const response = await expectDenied(await requireAdminApiSession(apiRequest()))
+
+    expect(response?.status).toBe(401)
+    expect(await response?.json()).toMatchObject({ code: 'admin_session_expired' })
+  })
+
+  it('honours a shorter TTL from settings', async () => {
+    storefrontSettings.getAdminSessionSettings.mockResolvedValue({ ttl_hours: 1 })
+    supabaseAuth.getClaims.mockResolvedValue({
+      data: { claims: claimsPayload({ role: 'admin' }, 'aal2', [
+        { method: 'totp', timestamp: secondsAgo(2 * 3600) },
+      ]) },
+      error: null,
+    })
+
+    const response = await expectDenied(await requireAdminApiSession(apiRequest()))
+
+    expect(await response?.json()).toMatchObject({ code: 'admin_session_expired' })
+  })
+
+  it('does not treat a later non-MFA entry as a fresh authentication', async () => {
+    // The refresh token keeps `aal2`; only a new `totp` entry is re-authentication.
+    supabaseAuth.getClaims.mockResolvedValue({
+      data: { claims: claimsPayload({ role: 'admin' }, 'aal2', [
+        { method: 'totp', timestamp: secondsAgo(13 * 3600) },
+        { method: 'token_refresh', timestamp: secondsAgo(60) },
+      ]) },
+      error: null,
+    })
+
+    const response = await expectDenied(await requireAdminApiSession(apiRequest()))
+
+    expect(await response?.json()).toMatchObject({ code: 'admin_session_expired' })
+  })
+
+  it('redirects an expired page session to login with reason=expired', async () => {
+    supabaseAuth.getClaims.mockResolvedValue({
+      data: { claims: claimsPayload({ role: 'admin' }, 'aal2', [
+        { method: 'totp', timestamp: secondsAgo(13 * 3600) },
+      ]) },
+      error: null,
+    })
+
+    await expect(requireAdminPageSessionOrRedirect('/admin')).rejects.toThrow(
+      'REDIRECT:/admin/login?reason=expired&next=%2Fadmin'
+    )
+  })
+
+  it('redirects an expired aal1 session to login, not to the MFA challenge', async () => {
+    supabaseAuth.getClaims.mockResolvedValue({
+      data: { claims: claimsPayload({ role: 'admin' }, 'aal1', [
+        { method: 'oauth', timestamp: secondsAgo(13 * 3600) },
+      ]) },
+      error: null,
+    })
+
+    await expect(requireAdminPageSessionOrRedirect('/admin')).rejects.toThrow(
+      'REDIRECT:/admin/login?reason=expired&next=%2Fadmin'
+    )
+  })
+
+  it('still lets an expired session reach the MFA page — verifying MFA is the re-authentication', async () => {
+    supabaseAuth.getClaims.mockResolvedValue({
+      data: { claims: claimsPayload({ role: 'admin' }, 'aal1', [
+        { method: 'oauth', timestamp: secondsAgo(13 * 3600) },
+      ]) },
+      error: null,
+    })
+
+    await expect(requireAdminPageMfaSessionOrRedirect()).resolves.toEqual({
+      actorUserId: ADMIN_USER_ID,
+      actorEmail: 'admin@example.com',
+    })
+  })
+})
+
+describe('isAdminSessionFresh (OCT #34)', () => {
+  const claims = (authenticatedAt: number | null) => ({
+    sub: ADMIN_USER_ID,
+    email: 'admin@example.com',
+    issuedAt: 1_800_000_000,
+    aal: 'aal2',
+    authenticatedAt,
+    authenticationMethods: [],
+    appMetadata: { role: 'admin' },
+  })
+
+  it('treats the TTL boundary as expired', async () => {
+    const now = 1_800_000_000_000
+
+    await expect(isAdminSessionFresh(claims(1_800_000_000 - 12 * 3600), now)).resolves.toBe(false)
+    await expect(isAdminSessionFresh(claims(1_800_000_000 - 12 * 3600 + 1), now)).resolves.toBe(
+      true
+    )
+  })
+
+  it('treats a token without amr as expired', async () => {
+    await expect(isAdminSessionFresh(claims(null))).resolves.toBe(false)
+  })
+
+  it('memoises the settings read for 60 s', async () => {
+    await isAdminSessionFresh(claims(secondsAgo(10)))
+    await isAdminSessionFresh(claims(secondsAgo(20)))
+
+    expect(storefrontSettings.getAdminSessionSettings).toHaveBeenCalledTimes(1)
   })
 })
 

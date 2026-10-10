@@ -7,6 +7,7 @@ import { alpha } from '@mui/material/styles'
 
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
+import { authErrorMessage } from '@/lib/auth/auth-error'
 import { brandTokens } from '@/theme/theme'
 
 export const metadata: Metadata = {
@@ -14,21 +15,19 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 }
 
-const FALLBACK_MESSAGE =
-  'Something went wrong while completing sign-in. Please try again with Google.'
-
-const MAX_REASON_LENGTH = 300
-
+/**
+ * OCT #68: renders fixed copy chosen from the `?code=` the callback set. The
+ * page deliberately does **not** read the retired `?reason=` parameter — that
+ * rendered provider/attacker-supplied text on the shop's own domain, which is a
+ * phishing aid. See `src/lib/auth/auth-error.ts` for the vocabulary.
+ */
 export default async function AuthErrorPage({
   searchParams,
 }: {
-  searchParams: Promise<{ reason?: string }>
+  searchParams: Promise<{ code?: string }>
 }) {
-  const { reason } = await searchParams
-  const message =
-    typeof reason === 'string' && reason.trim()
-      ? reason.trim().slice(0, MAX_REASON_LENGTH)
-      : FALLBACK_MESSAGE
+  const { code } = await searchParams
+  const message = authErrorMessage(code)
 
   return (
     <>

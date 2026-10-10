@@ -1,5 +1,7 @@
 import type { NextConfig } from 'next'
 
+import { supabaseRemotePatterns } from './src/lib/security/remote-patterns'
+
 const nextConfig: NextConfig = {
   async headers() {
     return [
@@ -11,7 +13,10 @@ const nextConfig: NextConfig = {
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           {
             key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=(), payment=(self "https://js.stripe.com")',
+            // OCT #69: `payment=(self "https://js.stripe.com")` outlived Stripe.
+            // Square Checkout is a hosted redirect, so this origin is never a
+            // Payment Request frame here.
+            value: 'camera=(), microphone=(), geolocation=(), payment=()',
           },
           // SEC-047: Content-Security-Policy is now set dynamically in proxy.ts
           // (the Next 16 name for middleware) with a per-request nonce. The
@@ -25,9 +30,9 @@ const nextConfig: NextConfig = {
     ]
   },
   images: {
-    remotePatterns: [
-      { protocol: 'https', hostname: '*.supabase.co', pathname: '/storage/v1/object/public/**' },
-    ],
+    // OCT #69: pinned to this project's hostname (from NEXT_PUBLIC_SUPABASE_URL)
+    // instead of `*.supabase.co` — see src/lib/security/remote-patterns.ts.
+    remotePatterns: supabaseRemotePatterns(),
   },
 }
 

@@ -26,3 +26,29 @@ export function isProd(): boolean {
   // Non-Vercel production deployments should still enable production safeguards.
   return true
 }
+
+/**
+ * Returns true when cookies must carry `Secure`.
+ *
+ * OCT #69: `isProd()` is deliberately strict (a preview deploy must not set
+ * `Secure` over an http connection to a *preview* host), but that left preview
+ * deployments — which are https — issuing `Secure`-less session and CSRF
+ * cookies. `isHttpsDeployment()` is the right predicate for the `secure` flag:
+ * production, or any Vercel deployment (previews included, all https).
+ *
+ * Do **not** use this for behaviour that must only happen in production (e.g.
+ * relaxing a CSP in dev): use `isProd()` there.
+ */
+export function isHttpsDeployment(): boolean {
+  return isProd() || process.env.VERCEL === '1'
+}
+
+/**
+ * Returns true on a Vercel **preview** deployment.
+ *
+ * Only previews get the `vercel.live` toolbar, so only previews may allow-list
+ * that origin in the CSP (OCT #69).
+ */
+export function isPreviewDeployment(): boolean {
+  return process.env.VERCEL_ENV === 'preview'
+}

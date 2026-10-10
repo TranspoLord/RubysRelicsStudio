@@ -103,15 +103,15 @@ export function CustomOrderPitch() {
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
               <Button
                 component={Link}
-                href="/custom-orders"
+                href="/shop/all"
                 variant="contained"
                 color="secondary"
                 size="large"
                 endIcon={<ArrowForwardIcon />}
-                onClick={() => Analytics.pathChosen('custom_order')}
+                onClick={() => Analytics.pathChosen('shop')}
                 sx={{ px: 4 }}
               >
-                Start a Custom Request
+                Shop All Products
               </Button>
               <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                 No commitment until you approve the quote.

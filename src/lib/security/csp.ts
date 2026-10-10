@@ -19,7 +19,7 @@
 
 import { NextResponse } from 'next/server'
 
-import { isProd } from '@/lib/security/env'
+import { isHttpsDeployment, isPreviewDeployment, isProd } from '@/lib/security/env'
 
 /** Response header carrying the CSP. */
 export const CSP_HEADER = 'Content-Security-Policy'
@@ -39,31 +39,74 @@ export const CSP_NONCE_COOKIE = 'rrs_csp_nonce'
 export const CSP_NONCE_COOKIE_MAX_AGE_SECONDS = 60
 
 /**
- * Script origins the app legitimately boots from, besides its own bundle.
- *
- * - `https://vercel.live` — the preview toolbar (preview deployments only).
- * - `https://va.vercel-scripts.com` — the `@vercel/analytics` loader. Both the
- *   production loader and the dev `script.debug.js` are served from this origin,
- *   so one entry covers dev and prod (§7.1's dev/prod parity requirement).
+ * `@vercel/analytics` loader origin. Both the production loader and the dev
+ * `script.debug.js` are served from here, so one entry covers dev and prod
+ * (§7.1's dev/prod parity requirement).
  */
-export const CSP_SCRIPT_ORIGINS = [
-  'https://vercel.live',
-  'https://va.vercel-scripts.com',
-] as const
+export const CSP_ANALYTICS_SCRIPT_ORIGIN = 'https://va.vercel-scripts.com'
 
 /**
- * Origins the browser may `fetch()`/connect to. `vitals.vercel-insights.com` is
- * the analytics beacon — allowlisting the loader origin without this one would
- * load the script and then drop every event, so the two are asserted together in
- * `csp.test.ts`.
+ * The Vercel preview toolbar. Preview deployments only (OCT #69) — production
+ * has no business loading it, and `frame-src`/`script-src` entries are attack
+ * surface like any other allow-list entry.
  */
-export const CSP_CONNECT_ORIGINS = [
-  'https://*.supabase.co',
-  'wss://*.supabase.co',
-  'https://vitals.vercel-insights.com',
-  'https://api.resend.com',
-  'https://secure.shippingapis.com',
-] as const
+export const CSP_VERCEL_LIVE_ORIGIN = 'https://vercel.live'
+
+/** Analytics beacon origin — allow-listing the loader without this drops events. */
+export const CSP_ANALYTICS_CONNECT_ORIGIN = 'https://vitals.vercel-insights.com'
+
+/**
+ * Script origins the app legitimately boots from, besides its own bundle.
+ *
+ * OCT #69: `https://vercel.live` is now conditional. It used to be allow-listed
+ * in *every* environment, including production, where nothing loads it.
+ */
+export function cspScriptOrigins(): string[] {
+  const origins = [CSP_ANALYTICS_SCRIPT_ORIGIN]
+  if (isPreviewDeployment()) origins.unshift(CSP_VERCEL_LIVE_ORIGIN)
+  return origins
+}
+
+/**
+ * Origins of **this deployment's** Supabase project, derived from
+ * `NEXT_PUBLIC_SUPABASE_URL` (OCT #69).
+ *
+ * The policy used to carry `https://*.supabase.co` + `wss://*.supabase.co`,
+ * which allow-lists *every* Supabase project on the internet: injected script
+ * could exfiltrate to an attacker's own project, which is exactly the origin the
+ * wildcard blesses. Realtime needs the websocket form, so both are returned.
+ *
+ * A missing or malformed URL yields `[]` (fail closed) rather than a wildcard.
+ */
+export function supabaseCspOrigins(
+  supabaseUrl: string | undefined = process.env.NEXT_PUBLIC_SUPABASE_URL
+): string[] {
+  if (!supabaseUrl) return []
+
+  try {
+    const { protocol, host } = new URL(supabaseUrl)
+    if (protocol !== 'https:' && protocol !== 'http:') return []
+    if (!host) return []
+
+    const websocketProtocol = protocol === 'https:' ? 'wss:' : 'ws:'
+    return [`${protocol}//${host}`, `${websocketProtocol}//${host}`]
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Origins the browser may `fetch()`/connect to.
+ *
+ * OCT #69 dropped `api.resend.com` and `secure.shippingapis.com`: both are
+ * server-only integrations, so the *browser* never needs them — they were
+ * widening `connect-src` for nothing.
+ */
+export function cspConnectOrigins(
+  supabaseUrl?: string
+): string[] {
+  return [...supabaseCspOrigins(supabaseUrl), CSP_ANALYTICS_CONNECT_ORIGIN]
+}
 
 /** Per-request nonce: 32 hex characters, matching the previous implementation. */
 export function generateCspNonce(): string {
@@ -83,8 +126,14 @@ export function buildCspHeader(nonce: string): string {
     "'self'",
     ...(isProd() ? [] : ["'unsafe-eval'"]),
     `'nonce-${nonce}'`,
-    ...CSP_SCRIPT_ORIGINS,
+    ...cspScriptOrigins(),
   ].join(' ')
+
+  // OCT #69: the preview toolbar is a preview-only frame; production frames
+  // nothing at all.
+  const frameSrc = isPreviewDeployment()
+    ? `frame-src ${CSP_VERCEL_LIVE_ORIGIN}`
+    : "frame-src 'none'"
 
   return [
     "default-src 'self'",
@@ -92,11 +141,14 @@ export function buildCspHeader(nonce: string): string {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: blob: https:",
-    `connect-src 'self' ${CSP_CONNECT_ORIGINS.join(' ')}`,
-    'frame-src https://vercel.live',
+    `connect-src 'self' ${cspConnectOrigins().join(' ')}`,
+    frameSrc,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
+    // OCT #69: X-Frame-Options covers this today, but the CSP is the modern
+    // control and survives a proxy that strips headers.
+    "frame-ancestors 'none'",
     'upgrade-insecure-requests',
   ].join('; ')
 }
@@ -113,7 +165,9 @@ export function applyCspToResponse<T extends NextResponse>(response: T, nonce: s
   response.cookies.set(CSP_NONCE_COOKIE, nonce, {
     httpOnly: true,
     sameSite: 'strict',
-    secure: isProd(),
+    // OCT #69: preview deployments are https too, so `isProd()` alone left this
+    // cookie without `Secure` there.
+    secure: isHttpsDeployment(),
     path: '/',
     maxAge: CSP_NONCE_COOKIE_MAX_AGE_SECONDS,
   })

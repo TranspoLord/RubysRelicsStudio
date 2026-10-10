@@ -172,8 +172,11 @@ export async function getProductsByCategory(
     .maybeSingle()
 
   if (taxError || !tax) {
-    if (taxError?.code !== 'PGRST116') {
-      console.error('[getProductsByCategory:taxonomy]', taxError?.message)
+    // A slug with no taxonomy row is a 404-shaped result, not an error — only a
+    // real query failure is worth a log line (this used to log `undefined` for
+    // every unknown category slug).
+    if (taxError && taxError.code !== 'PGRST116') {
+      console.error('[getProductsByCategory:taxonomy]', taxError.message)
     }
     return { category: null, products: [] }
   }

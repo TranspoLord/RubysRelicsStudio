@@ -42,6 +42,8 @@ describe('sanitizeAdminNextPath', () => {
     expect(sanitizeAdminNextPath('/\\evil.example')).toBe(ADMIN_NEXT_FALLBACK)
     expect(sanitizeAdminNextPath('/admin/../cart')).toBe(ADMIN_NEXT_FALLBACK)
     expect(sanitizeAdminNextPath('/admin%2F..%2Fcart')).toBe(ADMIN_NEXT_FALLBACK)
+    // OCT #66: re-serializes to `//evil.com` after dot-segment removal.
+    expect(sanitizeAdminNextPath('/admin/..//evil.com')).toBe(ADMIN_NEXT_FALLBACK)
   })
 
   it('honours a caller-supplied fallback', () => {

@@ -799,16 +799,30 @@ export async function POST(request: Request) {
     // Previously the link was created first and any insert failure was only
     // logged, so the customer paid and no order was ever recorded. The order now
     // lands first; the link is created only once there is a row to attach it to.
-    const guestTrackingToken = randomUUID()
-    const orderId = randomUUID()
+    let guestTrackingToken = randomUUID()
+    let orderId = randomUUID()
     const checkoutAttemptId = normalizeCheckoutAttemptId(body.checkoutAttemptId)
 
     // Idempotency: a retried attempt resolves to the order it already created,
     // instead of minting a second link and a second order row.
+    //
+    // This must also cover the *half-finished* attempt. If a first try failed
+    // after the order row existed but before a link was attached (items, stock,
+    // promo or Square failure), the row still carries the `checkout_attempt_id`.
+    // Inserting again violates `exp_orders_checkout_attempt_uidx` (23505), so
+    // every retry 500s. The row is reused instead.
+    let reusedOrder: {
+      id: string
+      guest_tracking_token: string | null
+      claimed_at: string | null
+    } | null = null
+
     if (checkoutAttemptId) {
       const { data: existing } = await supabase
         .from('exp_orders')
-        .select('id, guest_tracking_token, square_payment_link_id, square_payment_link_url')
+        .select(
+          'id, guest_tracking_token, claimed_at, square_payment_link_id, square_payment_link_url',
+        )
         .eq('checkout_attempt_id', checkoutAttemptId)
         .maybeSingle()
 
@@ -819,6 +833,16 @@ export async function POST(request: Request) {
           guestTrackingToken: existing.guest_tracking_token,
         })
       }
+
+      if (existing?.id) {
+        reusedOrder = {
+          id: existing.id,
+          guest_tracking_token: existing.guest_tracking_token,
+          claimed_at: existing.claimed_at,
+        }
+        orderId = existing.id
+        guestTrackingToken = existing.guest_tracking_token ?? guestTrackingToken
+      }
     }
 
     // OCT #35: store from the reconciled cents, so the row satisfies
@@ -826,32 +850,45 @@ export async function POST(request: Request) {
     //   = order_total
     const orderTotalDollars = totalAmountCents / 100
 
-    const { data: orderRow, error: orderError } = await supabase
-      .from('exp_orders')
-      .insert({
-        id: orderId,
-        order_path: 'shop',
-        payment_mode: 'square_checkout',
-        payment_status: 'pending',
-        status: 'awaiting_payment',
-        order_total: orderTotalDollars,
-        subtotal: orderTotals.subtotalCents / 100,
-        discount_amount: orderTotals.discountCents / 100,
-        shipping_cost: orderTotals.shippingCents / 100,
-        shipping_discount: orderTotals.shippingDiscountCents / 100,
-        tax_amount: orderTotals.taxCents / 100,
-        shipping_method: verifiedShippingRate?.serviceName || 'standard',
-        shipping_address: shippingAddress,
-        cart_snapshot: { items: orderItemsSnapshot },
-        customer_email: buyerEmail,
-        guest_tracking_token: guestTrackingToken,
-        checkout_attempt_id: checkoutAttemptId,
-        promo_code_id: appliedPromoId,
-        bundle_deal_ids: appliedDealIds,
-        branch: process.env.NEXT_PUBLIC_APP_ENV === 'production' ? 'PROD' : 'DEV',
-      })
-      .select('id')
-      .single()
+    const orderFields = {
+      order_path: 'shop',
+      payment_mode: 'square_checkout',
+      payment_status: 'pending',
+      status: 'awaiting_payment',
+      order_total: orderTotalDollars,
+      subtotal: orderTotals.subtotalCents / 100,
+      discount_amount: orderTotals.discountCents / 100,
+      shipping_cost: orderTotals.shippingCents / 100,
+      shipping_discount: orderTotals.shippingDiscountCents / 100,
+      tax_amount: orderTotals.taxCents / 100,
+      shipping_method: verifiedShippingRate?.serviceName || 'standard',
+      shipping_address: shippingAddress,
+      cart_snapshot: { items: orderItemsSnapshot },
+      customer_email: buyerEmail,
+      guest_tracking_token: guestTrackingToken,
+      promo_code_id: appliedPromoId,
+      bundle_deal_ids: appliedDealIds,
+      branch: process.env.NEXT_PUBLIC_APP_ENV === 'production' ? 'PROD' : 'DEV',
+    }
+
+    // A first attempt inserts the row; a retry rewrites the row the idempotency
+    // lookup above resolved to, so the attempt stays one order.
+    const { data: orderRow, error: orderError } = reusedOrder
+      ? await supabase
+          .from('exp_orders')
+          .update({ ...orderFields, updated_at: new Date().toISOString() })
+          .eq('id', orderId)
+          .select('id')
+          .single()
+      : await supabase
+          .from('exp_orders')
+          .insert({
+            id: orderId,
+            checkout_attempt_id: checkoutAttemptId,
+            ...orderFields,
+          })
+          .select('id')
+          .single()
 
     if (orderError || !orderRow?.id) {
       // No Square link exists yet, so there is nothing to unwind and nothing for
@@ -881,6 +918,24 @@ export async function POST(request: Request) {
       line_discount: item.line_discount,
       line_total: item.line_total,
     }))
+
+    if (reusedOrder) {
+      // A previous attempt can have written items before failing later (stock,
+      // promo or Square), so replace them instead of appending duplicate lines.
+      const { error: clearItemsError } = await supabase
+        .from('exp_order_items')
+        .delete()
+        .eq('order_id', orderRow.id)
+
+      if (clearItemsError) {
+        safeLogError('[square:checkout:order-items-clear]', clearItemsError)
+        await supabase.from('exp_orders').update({ status: 'cancelled' }).eq('id', orderRow.id)
+        return NextResponse.json(
+          { error: 'Could not start checkout. Please try again.' },
+          { status: 500 },
+        )
+      }
+    }
 
     const { error: orderItemsError } = await supabase
       .from('exp_order_items')
@@ -962,31 +1017,45 @@ export async function POST(request: Request) {
     ]
     const claimed: Array<{ release: string; id: string }> = []
 
-    for (const claim of claims) {
-      const { data: taken, error: claimError } = await supabase.rpc(claim.claim, {
-        p_id: claim.id,
-      })
+    // A retry reuses the order row, and `claimed_at` records that this order has
+    // already consumed its promo/deal usage. Claiming again would charge a
+    // limited code twice, so the claims are skipped when the marker is set.
+    if (!reusedOrder?.claimed_at) {
+      for (const claim of claims) {
+        const { data: taken, error: claimError } = await supabase.rpc(claim.claim, {
+          p_id: claim.id,
+        })
 
-      if (claimError) {
-        safeLogError('[square:checkout:promo-claim]', claimError)
-        await releaseClaims(supabase, claimed)
-        await supabase.from('exp_orders').update({ status: 'cancelled' }).eq('id', orderRow.id)
-        return NextResponse.json(
-          { error: 'Could not apply your discount. Please try again.' },
-          { status: 500 },
-        )
+        if (claimError) {
+          safeLogError('[square:checkout:promo-claim]', claimError)
+          await releaseClaims(supabase, claimed)
+          await supabase.from('exp_orders').update({ status: 'cancelled' }).eq('id', orderRow.id)
+          return NextResponse.json(
+            { error: 'Could not apply your discount. Please try again.' },
+            { status: 500 },
+          )
+        }
+
+        if (taken !== true) {
+          await releaseClaims(supabase, claimed)
+          await supabase.from('exp_orders').update({ status: 'cancelled' }).eq('id', orderRow.id)
+          return NextResponse.json(
+            { error: "That code isn't valid", code: 'promo_invalid' },
+            { status: 422 },
+          )
+        }
+
+        claimed.push({ release: claim.release, id: claim.id })
       }
 
-      if (taken !== true) {
-        await releaseClaims(supabase, claimed)
-        await supabase.from('exp_orders').update({ status: 'cancelled' }).eq('id', orderRow.id)
-        return NextResponse.json(
-          { error: "That code isn't valid", code: 'promo_invalid' },
-          { status: 422 },
-        )
+      if (claims.length > 0) {
+        // Only after the whole round succeeded, so a partly-applied cart that was
+        // released above leaves the marker unset for the retry to claim again.
+        await supabase
+          .from('exp_orders')
+          .update({ claimed_at: new Date().toISOString() })
+          .eq('id', orderRow.id)
       }
-
-      claimed.push({ release: claim.release, id: claim.id })
     }
 
     // ── Create the Square link, now that the order row exists ────────────────
@@ -1001,6 +1070,9 @@ export async function POST(request: Request) {
         discounts: squareDiscounts,
         idempotencyKey,
         note: shippingNote || 'Order from Ruby\'s Relics Studio',
+        // OCT #13: send the buyer back to *their* order instead of a bare
+        // "thanks" page — Square appends its own params after ours.
+        redirectUrl: `${process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'}/checkout/success?order=${encodeURIComponent(orderRow.id)}&access=${encodeURIComponent(guestTrackingToken)}`,
         metadata: {
           ...(buyerEmail && { buyer_email: buyerEmail }),
           ...(buyerPhone && { buyer_phone: buyerPhone }),
